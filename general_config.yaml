@@ -1,0 +1,27 @@
+paths:
+  resources_dir: "resources"
+  datasets_dir: "datasets"
+
+resource_files:
+  hgnc_complete_set: "hgnc_complete_set.txt"
+  cancer_cell_map: "cancer_cell_map.json"
+  marker_sets: "global_cell_type_markers.csv"
+  housekeeping_genes: "housekeeping_genes.txt"
+  mitochondrial_genes: "mt_genes.txt"
+  malignant_markers: "malignant_markers.csv"
+  gene_positions: "gene_positions_biomaRt_0626.csv"
+  metadata_prompt: "metadata_extract_prompt.txt"
+
+dataset_paths:
+  raw_dir: "data"
+  processed_dir: "processed_data"
+  results_dir: "results"
+
+config_files:
+  dataset: "dataset_config.yaml"
+  samples: "samples_config.yaml"
+  selected: "selected_config.yaml"
+
+standardization_pipelines:
+  - 10x
+  - undefined

@@ -1,0 +1,193 @@
+---
+title: "Custom Data Standardization (Undefined Technology)"
+author: "scRNA-seq Pipeline"
+format: 
+  html:
+    toc: true
+    theme: flatly
+execute:
+  warning: false
+---
+
+## 1. Introduction & Setup
+
+This document is a template for standardizing single-cell datasets from custom or undefined technologies. Your goal is to transform your raw data into a strictly formatted sparse matrix, a `Genes.txt` file, and a `Cells.csv` metadata file for each sample. The metadata information for each sample will be collected and saved in a dataset wide `Samples.txt`.
+
+::: callout-important
+### TODO: Define paths and names
+
+Write the dataset specific paths and file names. If you know where the working directory leads to, than you can use relative paths, else absolute paths are recommended.
+:::
+
+```{r Path definitions}
+rm(list = ls(all.names = TRUE))
+gc()
+
+# Fill out path string
+app_folder_path <- "/path/to/app_folder"
+dataset_dir_path <- "/path/to/dataset_folder"
+resources_path <- "/path/to/resources_folder"
+```
+
+```{r setup}
+#| message: false
+library(data.table)
+library(stringr)
+library(Matrix)
+library(yaml)
+
+# 1. Load general config
+config <- read_yaml(file.path(app_folder_path, 'general_config.yaml'))
+
+# 2. Source utility scripts
+invisible(lapply(list.files(file.path(app_folder_path, 'util_scripts'), pattern = '\\.R$', full.name = TRUE), source))
+
+# 3. Setup paths and load dataset configs
+processed_dataset_dir_path <- file.path(dataset_dir_path, config$dataset_paths$processed_dir)
+raw_data_dir_path <- file.path(dataset_dir_path, config$dataset_paths$raw_dir)
+
+dataset_config_path <- file.path(dataset_dir_path, config$config_files$dataset)
+dataset_config <- read_yaml(dataset_config_path)
+
+samples_config_path <- file.path(dataset_dir_path, config$config_files$samples)
+samples_config <- read_yaml(samples_config_path)
+
+# Load global resources (if necessary)
+
+# Example of helpful resources
+#hgnc_complete_set <- fread(file.path(resources_path, #config$resource_files$hgnc_complete_set), key = 'symbol')
+#hgnc_complete_set <- hgnc_complete_set[!(ensembl_gene_id %in% #names(table(ensembl_gene_id))[table(ensembl_gene_id) > 1])]
+```
+
+## 2. Pre-validation
+
+Before continuing, we verify that you have filled out the `samples_config.yaml` file for this workspace. If this fails, please open that file, fill in your sample metadata, and re-run.
+
+```{r pre-validation}
+# This will trigger a hard stop if samples_config.yaml is empty
+prevalidate_setup(dataset_dir_path, config)
+
+samples_info_dt <- rbindlist(samples_config$samples, fill = TRUE, use.names = TRUE)
+sample_names <- samples_info_dt$id
+```
+
+## 3. Data Ingestion (USER ACTION REQUIRED)
+
+::: callout-important
+### TODO: Load Your Custom Data
+
+Write your custom R code below to load your raw data. Because your data could be in CSVs, H5AD, RDS, or a proprietary format, you must manually read it into the R environment.
+:::
+
+```{r load-raw-data}
+# --- USER INPUT REQUIRED ---
+# Example: 
+# raw_matrix <- read.csv("data/extracted/my_custom_counts.csv", row.names = 1)
+# raw_metadata <- fread("data/extracted/my_custom_metadata.csv")
+
+# Ensure your matrix is converted to a sparse format to save memory!
+# expmat <- as(as.matrix(raw_matrix), "CsparseMatrix")
+```
+
+## 4. Matrix Inspection & Configuration
+
+Depending on the source of your dataset, the expression matrix might be raw UMI counts, TPM, or log-normalized. Inspect the data below to decide how to name your final matrix file.
+
+```{r matrix-inspection}
+# Inspect the first few column sums and maximum values
+# summary(Matrix::colSums(expmat))
+# max(expmat)
+```
+
+::: callout-note
+### Update Matrix State
+
+Based on the output above, update the `matrix_state` variable. \* If values are strictly integers, it is likely `"UMIcounts"`. \* If column sums equal exactly 10k or 1M, it is likely `"CP10k"` or `"TPM"`.
+:::
+
+```{r update-config}
+# --- USER INPUT REQUIRED ---
+matrix_state <- "UMIcounts" # Change this if necessary (e.g., "TPM", "CP10k", "log2")
+
+# Automatically construct and update the dataset configuration
+new_expmat_name <- paste0("Exp_data_", matrix_state, ".mtx")
+dataset_config$std_names$expmat <- new_expmat_name
+write_yaml(dataset_config, dataset_config_path)
+
+message("Updated dataset_config.yaml! Expected matrix name is now: ", new_expmat_name)
+```
+
+## 5. Standardization & Saving (USER ACTION REQUIRED)
+
+::: callout-important
+### TODO: Format and Save Data per Sample
+
+You must split your data by sample (matching the IDs in `samples_config.yaml`). For each sample, you need to create and save: 1. `expmat`: A sparse matrix (`dgCMatrix`) with gene symbols as rownames and cell names as colnames. 2. `cells`: A data.table containing at minimum `cell_name`, `sample`, `patient`, and `complexity` (number of non-zero genes). 3. `genes`: A vector of mapped HGNC gene symbols.
+
+Hint: Wrap the data.table assignments in `invisible()` to suppress Quarto printing
+:::
+
+```{r standardize-and-save}
+# --- USER INPUT REQUIRED ---
+sample_cell_counts <- list()
+
+# Example Loop Skeleton:
+# for (s_name in sample_names) {
+#   message("Processing: ", s_name)
+#   
+#   1. Subset your matrix and metadata for this sample
+#   sample_expmat <- expmat[, raw_metadata$sample == s_name]
+#   
+#   2. Ensure genes are HGNC symbols (Map from Ensembl if necessary using map_ensembl_to_symbol_vector)
+#   
+#   3. Build the Cells data.table (can use build_cells() function to get cells template table and fill out columns)
+#   cells <- build_cells(colnames(sample_expmat))
+#   
+#   invisible(cells[, complexity := matkot::col_nnz(expmat)])
+#   
+#   4. Create Directory and Save Files
+#   sample_dir <- file.path(processed_dataset_dir_path, s_name)
+#   dir.create(sample_dir, showWarnings = FALSE)
+#   
+#   Matrix::writeMM(sample_expmat, file = file.path(sample_dir, dataset_config$std_names$expmat))
+#   fwrite(cells, file = file.path(sample_dir, dataset_config$std_names$cells))
+#   fwrite(data.table(rownames(sample_expmat)), file = file.path(sample_dir, dataset_config$std_names$genes), col.names = FALSE)
+# }
+```
+
+## 6. Finalize Pipeline Configuration
+
+This automated step creates the final `Samples.csv` registry and initializes the empty annotation cache required by the Shiny app.
+
+```{r finalize-configs}
+# Build Samples.csv 
+samples <- build_samples(sample_names) # from utils
+
+cols_to_add <- setdiff(names(samples_info_dt), "id")
+samples[samples_info_dt, (cols_to_add) := mget(paste0("i.", cols_to_add)), on = .(sample = id)]
+
+# Map cell counts (requires sample_cell_counts list to be populated in Step 5)
+# invisible(samples[, n_cells := unlist(sample_cell_counts)[sample]])
+
+fwrite(samples, file = file.path(processed_dataset_dir_path, dataset_config$std_names$samples))
+
+# Setup selected_config.yaml based on samples
+selected_config <- setup_selected_config(samples$sample)
+write_yaml(selected_config, file.path(dataset_dir_path, config$config_files$selected))
+```
+
+## 7. Post-Validation
+
+Run this final check to ensure the output matches the strict structural requirements of the Shiny App.
+
+```{r post-validation}
+#| output: asis
+
+# This will generate HTML warning boxes if something is wrong, 
+# or a green success box if you are ready to proceed!
+validate_standardization(
+  processed_dir_path = processed_dataset_dir_path, 
+  sample_names = sample_names, 
+  std_names = dataset_config$std_names
+)
+```

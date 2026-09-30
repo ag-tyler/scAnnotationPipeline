@@ -1,0 +1,205 @@
+samples:
+
+  - id: ""
+
+    technology: ""
+
+    cancer_type: ""
+
+    patient: "" 
+
+    histology: ""
+
+    site: "" 
+
+    sample_type: ""
+
+    sample_primary_met: ""
+
+    disease_extent: ""
+
+    diagnosis_recurrence: ""
+
+    instance_at_site: ""
+
+    treated_naive: ""
+
+    age: "" 
+
+    sex: "" 
+
+    grade: ""
+
+    AJCC_stage: "" 
+
+    AJCC_T: ""
+
+    AJCC_N: ""
+
+    AJCC_M: ""
+
+    size: ""
+
+    smoking_status: ""
+
+    PY: ""
+
+    KI67: ""
+
+    genetic_hormonal_features: ""
+
+    chemotherapy_exposed: ""
+
+    chemotherapy_response: ""
+
+    targeted_rx_exposed: ""
+
+    targeted_rx_response: ""
+
+    post_sampling_rx_exposed: ""
+
+    post_sampling_rx_response: ""
+
+    time_end_of_rx_to_sampling: ""
+
+    ET_exposed: ""
+
+    ET_response: ""
+
+    ICB_exposed: ""
+
+    ICB_response: ""
+
+    PFS_DFS: ""
+
+    OS: ""
+
+
+Here is a template for sample metadata of a cancer scRNA-seq dataset that needs to be filled out with available information from the scientific paper and its supplemental information. Here is some information about the metadata information to look up.
+
+Sample annotation files
+
+Columns
+Following the great work of Roi Tschernichovsky to curate clinical annotations for samples in 3CA, we now have a list of standardized column names that future datasets should adhere to. These may often be empty or “NA”, since these annotations are not always available or relevant. However, the columns should always be included, and filled in only when possible.
+Column name    Meaning
+sample    Sample IDs.
+technology    Sequencing technology used to profile each sample, e.g. 10x or SmartSeq2.
+n_cells    The number of cells in each sample.
+cancer_type    Name of cancer type or premalignant disease, or “Normal”. Names should be in standardized form (see details below).
+patient    Patient IDs.
+histology    Histological subtype, e.g. ductal, lobular, mucinous...
+site    Location from where the sample was taken, e.g. axilla, left ovary, tumor core...
+sample_type    Descriptor of the sample type in standardized form, e.g. “tumor”, “normal” or “premalignant”.
+sample_primary_met    For tumor samples, whether the sample was taken from the primary or metastatic site. Possible values: “primary”, “metastasis”. See details below.
+disease_extent    The extent of the patient’s disease. Possible values: “normal”, “premalignant”, “primary”, “metastatic”.
+diagnosis_recurrence    Refers to whether the sample was taken during the first presentation of the disease or at recurrence after a period of complete remission. Possible values: “diagnosis”, “recurrence”. See details below.
+instance_at_site    Integer variable giving the ordinal instance of disease where and when the sample was taken. Newly-diagnosed disease/lesions should be 0, while each successive recurrence should be 1, 2 etc. See details below.
+treated_naive    Refers to the patient’s treatment history. Possible values: “treated”, “naive”.
+age    Patient age at the time of sampling.
+sex    Patient sex.
+grade    Tumor grade
+AJCC_stage    Tumor stage
+AJCC_T    T stage
+AJCC_N    N stage
+AJCC_M    M stage
+size    Physical size of the lesion from which the sample was taken
+smoking_status    Patient smoking history, e.g. active, former or never smoker
+PY    Pack years: related to patient smoking history
+KI67    Quantification from Ki67 staining
+genetic_hormonal_features    Any relevant genetic or hormonal features, e.g. ER+, TP53-mut etc.
+chemotherapy_exposed    Whether the patient was exposed to chemotherapy before sampling
+chemotherapy_response    Response to pre-sampling chemotherapy
+targeted_rx_exposed    Whether the patient was exposed to targeted radiotherapy before sampling
+targeted_rx_response    Response to pre-sampling targeted radiotherapy
+post_sampling_rx_exposed    Whether the patient was exposed to targeted radiotherapy after sampling
+post_sampling_rx_response    Response to post-sampling targeted radiotherapy
+time_end_of_rx_to_sampling    Time from end of radiotherapy to sampling
+ET_exposed    Whether the patient was exposed to hormone (endocrine) therapy before sampling
+ET_response    Reponse to pre-sampling hormone (endocrine) therapy
+ICB_exposed    Whether the patient was exposed to immune checkpoint blockade before sampling
+ICB_response    Response to pre-sampling immune checkpoint blockade
+PFS_DFS    Progression-free survival or disease-free survival
+OS    Overall survival
+
+cancer_type
+This refers to the patient’s disease, which may not be reflected by the sample type. For example, if a histologically “normal” sample is taken from a lung adenocarcinoma patient (e.g. tumour-adjacent normal tissue or tissue from the opposite lung), then the sample is “normal” but the cancer_type entry should still be “Lung Adenocarcinoma”.
+The values of the cancer_type column should be standardized and should categorize diseases fairly broadly, using well-established classifications and only distinguishing clear histological or molecular classes where relevant. For example, lung cancer should be divided into adenocarcinoma and squamous cell carcinoma, while breast cancer should remain simply as breast cancer, since although the breast cancer subtypes are well-established, they do not represent clear phenotypic classes or different cell of origin. Cancer type names should be in full, without abbreviations, with nouns capitalized. Here is a (fairly comprehensive) list of cancer types currently represented in 3CA:
+ 
+-    Acute Lymphoblastic Leukemia
+-    Acute Myeloid Leukemia
+-    Astrocytoma
+-    Breast Cancer
+-    Carcinosarcoma
+-    Cholangiocarcinoma
+-    Chromophobe Renal Cell Carcinoma
+-    Chronic Lymphocytic Leukemia
+-    Chronic Myeloid Leukemia
+-    Clear Cell Renal Cell Carcinoma
+-    Colorectal Cancer
+-    Cutaneous Basal Cell Carcinoma
+-    Cutaneous Squamous Cell Carcinoma
+-    Cutaneous T Cell Lymphoma
+-    Diffuse Large B Cell Lymphoma
+-    Endometrial Cancer
+-    Ependymoma
+-    Follicular Lymphoma
+-    Gastric Cancer
+-    Glioblastoma
+-    H3G34R Glioma
+-    H3K27M Glioma
+-    Head and Neck Squamous Cell Carcinoma
+-    Hepatocellular Carcinoma
+-    Lung Adenocarcinoma
+-    Lung Squamous Cell Carcinoma
+-    Medulloblastoma
+-    Melanoma
+-    Meningioma
+-    Merkel Cell Carcinoma
+-    Multiple Myeloma
+-    Nasopharyngeal Carcinoma
+-    Neuroblastoma
+-    Neuroendocrine Tumor
+-    Oligodendroglioma
+-    Osteosarcoma
+-    Ovarian Cancer
+-    Pancreatic Ductal Adenocarcinoma
+-    Papillary Renal Cell Carcinoma
+-    Prostate Cancer
+-    Small Cell Lung Cancer
+-    Synovial Sarcoma
+-    Thyroid Cancer
+-    Wilms Tumor
+ 
+
+Further discussion is needed to decide standardised names for other cancer types and premalignant conditions.
+The same standardized disease names should be used in the “Diseases” column in the dataset summary spreadsheet.
+
+sample_type
+This column should contain standardized labels to quickly select from among the most relevant sample types. Possible values include:
+ 
+-    tumor
+-    normal
+-    premalignant
+-    lymph node
+-    blood
+-    pleural effusion
+-    ascites
+-    bone marrow
+
+ 
+Additional information about a tumour sample, such as whether it is primary, recurrent, metastatic or treatment-naive, should be reserved for other relevant columns (e.g. sample_primary_met, diagnosis_recurrence, treated_naive), and the entry here should be simply “tumor”. The “bone marrow” label is mainly for hematologic cancers; it is possible to have a solid lesion in the bone marrow - such as a breast cancer bone metastasis - in which case the annotation should be “tumor”.
+More detailed information about the sample location should go in the “site” column.
+The same standardized sample type names should be used in the “Sample types” column in the dataset summary spreadsheet.
+
+sample_primary_met
+Primary tumours, treatment-resistant primary tumours and recurrent tumours at the primary site should all be annotated as “primary”. Metastatic tumours and recurrent tumours at a metastatic site (these can occur e.g. in CRC, where liver metastases are sometimes surgically removed) should be annotated as “metastasis”. Normal and premalignant samples should be annotated as NA, as should samples from certain haematologic cancers (e.g. blood from leukaemia patients). Lymph node metastases should also be annotated as “metastasis”.
+
+diagnosis_recurrence
+Samples from treatment-resistant disease should still be annotated as “diagnosis” if the patient did not enter complete remission at any time since initial diagnosis. A sample from a metastatic lesion that was discovered only at disease recurrence should be annotated as “recurrence”, even though the metastasis itself is newly diagnosed.
+Note that there is no single place to record a tumor sample as “resistant”. This information depends on the type of treatment and should go in therapy-specific variables, such as chemotherapy_response or targeted_rx_response.
+
+instance_at_site
+This variable is primarily for distinguishing multiple successive recurrences after repeat treatments and periods of complete remission. It refers to the sample site rather than the patient disease, and thus, it can be different for primary and metastatic sites. For example, if a metastatic lesion is discovered at disease recurrence, this metastasis would be annotated as “0” while primary tumour samples from the same time would be ≥1. In this way, this variable is distinct from “diagnosis_recurrence” (see above). For example, it captures the commonality between a metastatic lesion detected at diagnosis from one discovered only at recurrence: these would have different values in the “diagnosis_recurrence” column, but they should both be annotated as “0” in the “instance_at_site” column.
+
+
+The task is to get the number of samples in the dataset, divide them by id. The id could be how they are named in the paper or something like P01, etc. Fill out the information for each sample as much as possible following the metadata description. Be extra sure that the information is correct and fits, if unsure, rather leave out and let the item be an empty string. Give me the metadata for each sample in this yaml format.

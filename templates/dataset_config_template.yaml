@@ -1,0 +1,42 @@
+project_info: 
+  dataset_id: "Werba2023_Pancreas"
+  technology: "10x"
+
+# Standardized file names
+std_names:
+  expmat: "Exp_data_UMIcounts.mtx" # or Exp_data_TPM.mtx TPM depends on normalization factor
+  genes: "Genes.txt"
+  cells: "Cells.csv"
+  samples: "Samples.csv"
+
+# Standardization Parameters
+raw_files:
+  type: "10x" # Options: 10x
+
+# Marker filter parameters
+marker_filter_params:
+  cell_type:
+    min_score: 1.0
+    min_genes: 25
+    max_genes: 100
+  cancer_type:
+    min_score: 1.0
+    min_genes: 25
+    max_genes: 50
+
+# Analysis Parameters
+params:
+  min_genes: 500
+  target_sum: 100000
+  log2_expr_threshold: 4
+  max_marker_genes: 50
+  pca_nv: 50
+  seed: 3988
+  resolutions: [0.1, 0.5, 1.0, 1.5]
+  umap:
+    spread: 5
+    min_dist: 0.1
+  de:
+    num_genes: 100
+    max_match_genes: 50
+    min_marker_found: 20

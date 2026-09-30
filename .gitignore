@@ -1,0 +1,27 @@
+# Machine-specific configuration
+local_config.yaml
+
+# R / RStudio session files
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+
+# Optional
+*.Rproj
+
+# Local datasets
+datasets/
+
+# Generated RDS files
+*.rds
+!tests/testthat/fixtures/compute_cna_golden.rds
+
+# Untracked resource files
+resources/hgnc_complete_set.txt
+resources/gene_positions_biomaRt_0626.csv
+resources/global_cell_type_markers.csv
+resources/malignant_markers.csv
+resources/housekeeping_genes.txt
+resources/mt_genes.txt
+resources/cancer_cell_map.json

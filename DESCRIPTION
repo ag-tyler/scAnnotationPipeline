@@ -1,0 +1,50 @@
+Package: scAnnotationPipeline
+Type: Package
+Title: scRNA-seq Standardization, Clustering, Annotation, and CNA Pipeline
+Version: 0.0.0.9000
+Description: Internal Shiny application and utility functions for
+    standardizing, clustering, differential-expression analysis, manual
+    annotation, and copy-number alteration analysis of single-cell RNA-seq
+    cancer datasets. This DESCRIPTION file supports devtools and testthat
+    tooling around the application code; the application itself is run
+    directly with shiny::runApp(".") from the repository root rather than
+    installed as a conventional R package. Utility functions remain in
+    util_scripts/ and are sourced by both app.R and the test suite.
+License: file LICENSE
+Encoding: UTF-8
+Depends:
+    R (>= 4.5.2)
+Imports:
+    data.table,
+    Matrix,
+    yaml,
+    jsonlite,
+    shiny,
+    bslib,
+    shinyjs,
+    DT,
+    ggplot2,
+    cowplot,
+    viridis,
+    irlba,
+    uwot,
+    Seurat,
+    stringr,
+    caTools,
+    RColorBrewer,
+    scales,
+    dbscan,
+    ggdendro,
+    randomcoloR,
+    docstring,
+    qs2,
+    magrittr,
+    matkot
+Remotes:
+    m20ty/matkot
+Suggests:
+    testthat (>= 3.0.0),
+    withr
+Config/testthat/edition: 3
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
