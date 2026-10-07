@@ -11,13 +11,13 @@ The pipeline guides a dataset through:
 5. **Manual annotation** – assign cell types using DE marker matches and signature scores.
 6. **CNA analysis** – infer copy-number alterations and classify malignant cells/subclones.
 
-For detailed information about dataset setup, configuration, standardization, resource files, testing, cache behavior, and CNA analysis, see the **[User Guide](docs/USER_GUIDE.md)**.
+For detailed information about dataset setup, configuration, standardization, resource files, testing, cache behavior, and CNA analysis, see the [**User Guide**](docs/USER_GUIDE.md).
 
 ## Requirements
 
-- **R ≥ 4.5.2**
-- **Quarto** for the standardization templates
-- Required R packages:
+* **R ≥ 4.5.2**
+* **Quarto** for the standardization templates
+* Required R packages:
 
 ```r
 install.packages(c(
@@ -31,7 +31,7 @@ install.packages(c(
 The pipeline also depends on the custom `matkot` package:
 
 ```r
-devtools::install_github("m20ty/matkot")
+pak::pak("m20ty/matkot")
 ```
 
 For development/testing:
@@ -56,15 +56,15 @@ The standard directory layout is:
 ```text
 scAnnotationPipeline/
 ├── app.R
-├── general_config.yaml
+├── general\_config.yaml
 ├── DESCRIPTION
 ├── README.md
 ├── docs/
-│   └── USER_GUIDE.md
+│   └── USER\_GUIDE.md
 ├── resources/
 ├── datasets/
 ├── templates/
-├── util_scripts/
+├── util\_scripts/
 └── tests/
 ```
 
@@ -82,8 +82,8 @@ or open `app.R` in RStudio and click **Run App**.
 
 On startup, the app:
 
-1. loads `general_config.yaml`;
-2. sources all `.R` files in `util_scripts/`;
+1. loads `general\_config.yaml`;
+2. sources all `.R` files in `util\_scripts/`;
 3. validates and loads the required resource files;
 4. creates/scans `datasets/`;
 5. displays available datasets in the Dataset Selection screen.
@@ -93,7 +93,7 @@ On startup, the app:
 Use **Create New Dataset** in the app. A dataset is created under:
 
 ```text
-datasets/<dataset_id>/
+datasets/<dataset\_id>/
 ```
 
 with configuration files, data/result directories, and a technology-specific `standardize.qmd` template.
@@ -124,26 +124,27 @@ See the [Testing](docs/USER_GUIDE.md#testing) section for the test-file breakdow
 
 ## Repository Notes
 
-- `datasets/` contains local runtime data and should remain outside version control.
-- Most biological resource files under `resources/` are also intentionally untracked.
-- `general_config.yaml`, source code, templates, tests, documentation, and the committed CNA golden fixture are version-controlled.
-- The app uses on-disk `.qs2` caches for expensive intermediate results. Changing analysis parameters may require cache invalidation; see [Cache Behavior & Invalidation](docs/USER_GUIDE.md#cache-behavior--invalidation).
+* `datasets/` contains local runtime data and should remain outside version control.
+* Most biological resource files under `resources/` are also intentionally untracked.
+* `general\_config.yaml`, source code, templates, tests, documentation, and the committed CNA golden fixture are version-controlled.
+* The app uses on-disk `.qs2` caches for expensive intermediate results. Changing analysis parameters may require cache invalidation; see [Cache Behavior \& Invalidation](docs/USER_GUIDE.md#cache-behavior--invalidation).
 
 ## Documentation
 
 The detailed documentation is maintained in:
 
-**[docs/USER_GUIDE.md](docs/USER_GUIDE.md)**
+[**docs/USER\_GUIDE.md**](docs/USER_GUIDE.md)
 
 It covers:
 
-- repository and dataset structure;
-- configuration;
-- biological resource files;
-- dataset creation;
-- standardization;
-- the analysis workflow;
-- testing and coverage;
-- cache invalidation;
-- pipeline assumptions;
-- known limitations.
+* repository and dataset structure;
+* configuration;
+* biological resource files;
+* dataset creation;
+* standardization;
+* the analysis workflow;
+* testing and coverage;
+* cache invalidation;
+* pipeline assumptions;
+* known limitations.
+
