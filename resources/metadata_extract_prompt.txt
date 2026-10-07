@@ -4,13 +4,15 @@ samples:
 
     technology: ""
 
+    n_cells: ""
+
     cancer_type: ""
 
-    patient: "" 
+    patient: ""
 
     histology: ""
 
-    site: "" 
+    site: ""
 
     sample_type: ""
 
@@ -24,13 +26,13 @@ samples:
 
     treated_naive: ""
 
-    age: "" 
+    age: ""
 
-    sex: "" 
+    sex: ""
 
     grade: ""
 
-    AJCC_stage: "" 
+    AJCC_stage: ""
 
     AJCC_T: ""
 
@@ -75,131 +77,739 @@ samples:
     OS: ""
 
 
-Here is a template for sample metadata of a cancer scRNA-seq dataset that needs to be filled out with available information from the scientific paper and its supplemental information. Here is some information about the metadata information to look up.
+Here is a template for sample metadata of a cancer scRNA-seq dataset that needs to be filled out using the scientific paper and its supplementary information.
 
-Sample annotation files
+The goal is to determine all individual biological samples included in the scRNA-seq dataset, identify the sample IDs used by the authors, and produce one YAML entry per sample.
 
-Columns
-Following the great work of Roi Tschernichovsky to curate clinical annotations for samples in 3CA, we now have a list of standardized column names that future datasets should adhere to. These may often be empty or “NA”, since these annotations are not always available or relevant. However, the columns should always be included, and filled in only when possible.
-Column name    Meaning
-sample    Sample IDs.
-technology    Sequencing technology used to profile each sample, e.g. 10x or SmartSeq2.
-n_cells    The number of cells in each sample.
-cancer_type    Name of cancer type or premalignant disease, or “Normal”. Names should be in standardized form (see details below).
-patient    Patient IDs.
-histology    Histological subtype, e.g. ductal, lobular, mucinous...
-site    Location from where the sample was taken, e.g. axilla, left ovary, tumor core...
-sample_type    Descriptor of the sample type in standardized form, e.g. “tumor”, “normal” or “premalignant”.
-sample_primary_met    For tumor samples, whether the sample was taken from the primary or metastatic site. Possible values: “primary”, “metastasis”. See details below.
-disease_extent    The extent of the patient’s disease. Possible values: “normal”, “premalignant”, “primary”, “metastatic”.
-diagnosis_recurrence    Refers to whether the sample was taken during the first presentation of the disease or at recurrence after a period of complete remission. Possible values: “diagnosis”, “recurrence”. See details below.
-instance_at_site    Integer variable giving the ordinal instance of disease where and when the sample was taken. Newly-diagnosed disease/lesions should be 0, while each successive recurrence should be 1, 2 etc. See details below.
-treated_naive    Refers to the patient’s treatment history. Possible values: “treated”, “naive”.
-age    Patient age at the time of sampling.
-sex    Patient sex.
-grade    Tumor grade
-AJCC_stage    Tumor stage
-AJCC_T    T stage
-AJCC_N    N stage
-AJCC_M    M stage
-size    Physical size of the lesion from which the sample was taken
-smoking_status    Patient smoking history, e.g. active, former or never smoker
-PY    Pack years: related to patient smoking history
-KI67    Quantification from Ki67 staining
-genetic_hormonal_features    Any relevant genetic or hormonal features, e.g. ER+, TP53-mut etc.
-chemotherapy_exposed    Whether the patient was exposed to chemotherapy before sampling
-chemotherapy_response    Response to pre-sampling chemotherapy
-targeted_rx_exposed    Whether the patient was exposed to targeted radiotherapy before sampling
-targeted_rx_response    Response to pre-sampling targeted radiotherapy
-post_sampling_rx_exposed    Whether the patient was exposed to targeted radiotherapy after sampling
-post_sampling_rx_response    Response to post-sampling targeted radiotherapy
-time_end_of_rx_to_sampling    Time from end of radiotherapy to sampling
-ET_exposed    Whether the patient was exposed to hormone (endocrine) therapy before sampling
-ET_response    Reponse to pre-sampling hormone (endocrine) therapy
-ICB_exposed    Whether the patient was exposed to immune checkpoint blockade before sampling
-ICB_response    Response to pre-sampling immune checkpoint blockade
-PFS_DFS    Progression-free survival or disease-free survival
-OS    Overall survival
+Use the scientific paper and all available supplementary information as the primary sources.
+
+IMPORTANT GENERAL RULES
+
+1. Be conservative.
+Only enter information that is explicitly supported by the paper, supplementary tables, supplementary figures, methods, sample annotations, or other supplied source material.
+
+Do not guess or fill fields based only on what would normally be expected clinically.
+
+If a value is uncertain, ambiguous, only indirectly implied, or cannot safely be assigned to the specific patient/sample, leave it as:
+
+""
+
+It is better to leave a field empty than to introduce an incorrect annotation.
+
+2. Distinguish patient-level and sample-level information.
+
+Some information describes the patient or the patient's disease and can legitimately be repeated across multiple samples from the same patient if the source clearly establishes it at the patient level. Examples may include:
+
+- age
+- sex
+- cancer_type
+- histology
+- AJCC stage
+- molecular features such as MSS/MSI status
+
+Other information is sample- or lesion-specific and must NOT be copied between samples unless the source supports that assignment. Examples include:
+
+- site
+- size
+- sample_primary_met
+- instance_at_site
+- treatment status at the time that particular sample was collected
+- treatment response where timing matters
+
+Always consider whether a piece of information describes the patient, the disease, or the individual sampled specimen before assigning it.
+
+3. Determine the actual number of samples carefully.
+
+Count biological scRNA-seq samples, not patients, sequencing lanes, cell clusters, technical replicates, or library batches unless those genuinely correspond to distinct biological samples.
+
+For example, one patient may contribute:
+
+- primary tumor
+- metastasis
+- blood
+
+These are three samples and should receive three separate YAML entries.
+
+Use the sample IDs used by the authors whenever possible. If the paper uses a patient ID plus tissue type, construct clear IDs such as:
+
+COL12_primary_CRC
+COL12_liver_metastasis
+COL12_blood
+
+Do not invent arbitrary IDs when recognizable author-defined identifiers are available.
+
+4. n_cells must ALWAYS remain empty.
+
+Use:
+
+n_cells: ""
+
+Do not populate n_cells from the paper or supplementary tables.
+
+The number of cells will later be calculated directly from the actual single-cell dataset, so this field must remain empty even when the publication reports a cell count.
+
+5. Keep "site" strictly anatomical.
+
+The site field should contain only the anatomical location from which the sample was obtained.
+
+Examples:
+
+site: "Liver"
+site: "Ascending colon"
+site: "Upper rectum"
+site: "Peripheral blood"
+site: "Left ovary"
+site: "Axillary lymph node"
+
+Do NOT include sampling methodology or within-lesion descriptors such as:
+
+- tumor core
+- core of tumor
+- biopsy
+- surgical specimen
+- resection specimen
+- fresh tissue
+- tumor edge
+- center of tumor
+
+unless such wording actually represents a meaningful anatomical subsite that needs to distinguish samples.
+
+For example:
+
+WRONG:
+site: "Liver, tumor core"
+
+CORRECT:
+site: "Liver"
+
+WRONG:
+site: "Ascending colon, tumor core"
+
+CORRECT:
+site: "Ascending colon"
+
+6. Do not overinterpret lesion size.
+
+The "size" field refers to the physical size of the SPECIFIC lesion from which the sample was taken.
+
+Only populate size if the publication allows the reported measurement to be confidently linked to the sampled lesion.
+
+Do NOT assign:
+
+- maximum metastasis diameter
+- average lesion diameter
+- largest lesion size
+- radiological tumor burden
+
+to a specific sample when the patient has multiple lesions and it is unclear which lesion was sampled.
+
+If there is any uncertainty that a reported size belongs to the exact sampled lesion, leave:
+
+size: ""
+
+7. Treatment variables must reflect treatment timing relative to sampling.
+
+For therapy-exposure variables, determine whether treatment occurred BEFORE the sample was collected.
+
+Do not mark a sample as exposed because the patient received that treatment only after sampling.
+
+Where multiple samples from the same patient were collected at the same time, patient-level pre-sampling treatment may apply to all of those samples if clearly supported.
+
+Do not mix different treatment modalities.
+
+For example:
+
+- chemotherapy belongs under chemotherapy_exposed / chemotherapy_response
+- endocrine therapy belongs under ET_exposed / ET_response
+- immune checkpoint blockade belongs under ICB_exposed / ICB_response
+- radiotherapy-related information belongs only in the radiotherapy-related fields
+
+Do not put chemotherapy timing into a radiotherapy timing field.
+
+8. Preserve the distinction between treated_naive and modality-specific exposure.
+
+treated_naive describes whether the patient had received relevant anti-cancer treatment before sampling.
+
+Possible standardized values:
+
+"treated"
+"naive"
+
+Then separately populate the therapy-specific exposure fields when the treatment modality is known.
+
+Example:
+
+treated_naive: "treated"
+chemotherapy_exposed: "yes"
+
+Do not assume exposure to other treatment modalities unless explicitly stated.
+
+9. Use "diagnosis_recurrence" conservatively.
+
+This field asks whether the disease was sampled during the initial presentation/continuous disease course or after recurrence following a period of complete remission.
+
+Possible values:
+
+"diagnosis"
+"recurrence"
+
+Treatment-resistant or persistent disease is still:
+
+diagnosis_recurrence: "diagnosis"
+
+if the patient never entered complete remission.
+
+Do NOT label a sample "recurrence" merely because it is metastatic, previously treated, advanced, or surgically resected.
+
+If the publication does not provide enough information to distinguish diagnosis from recurrence, leave it empty.
+
+10. instance_at_site refers to the ordinal occurrence AT THAT SPECIFIC DISEASE SITE.
+
+This variable must not be interpreted as:
+
+- cancer stage
+- metastatic status
+- number of metastases
+- number of samples
+- number of previous treatments
+
+It records whether the sampled disease represents the first occurrence at that site or a later recurrence at the same site.
+
+Use:
+
+instance_at_site: 0
+
+when the sample represents the first known occurrence of disease at that anatomical disease site.
+
+Use:
+
+instance_at_site: 1
+
+for the first recurrence at that same site after treatment/remission.
+
+Use 2, 3, etc. for subsequent recurrences at that same site.
+
+The primary and metastatic sites are evaluated independently.
+
+Example:
+
+A patient presents for the first time with a colorectal primary tumor and synchronous liver metastasis.
+
+Primary colorectal tumor:
+diagnosis_recurrence: "diagnosis"
+instance_at_site: 0
+
+Liver metastasis:
+diagnosis_recurrence: "diagnosis"
+instance_at_site: 0
+
+The patient being metastatic does NOT make the primary tumor instance 1.
+
+Another example:
+
+A patient previously had a primary colorectal tumor removed, entered remission, and later develops recurrence at the primary site plus a newly appearing liver metastasis.
+
+Recurrent primary-site tumor:
+diagnosis_recurrence: "recurrence"
+instance_at_site: 1
+
+First liver metastasis:
+diagnosis_recurrence: "recurrence"
+instance_at_site: 0
+
+Thus, diagnosis_recurrence refers to the overall disease episode, whereas instance_at_site refers to the occurrence number at the specific site.
+
+IMPORTANT:
+Do not automatically assign instance_at_site: 0 merely because only one sample from that site appears in the dataset.
+
+There must be reasonable evidence that this is the first occurrence at that site.
+
+If previous disease at the same site cannot be excluded from the available information, leave instance_at_site empty rather than guessing.
+
+11. Do not equate metastatic disease with a metastatic sample.
+
+disease_extent describes the extent of the PATIENT'S disease.
+
+A patient with distant metastatic disease should generally have:
+
+disease_extent: "metastatic"
+
+even for a sample taken from the primary tumor or blood.
+
+sample_primary_met instead describes the individual tumor sample:
+
+primary tumor:
+sample_primary_met: "primary"
+
+metastatic tumor:
+sample_primary_met: "metastasis"
+
+A primary tumor sample from a stage IV patient can therefore correctly have:
+
+sample_primary_met: "primary"
+disease_extent: "metastatic"
+
+12. Non-tumor samples should not be forced into tumor-specific categories.
+
+For samples such as blood, normal tissue, ascites, pleural effusion, etc., leave tumor-specific fields empty where they do not meaningfully apply.
+
+For example, peripheral blood from a solid-tumor patient should generally have:
+
+sample_type: "blood"
+sample_primary_met: ""
+instance_at_site: ""
+
+Do not classify blood itself as primary or metastatic.
+
+Patient-level disease information such as cancer_type, age, sex, or stage may still be repeated for the blood sample if clearly known.
+
+13. Use exact evidence rather than extrapolation between patients.
+
+Do not assume that information reported for one patient applies to another.
+
+Do not assume that all patients have the same:
+
+- grade
+- stage
+- treatment
+- treatment response
+- molecular status
+- tumor site
+- metastasis characteristics
+
+unless the paper explicitly states that the property applies to the entire cohort.
+
+14. When the paper gives a cohort-wide statement, verify its scope.
+
+Statements such as:
+
+"All patients were MSS"
+
+can be assigned to every patient.
+
+Statements such as:
+
+"Patients P03, P05 and P06 received chemotherapy"
+
+must only be applied to those specified patients.
+
+Carefully distinguish:
+
+- all patients
+- treated patients
+- untreated patients
+- tumor samples
+- primary tumors
+- metastases
+- blood samples
+
+15. Keep terminology standardized.
+
+Use the standardized values described below whenever applicable.
+
+Do not unnecessarily introduce synonyms if a standardized term exists.
+
+16. Output requirements.
+
+Return the COMPLETE YAML containing ALL identified samples.
+
+Do not give only the changed entries.
+
+Every sample must contain every field in the template, even when the value is empty.
+
+Use empty strings:
+
+""
+
+for unavailable or deliberately unfilled information.
+
+The result should be directly copy-pasteable as valid YAML.
+
+Before producing the final YAML, internally cross-check:
+
+- number of patients
+- number of biological samples
+- sample IDs
+- tissue/site assignments
+- primary vs metastatic status
+- treatment status
+- diagnosis vs recurrence
+- instance_at_site
+- patient-level variables
+- lesion-specific variables
+
+Check for contradictions between the main paper and supplementary information. If there is a conflict that cannot be confidently resolved, leave the relevant value empty rather than choosing one arbitrarily.
+
+
+Sample annotation fields
+
+Column name — Meaning
+
+id
+Sample ID. Prefer the identifier used by the authors, optionally combined with tissue/site when a patient contributes multiple samples.
+
+technology
+Sequencing technology used to profile the sample, e.g. 10x Genomics or SmartSeq2. Include platform/chemistry version only when explicitly supported.
+
+n_cells
+Number of cells in the sample. ALWAYS leave this field empty because it will be calculated directly from the dataset.
 
 cancer_type
-This refers to the patient’s disease, which may not be reflected by the sample type. For example, if a histologically “normal” sample is taken from a lung adenocarcinoma patient (e.g. tumour-adjacent normal tissue or tissue from the opposite lung), then the sample is “normal” but the cancer_type entry should still be “Lung Adenocarcinoma”.
-The values of the cancer_type column should be standardized and should categorize diseases fairly broadly, using well-established classifications and only distinguishing clear histological or molecular classes where relevant. For example, lung cancer should be divided into adenocarcinoma and squamous cell carcinoma, while breast cancer should remain simply as breast cancer, since although the breast cancer subtypes are well-established, they do not represent clear phenotypic classes or different cell of origin. Cancer type names should be in full, without abbreviations, with nouns capitalized. Here is a (fairly comprehensive) list of cancer types currently represented in 3CA:
- 
--    Acute Lymphoblastic Leukemia
--    Acute Myeloid Leukemia
--    Astrocytoma
--    Breast Cancer
--    Carcinosarcoma
--    Cholangiocarcinoma
--    Chromophobe Renal Cell Carcinoma
--    Chronic Lymphocytic Leukemia
--    Chronic Myeloid Leukemia
--    Clear Cell Renal Cell Carcinoma
--    Colorectal Cancer
--    Cutaneous Basal Cell Carcinoma
--    Cutaneous Squamous Cell Carcinoma
--    Cutaneous T Cell Lymphoma
--    Diffuse Large B Cell Lymphoma
--    Endometrial Cancer
--    Ependymoma
--    Follicular Lymphoma
--    Gastric Cancer
--    Glioblastoma
--    H3G34R Glioma
--    H3K27M Glioma
--    Head and Neck Squamous Cell Carcinoma
--    Hepatocellular Carcinoma
--    Lung Adenocarcinoma
--    Lung Squamous Cell Carcinoma
--    Medulloblastoma
--    Melanoma
--    Meningioma
--    Merkel Cell Carcinoma
--    Multiple Myeloma
--    Nasopharyngeal Carcinoma
--    Neuroblastoma
--    Neuroendocrine Tumor
--    Oligodendroglioma
--    Osteosarcoma
--    Ovarian Cancer
--    Pancreatic Ductal Adenocarcinoma
--    Papillary Renal Cell Carcinoma
--    Prostate Cancer
--    Small Cell Lung Cancer
--    Synovial Sarcoma
--    Thyroid Cancer
--    Wilms Tumor
- 
+Name of cancer type or premalignant disease, or "Normal". Names should be standardized as described below.
 
-Further discussion is needed to decide standardised names for other cancer types and premalignant conditions.
-The same standardized disease names should be used in the “Diseases” column in the dataset summary spreadsheet.
+patient
+Patient ID.
+
+histology
+Histological subtype, e.g. ductal, lobular, mucinous, adenocarcinoma.
+
+site
+Anatomical location from which the sample was taken. Use only the anatomical site and do not include procedural or within-tumor descriptions such as "tumor core".
 
 sample_type
-This column should contain standardized labels to quickly select from among the most relevant sample types. Possible values include:
- 
--    tumor
--    normal
--    premalignant
--    lymph node
--    blood
--    pleural effusion
--    ascites
--    bone marrow
-
- 
-Additional information about a tumour sample, such as whether it is primary, recurrent, metastatic or treatment-naive, should be reserved for other relevant columns (e.g. sample_primary_met, diagnosis_recurrence, treated_naive), and the entry here should be simply “tumor”. The “bone marrow” label is mainly for hematologic cancers; it is possible to have a solid lesion in the bone marrow - such as a breast cancer bone metastasis - in which case the annotation should be “tumor”.
-More detailed information about the sample location should go in the “site” column.
-The same standardized sample type names should be used in the “Sample types” column in the dataset summary spreadsheet.
+Standardized descriptor of the sample, e.g. "tumor", "normal", "premalignant", "blood", etc.
 
 sample_primary_met
-Primary tumours, treatment-resistant primary tumours and recurrent tumours at the primary site should all be annotated as “primary”. Metastatic tumours and recurrent tumours at a metastatic site (these can occur e.g. in CRC, where liver metastases are sometimes surgically removed) should be annotated as “metastasis”. Normal and premalignant samples should be annotated as NA, as should samples from certain haematologic cancers (e.g. blood from leukaemia patients). Lymph node metastases should also be annotated as “metastasis”.
+For tumor samples, whether the sampled tumor is from the primary or metastatic site.
+
+Possible values:
+
+"primary"
+"metastasis"
+
+Leave empty when not applicable.
+
+disease_extent
+Extent of the patient's disease.
+
+Possible values:
+
+"normal"
+"premalignant"
+"primary"
+"metastatic"
 
 diagnosis_recurrence
-Samples from treatment-resistant disease should still be annotated as “diagnosis” if the patient did not enter complete remission at any time since initial diagnosis. A sample from a metastatic lesion that was discovered only at disease recurrence should be annotated as “recurrence”, even though the metastasis itself is newly diagnosed.
-Note that there is no single place to record a tumor sample as “resistant”. This information depends on the type of treatment and should go in therapy-specific variables, such as chemotherapy_response or targeted_rx_response.
+Whether sampling occurred during the initial/continuous disease presentation or after recurrence following complete remission.
+
+Possible values:
+
+"diagnosis"
+"recurrence"
 
 instance_at_site
-This variable is primarily for distinguishing multiple successive recurrences after repeat treatments and periods of complete remission. It refers to the sample site rather than the patient disease, and thus, it can be different for primary and metastatic sites. For example, if a metastatic lesion is discovered at disease recurrence, this metastasis would be annotated as “0” while primary tumour samples from the same time would be ≥1. In this way, this variable is distinct from “diagnosis_recurrence” (see above). For example, it captures the commonality between a metastatic lesion detected at diagnosis from one discovered only at recurrence: these would have different values in the “diagnosis_recurrence” column, but they should both be annotated as “0” in the “instance_at_site” column.
+Integer indicating the ordinal occurrence of disease at that specific site.
+
+First occurrence at the site:
+0
+
+First recurrence at the same site:
+1
+
+Further recurrences:
+2, 3, etc.
+
+Leave empty if the disease history is insufficient to determine this confidently.
+
+treated_naive
+Patient treatment history before sampling.
+
+Possible values:
+
+"treated"
+"naive"
+
+age
+Patient age at the time of sampling.
+
+sex
+Patient sex.
+
+grade
+Tumor grade.
+
+AJCC_stage
+AJCC tumor stage.
+
+AJCC_T
+T stage.
+
+AJCC_N
+N stage.
+
+AJCC_M
+M stage.
+
+size
+Physical size of the specific lesion from which the sample was obtained. Do not use a general or maximum lesion measurement unless it can confidently be assigned to the sampled lesion.
+
+smoking_status
+Patient smoking history, e.g. active, former, never smoker.
+
+PY
+Pack-years.
+
+KI67
+Quantification from Ki67 staining.
+
+genetic_hormonal_features
+Relevant genetic, molecular, or hormonal features, e.g. ER+, TP53-mut, MSS, MSI, pMMR, dMMR.
+
+chemotherapy_exposed
+Whether the patient received chemotherapy before sampling.
+
+chemotherapy_response
+Response to pre-sampling chemotherapy.
+
+targeted_rx_exposed
+Whether the patient received the treatment modality defined by this field before sampling. Follow the supplied dataset/schema definition exactly and do not conflate it with chemotherapy, endocrine therapy, or immune checkpoint blockade.
+
+targeted_rx_response
+Response to the corresponding pre-sampling targeted/radiotherapy treatment.
+
+post_sampling_rx_exposed
+Whether the corresponding treatment was given after sampling.
+
+post_sampling_rx_response
+Response to that post-sampling treatment.
+
+time_end_of_rx_to_sampling
+Time between the end of the corresponding radiotherapy/treatment and sampling. Do not populate this with chemotherapy timing if the schema defines it as radiotherapy timing.
+
+ET_exposed
+Whether the patient received hormone/endocrine therapy before sampling.
+
+ET_response
+Response to pre-sampling hormone/endocrine therapy.
+
+ICB_exposed
+Whether the patient received immune checkpoint blockade before sampling.
+
+ICB_response
+Response to pre-sampling immune checkpoint blockade.
+
+PFS_DFS
+Progression-free survival or disease-free survival.
+
+OS
+Overall survival.
 
 
-The task is to get the number of samples in the dataset, divide them by id. The id could be how they are named in the paper or something like P01, etc. Fill out the information for each sample as much as possible following the metadata description. Be extra sure that the information is correct and fits, if unsure, rather leave out and let the item be an empty string. Give me the metadata for each sample in this yaml format.
+cancer_type
+
+This refers to the patient's disease, which may not be reflected by the sample type.
+
+For example, if a histologically normal sample is taken from a lung adenocarcinoma patient, such as tumor-adjacent normal tissue or tissue from the opposite lung, then:
+
+sample_type: "normal"
+
+but:
+
+cancer_type: "Lung Adenocarcinoma"
+
+The cancer_type values should be standardized and categorize diseases fairly broadly, using well-established classifications and only distinguishing clear histological or molecular classes where relevant.
+
+For example, lung cancer should be divided into adenocarcinoma and squamous cell carcinoma, while breast cancer should generally remain "Breast Cancer".
+
+Cancer type names should be written in full, without abbreviations, with nouns capitalized.
+
+Standardized cancer types currently represented in 3CA include:
+
+- Acute Lymphoblastic Leukemia
+- Acute Myeloid Leukemia
+- Astrocytoma
+- Breast Cancer
+- Carcinosarcoma
+- Cholangiocarcinoma
+- Chromophobe Renal Cell Carcinoma
+- Chronic Lymphocytic Leukemia
+- Chronic Myeloid Leukemia
+- Clear Cell Renal Cell Carcinoma
+- Colorectal Cancer
+- Cutaneous Basal Cell Carcinoma
+- Cutaneous Squamous Cell Carcinoma
+- Cutaneous T Cell Lymphoma
+- Diffuse Large B Cell Lymphoma
+- Endometrial Cancer
+- Ependymoma
+- Follicular Lymphoma
+- Gastric Cancer
+- Glioblastoma
+- H3G34R Glioma
+- H3K27M Glioma
+- Head and Neck Squamous Cell Carcinoma
+- Hepatocellular Carcinoma
+- Lung Adenocarcinoma
+- Lung Squamous Cell Carcinoma
+- Medulloblastoma
+- Melanoma
+- Meningioma
+- Merkel Cell Carcinoma
+- Multiple Myeloma
+- Nasopharyngeal Carcinoma
+- Neuroblastoma
+- Neuroendocrine Tumor
+- Oligodendroglioma
+- Osteosarcoma
+- Ovarian Cancer
+- Pancreatic Ductal Adenocarcinoma
+- Papillary Renal Cell Carcinoma
+- Prostate Cancer
+- Small Cell Lung Cancer
+- Synovial Sarcoma
+- Thyroid Cancer
+- Wilms Tumor
+
+Further discussion may be needed to decide standardized names for other cancer types and premalignant conditions.
+
+The same standardized disease names should be used in the "Diseases" column in the dataset summary spreadsheet.
+
+
+sample_type
+
+This column should contain standardized labels to quickly select among the relevant sample types.
+
+Possible values include:
+
+- tumor
+- normal
+- premalignant
+- lymph node
+- blood
+- pleural effusion
+- ascites
+- bone marrow
+
+Additional information about a tumor sample, such as whether it is primary, recurrent, metastatic, or treatment-naive, should be reserved for the appropriate other columns.
+
+For example, a metastatic tumor should still have:
+
+sample_type: "tumor"
+
+and its metastatic status should be represented as:
+
+sample_primary_met: "metastasis"
+
+The "bone marrow" label is mainly intended for hematologic cancers. A solid tumor metastasis located in bone/bone marrow should remain:
+
+sample_type: "tumor"
+
+More detailed anatomical information belongs in "site".
+
+
+sample_primary_met
+
+Primary tumors, treatment-resistant primary tumors, and recurrent tumors at the primary site should all be annotated:
+
+"primary"
+
+Metastatic tumors and recurrent tumors at a metastatic site should be annotated:
+
+"metastasis"
+
+Lymph-node metastases should also be annotated:
+
+"metastasis"
+
+For non-tumor samples, leave the field empty when primary/metastatic classification does not apply.
+
+
+diagnosis_recurrence
+
+Samples from treatment-resistant or persistent disease should still be annotated:
+
+"diagnosis"
+
+if the patient did not enter complete remission at any point since the initial diagnosis.
+
+A sample taken after the disease returned following a period of complete remission should be annotated:
+
+"recurrence"
+
+A metastatic lesion discovered only during disease recurrence should therefore have:
+
+diagnosis_recurrence: "recurrence"
+
+even if that particular metastatic lesion itself is newly diagnosed.
+
+Do not use diagnosis_recurrence to encode treatment resistance.
+
+Treatment resistance should instead be represented in the appropriate treatment-response field where supported.
+
+
+instance_at_site
+
+This variable is primarily for distinguishing successive occurrences or recurrences at a particular disease site.
+
+It refers to the sampled disease site rather than the patient's overall disease history.
+
+Therefore, primary and metastatic sites can have different instance_at_site values in the same patient.
+
+Examples:
+
+Initial primary tumor:
+instance_at_site: 0
+
+First recurrence at primary site:
+instance_at_site: 1
+
+Metastasis newly discovered during that recurrence:
+instance_at_site: 0
+
+Thus, a metastatic lesion detected at initial diagnosis and a metastatic lesion first detected during later disease recurrence can both have:
+
+instance_at_site: 0
+
+because both represent the first occurrence at their respective metastatic site.
+
+They differ instead in diagnosis_recurrence:
+
+Initial synchronous metastasis:
+diagnosis_recurrence: "diagnosis"
+instance_at_site: 0
+
+New metastasis arising during disease recurrence:
+diagnosis_recurrence: "recurrence"
+instance_at_site: 0
+
+Only assign instance_at_site when the available disease history supports the ordinal occurrence at that site. If this cannot be determined confidently, leave it empty.
+
+
+FINAL TASK
+
+1. Determine the total number of biological scRNA-seq samples in the supplied dataset.
+
+2. Determine the sample IDs and which patient each sample belongs to.
+
+3. Create one YAML entry for every sample.
+
+4. Fill every metadata field as far as the supplied paper and supplementary information safely allow.
+
+5. Keep:
+
+n_cells: ""
+
+for every sample, regardless of whether cell counts are reported in the publication.
+
+6. For "site", include ONLY the anatomical sampling location. Do not append "tumor core", "biopsy", "resection specimen", or similar specimen-processing descriptions.
+
+7. Be especially careful with:
+
+- sample_primary_met
+- disease_extent
+- diagnosis_recurrence
+- instance_at_site
+- treated_naive
+- treatment exposure
+- treatment response
+- size
+
+Do not infer these merely from stage, metastatic status, treatment status, or the existence of a sample.
+
+8. If information cannot be assigned confidently to that exact patient/sample, use an empty string.
+
+9. Do not invent information to make the metadata more complete.
+
+10. Return the FULL metadata YAML for ALL samples in one code block so that it can be copied and pasted directly.
+
+Do not omit fields, even when empty.
