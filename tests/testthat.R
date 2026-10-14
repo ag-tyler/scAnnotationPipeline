@@ -7,4 +7,4 @@
 
 library(testthat)
 
-testthat::test_dir("testthat")
+testthat::test_dir(file.path("tests", "testthat"))

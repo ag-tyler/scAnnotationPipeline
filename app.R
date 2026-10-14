@@ -31,7 +31,7 @@ if (!dir.exists(sources_path)) {
        "'. Make sure app.R is launched from the app's root directory.", call. = FALSE)
 }
 
-r_files <- list.files(sources_path, pattern = '\\.R$', full.names = TRUE)
+r_files <- sort(list.files(sources_path, pattern = '\\.R$', full.names = TRUE))
 
 if (length(r_files) == 0) {
   stop("No .R files found in '", sources_path, "'. Utility functions could not be loaded.", 

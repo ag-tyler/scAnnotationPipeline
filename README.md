@@ -24,7 +24,8 @@ install.packages(c(
   "shiny", "bslib", "shinyjs", "data.table", "yaml", "jsonlite", "DT",
   "ggplot2", "cowplot", "viridis", "Matrix", "irlba", "uwot", "Seurat",
   "stringr", "caTools", "RColorBrewer", "scales", "dbscan", "ggdendro",
-  "randomcoloR", "docstring", "qs2", "magrittr", "devtools", "R.utils"
+  "randomcoloR", "docstring", "qs2", "magrittr", "devtools", "R.utils",
+  "shinytest2"
 ))
 ```
 
@@ -119,6 +120,15 @@ Rscript tests/testthat.R
 ```
 
 The suite focuses on behavioral/workflow coverage across I/O, validation, preprocessing, clustering, differential expression, annotation, caching, CNA analysis, and regression protection.
+
+The browser baseline uses `shinytest2` with a configured Chromium-based browser and the local `Che2021_Colorectal` workspace. It is skipped when those local prerequisites are unavailable or tests run in CRAN mode. To run it explicitly from R:
+
+```r
+Sys.setenv(NOT_CRAN = "true")
+testthat::test_file("tests/testthat/test-app-ui-baseline.R")
+```
+
+The test is read-only: it loads the workspace and visits the main workflow screens without invoking compute, save, reset, or batch actions. Approved screenshots are stored under `tests/testthat/fixtures/ui-baseline/`.
 
 See the [Testing](docs/USER_GUIDE.md#testing) section for the test-file breakdown and coverage summary.
 
