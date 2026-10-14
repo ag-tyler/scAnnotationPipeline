@@ -24,8 +24,7 @@ install.packages(c(
   "shiny", "bslib", "shinyjs", "data.table", "yaml", "jsonlite", "DT",
   "ggplot2", "cowplot", "viridis", "Matrix", "irlba", "uwot", "Seurat",
   "stringr", "caTools", "RColorBrewer", "scales", "dbscan", "ggdendro",
-  "randomcoloR", "docstring", "qs2", "magrittr", "devtools", "R.utils",
-  "shinytest2"
+  "randomcoloR", "docstring", "qs2", "magrittr", "devtools", "R.utils"
 ))
 ```
 
@@ -38,7 +37,7 @@ pak::pak("m20ty/matkot")
 For development/testing:
 
 ```r
-install.packages(c("testthat", "withr"))
+install.packages(c("testthat", "withr", "shinytest2"))
 ```
 
 ## Installation
@@ -70,6 +69,23 @@ scAnnotationPipeline/
 ```
 
 The app is designed to run from the repository root. `resources/` and `datasets/` are relative to that root.
+
+### Application structure
+
+`app.R` is the thin entry point. It sources utilities and an explicit component
+manifest, constructs the immutable application context, and assembles the UI and
+server. Application-specific code is grouped under `app/`:
+
+- `app/context.R` loads configuration and immutable biological resources.
+- `app/state.R` creates the flat per-session reactive state.
+- `app/ui/` contains the dataset, dashboard, resolution, annotation, and CNA
+  panels plus their top-level composition.
+- `app/server/` contains matching stage registration functions; CNA handlers are
+  further separated into status, computation, cluster, threshold, summary, and
+  reset stages.
+
+The files are sourced only by the ordered manifest in `app.R`; Shiny's implicit
+package-directory autoload remains disabled.
 
 ## Running the App
 

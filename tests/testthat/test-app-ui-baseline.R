@@ -38,6 +38,7 @@ make_ui_baseline_app <- function(source_app_dir, .local_envir = parent.frame()) 
     .local_envir = .local_envir
   )
   dir.create(file.path(test_app_dir, "util_scripts"))
+  dir.create(file.path(test_app_dir, "app"))
 
   file.copy(
     file.path(source_app_dir, "app.R"),
@@ -51,6 +52,30 @@ make_ui_baseline_app <- function(source_app_dir, .local_envir = parent.frame()) 
     ),
     file.path(test_app_dir, "util_scripts")
   )
+
+  component_root <- file.path(source_app_dir, "app")
+  component_files <- list.files(
+    component_root,
+    pattern = "[.]R$",
+    recursive = TRUE,
+    full.names = TRUE
+  )
+  component_relative_paths <- substring(
+    component_files,
+    nchar(component_root) + 2L
+  )
+  component_destinations <- file.path(
+    test_app_dir,
+    "app",
+    component_relative_paths
+  )
+  invisible(lapply(
+    unique(dirname(component_destinations)),
+    dir.create,
+    recursive = TRUE,
+    showWarnings = FALSE
+  ))
+  file.copy(component_files, component_destinations)
 
   config <- yaml::read_yaml(file.path(source_app_dir, "general_config.yaml"))
   config$paths$resources_dir <- normalizePath(
@@ -148,6 +173,7 @@ test_that("baseline workflow navigation is preserved", {
   app$wait_for_idle(timeout = 60000)
   app$click(input = "btn_go_anno", wait_ = FALSE)
   app$wait_for_idle(timeout = 60000)
+  app$wait_for_js("$('.shiny-notification').length === 0", timeout = 10000)
   expect_equal(app$get_value(input = "main_nav"), "anno_tab")
   expect_match(app$get_text("body"), "Manual Cell Type Annotation", fixed = TRUE)
   expect_ui_baseline_screenshot(app, baseline_dir, "04-manual-annotation.png")
