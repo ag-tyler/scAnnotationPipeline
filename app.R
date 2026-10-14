@@ -561,7 +561,7 @@ server <- function(input, output, session) {
     if (!dir.exists(processed_dir_path)) {
       showNotification(
         paste0("Processed data folder not found: ", processed_dir_path, 
-               ". Run the standardization pipeline (standardize.qmd) for this dataset first."), 
+               ". Run the standardization pipeline (standardize.R) for this dataset first."), 
         type = "error", duration = 10
       )
       return()
@@ -571,7 +571,7 @@ server <- function(input, output, session) {
     
     if (length(sample_dir_paths) == 0) {
       showNotification(
-        "No sample folders found in processed_data/. Run standardize.qmd before loading this dataset.", 
+        "No sample folders found in processed_data/. Run standardize.R before loading this dataset.", 
         type = "error", duration = 10
       )
       return()
@@ -795,14 +795,14 @@ server <- function(input, output, session) {
     )
     yaml::write_yaml(selected_config, file.path(new_ds_path, config$config_files$selected))
     
-    # 6. Copy the Standardization Quarto Template
+    # 6. Copy the Standardization R script Template
     # Map the technology to the correct template file
-    tech_template_name <- paste0("standardize_", input$new_ds_tech, ".qmd")
-    qmd_template_path <- paste0("templates/", tech_template_name)
+    tech_template_name <- paste0("standardize_", input$new_ds_tech, ".R")
+    r_template_path <- file.path("templates/", tech_template_name)
     
-    if (file.exists(qmd_template_path)) {
-      file.copy(from = qmd_template_path, 
-                to = file.path(new_ds_path, "standardize.qmd"))
+    if (file.exists(r_template_path)) {
+      file.copy(from = r_template_path, 
+                to = file.path(new_ds_path, "standardize.R"))
     } else {
       showNotification(paste("Warning: Template", tech_template_name, "not found. No standardization script copied."), type = "warning", duration = 8)
     }
@@ -1846,7 +1846,6 @@ server <- function(input, output, session) {
     # Generate a UI tab for each subclone
     tabs <- lapply(seq_along(ward_refs), function(i) {
       
-      def_ymax <- if(length(existing_thresh) >= i && !is.null(existing_thresh[[i]]$y_max)) existing_thresh[[i]]$y_max else 1.0
       # Determine default slider values (prefill if saved, otherwise default)
       def_mx <- if(length(existing_thresh) >= i && !is.null(existing_thresh[[i]]$m_x)) existing_thresh[[i]]$m_x else 0.5
       def_my <- if(length(existing_thresh) >= i && !is.null(existing_thresh[[i]]$m_y)) existing_thresh[[i]]$m_y else 0.16
@@ -1865,7 +1864,7 @@ server <- function(input, output, session) {
                                  choices = c("0.05" = 0.05, "0.01" = 0.01, "0.005" = 0.005, "0.001" = 0.001), selected = "0.01"),
                      sliderInput(paste0("cna_ymax_", i), "Y-Axis Max Limit:", min = 0.1, max = 3.0, value = def_ymax, step = 0.1),
                      hr(),
-                     sliderInput(paste0("cna_thresh_mx_", i), "Malignant X (m_x):", min = -1, max = 1, value = def_mx, step = 0.05),
+                     sliderInput(paste0("cna_thresh_mx_", i), "Malignant X (m_x):", min = -1, max = 1, value = 0.5, step = 0.05),
                      sliderInput(paste0("cna_thresh_my_", i), "Malignant Y (m_y):", min = 0, max = 1, value = def_my, step = 0.01),
                      sliderInput(paste0("cna_thresh_nmx_", i), "Non-Malignant X (nm_x):", min = -1, max = 1, value = def_nmx, step = 0.05),
                      sliderInput(paste0("cna_thresh_nmy_", i), "Non-Malignant Y (nm_y):", min = 0, max = 1, value = def_nmy, step = 0.01)

@@ -24,7 +24,7 @@ install.packages(c(
   "shiny", "bslib", "shinyjs", "data.table", "yaml", "jsonlite", "DT",
   "ggplot2", "cowplot", "viridis", "Matrix", "irlba", "uwot", "Seurat",
   "stringr", "caTools", "RColorBrewer", "scales", "dbscan", "ggdendro",
-  "randomcoloR", "docstring", "qs2", "magrittr", "devtools"
+  "randomcoloR", "docstring", "qs2", "magrittr", "devtools", "R.utils"
 ))
 ```
 
