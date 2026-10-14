@@ -67,10 +67,10 @@ hgnc_complete_set <- hgnc_complete_set[!(ensembl_gene_id %in% names(table(ensemb
 Verify that the `samples_config.yaml` file has been filled out. If this fails, please open that file, fill in your sample metadata, and re-run.
 
 ```{r pre-validation}
-prevalidate_setup(dataset_dir_path, config)
+samples_config <- prevalidate_setup(dataset_dir_path, config)
 
 samples_info_dt <- rbindlist(samples_config$samples, fill = TRUE, use.names = TRUE)
-sample_names <- samples_info_dt$id
+sample_names <- samples_info_dt$sample
 ```
 
 ## 3. Data Extraction
@@ -206,6 +206,12 @@ for (i in seq_len(nrow(sample_map))) {
   valid_genes <- !is.na(genes_mapped)
   expmat <- expmat[valid_genes, ]
   genes_mapped <- genes_mapped[valid_genes]
+
+  # Preserve total expression when multiple Ensembl IDs map to one HGNC symbol.
+  if (anyDuplicated(genes_mapped)) {
+    expmat <- sum_dup_rows_sparse(expmat)
+    genes_mapped <- rownames(expmat)
+  }
   
   # 3. Build Cells metadata
   cells <- build_cells(colnames(expmat))
@@ -233,8 +239,8 @@ Compile the overall `Samples.csv` registry and initialize the clustering/annotat
 ```{r finalize-configs}
 samples <- build_samples(sample_names) 
 
-cols_to_add <- setdiff(names(samples_info_dt), "id")
-invisible(samples[samples_info_dt, (cols_to_add) := mget(paste0("i.", cols_to_add)), on = .(sample = id)])
+cols_to_add <- setdiff(names(samples_info_dt), "sample")
+invisible(samples[samples_info_dt, (cols_to_add) := mget(paste0("i.", cols_to_add)), on = .(sample)])
 invisible(samples[, n_cells := unlist(sample_cell_counts)[sample]])
 
 fwrite(samples, file = file.path(processed_dataset_dir_path, dataset_config$std_names$samples))
@@ -256,6 +262,7 @@ Run this final check to ensure the output matches the strict structural requirem
 validate_standardization(
   processed_dir_path = processed_dataset_dir_path, 
   sample_names = sample_names, 
-  std_names = dataset_config$std_names
+  std_names = dataset_config$std_names,
+  strict = TRUE
 )
 ```

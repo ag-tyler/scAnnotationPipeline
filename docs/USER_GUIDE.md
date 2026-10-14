@@ -56,7 +56,7 @@ scAnnotationPipeline/
 │       ├── dataset_config.yaml
 │       ├── samples_config.yaml
 │       ├── selected_config.yaml
-│       ├── standardize.qmd
+│       ├── standardize.R
 │       ├── cache/
 │       ├── data/
 │       ├── processed_data/
@@ -64,8 +64,8 @@ scAnnotationPipeline/
 │
 ├── templates/
 │   ├── dataset_config_template.yaml
-│   ├── standardize_10x.qmd
-│   └── standardize_undefined.qmd
+│   ├── standardize_general.R            # copied for new datasets
+│   └── standardize_*.{R,qmd}             # historical/reference templates
 │
 ├── util_scripts/
 │   ├── 01_utils_io.R
@@ -119,7 +119,7 @@ datasets/<dataset_id>/
 ├── dataset_config.yaml
 ├── samples_config.yaml
 ├── selected_config.yaml
-├── standardize.qmd
+├── standardize.R
 ├── cache/
 ├── data/
 ├── processed_data/
@@ -161,7 +161,7 @@ The remaining configuration sections define expected filenames, standard dataset
 | `resource_files.*` | Expected filenames inside `resources/` |
 | `dataset_paths.*` | Standard subdirectories inside each dataset (`data`, `processed_data`, `results`) |
 | `config_files.*` | Standard configuration filenames |
-| `standardization_pipelines` | Available standardization templates, currently `10x` and `undefined` |
+| `standardization_pipelines` | Templates offered for new datasets; currently only `general` |
 
 The intended standard values for the two top-level directories are `resources` and `datasets`.
 
@@ -231,10 +231,11 @@ A new dataset is created under:
 datasets/<dataset_id>/
 ```
 
-and initialized with the standard subdirectories, configuration files, and the matching `standardize_<technology>.qmd` template copied to:
+and initialized with the standard subdirectories, configuration files, and the
+general standardization template copied to:
 
 ```text
-standardize.qmd
+standardize.R
 ```
 
 The standard workflow is:
@@ -242,7 +243,7 @@ The standard workflow is:
 1. create the dataset in the app;
 2. add raw data to `data/`;
 3. fill in `samples_config.yaml`;
-4. run/edit `standardize.qmd`;
+4. adapt and run `standardize.R` using the standardization checklist;
 5. validate the standardized output;
 6. load the dataset in the app;
 7. run clustering → DE → annotation → CNA.
@@ -278,10 +279,12 @@ Important fields include:
 
 This file must be completed before standardization can run.
 
-Every sample requires a non-empty `id`. The required metadata keys are:
+Every sample requires a non-empty `sample`. This is the canonical identifier
+used for its processed-data directory, cell metadata, dataset-wide sample table,
+and downstream configuration. The required metadata keys are:
 
 ```text
-id, technology, cancer_type, patient, histology, site, sample_type,
+sample, technology, cancer_type, patient, histology, site, sample_type,
 sample_primary_met, disease_extent, diagnosis_recurrence, instance_at_site,
 treated_naive, age, sex, grade, AJCC_stage, AJCC_T, AJCC_N, AJCC_M, size,
 smoking_status, PY, KI67, genetic_hormonal_features, chemotherapy_exposed,
@@ -292,6 +295,11 @@ ICB_response, PFS_DFS, OS
 ```
 
 The keys must exist even when some values are unknown/blank. This is enforced by `prevalidate_setup()`.
+
+`sample` is the only supported sample identifier key. Configuration entries
+using the former `id` key fail validation with an instruction to rename it;
+there is no compatibility conversion. This keeps the identifier identical from
+metadata extraction through standardization and downstream analysis.
 
 For malignant-marker matching, `cancer_type` should exactly match a key under `cancer_types` in `cancer_cell_map.json`.
 
@@ -329,6 +337,9 @@ It normally should not be edited manually.
 
 Before a dataset can enter the main Shiny analysis workflow, its raw data must be transformed into the standardized per-sample format.
 
+For an adaptation and run sequence, use the dedicated
+[Standardization Checklist](STANDARDIZATION_CHECKLIST.md).
+
 Per sample, the output includes:
 
 ```text
@@ -343,22 +354,41 @@ The dataset also receives a dataset-wide:
 Samples.csv
 ```
 
-The source templates are:
+The standardized contract is strict:
+
+- Each configured `sample` has a same-named directory containing all three
+  per-sample files.
+- Matrix columns correspond by position to `Cells.csv` rows, and matrix rows
+  correspond by position to `Genes.txt` entries; their dimensions must match.
+- `Cells.csv` contains `cell_name`, `sample`, `cell_type`, `complexity`,
+  `cell_subtype`, `patient`, `subclone`, and `source`. Cell identifiers are
+  unique across the dataset and every row is assigned to its directory sample.
+- Gene identifiers are non-empty and unique. The general template removes
+  unmapped genes with their matrix rows and collapses duplicate mapped symbols
+  by summing sparse-matrix rows.
+- The matrix filename declares counts, TPM, or CPM. Values are finite and
+  non-negative, and count matrices contain integers.
+- `Samples.csv` contains exactly the configured samples and its `n_cells`
+  values match the per-sample cell tables.
+
+The app uses one adaptable source template for every newly created dataset:
 
 ```text
-templates/standardize_10x.qmd
-templates/standardize_undefined.qmd
+templates/standardize_general.R
 ```
 
-When a dataset is created, the matching template is copied into the dataset as:
+When a dataset is created, this template is copied into the dataset as:
 
 ```text
-standardize.qmd
+standardize.R
 ```
+
+The older technology-specific templates remain available as historical/reference
+material, but they are not offered by the app or copied into new workspaces.
 
 ### Template workflow
 
-The templates follow the same overall structure:
+The general template follows this structure:
 
 1. **Path definitions**
    - application root;
@@ -368,8 +398,8 @@ The templates follow the same overall structure:
    - checks `samples_config.yaml`;
    - hard-stops on structurally invalid setup.
 3. **Data ingestion**
-   - `10x`: reads/extracts the relevant barcode, feature, and matrix files and maps raw samples to configured sample IDs;
-   - `undefined`: provides a skeleton for custom loading/splitting logic.
+   - `prepare_raw_data()` performs optional shared extraction, discovery, or loading;
+   - `load_sample_input()` contains dataset-specific loading, sample mapping, gene mapping, and splitting logic.
 4. **Matrix inspection and `matrix_state`**
    - inspect matrix values;
    - determine whether the input represents UMI counts, CPM, TPM, etc.;
@@ -383,10 +413,12 @@ The templates follow the same overall structure:
    - initialize `selected_config.yaml`;
    - update the standardized expression-matrix filename.
 7. **Post-validation**
-   - verify expected files;
-   - verify matrix/metadata dimensions;
-   - check cell-name uniqueness;
-   - print pass/warning output.
+   - verify every configured sample directory and required file;
+   - require the standardized cell schema and matching sample assignments;
+   - verify matrix/metadata dimensions and dataset-wide sample counts;
+   - reject blank or duplicate gene/cell identifiers and cells reused between samples;
+   - reject non-finite/negative expression values and non-integer count matrices;
+   - hard-stop if any invariant fails.
 
 Examples of standardized expression matrix names are:
 
@@ -396,10 +428,11 @@ Exp_data_CPM.mtx
 Exp_data_TPM.mtx
 ```
 
-Render `standardize.qmd` in RStudio or run:
+After adapting the two user-code functions and settings described in the
+checklist, run the complete script from a clean R session:
 
-```bash
-quarto render standardize.qmd
+```r
+source("standardize.R")
 ```
 
 from inside the dataset directory.
@@ -597,7 +630,7 @@ The pipeline assumes:
 - **The raw expression matrix is not already log-normalized.** Downstream normalization occurs inside the analysis pipeline. Feeding already log-transformed values may result in unintended double transformation.
 - **Cell names are unique within a sample.**
 - **Ensembl gene IDs are unique within the raw gene list.** Duplicate gene symbols are allowed because gene-symbol mapping can be reconstructed from Ensembl IDs.
-- **Sample directory names under `processed_data/` are canonical sample identifiers** and should match sample `id` values in `samples_config.yaml`.
+- **Sample directory names under `processed_data/` are canonical sample identifiers** and should match `sample` values in `samples_config.yaml`.
 - **`samples_config.yaml` is structurally complete before standardization.**
 - **The generic marker set excludes `Malignant`.** Malignant marker handling is performed separately through `malignant_markers.csv` and `cancer_cell_map.json`.
 - **Required resources exist under `resources/`.**
@@ -676,7 +709,8 @@ Saving a new malignant-subclone selection clears stale threshold configuration a
 ## Known Limitations
 
 - Most biological resource files are not distributed with the repository and must be obtained/generated separately.
-- The `undefined` standardization template is intentionally a skeleton; custom import and sample-splitting logic is required for unsupported input layouts.
+- The general standardization template requires dataset-specific import and
+  sample-splitting logic in its two marked user-code functions.
 - The Shiny reactive/UI layer is not currently covered by a dedicated browser-level integration test suite.
 - Cached results are not automatically invalidated for every analysis-parameter change.
 - Real-world biological inputs can expose cases not represented by the deterministic synthetic test fixtures.

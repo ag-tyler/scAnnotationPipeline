@@ -140,21 +140,73 @@ setup_selected_config <- function(sample_names) {
 # 5. Standardization functions
 # --------------------------------------------------------------------------------------------------
 
+validate_samples_config <- function(samples_cfg) {
+  #' Validate Sample Configuration Identifiers
+  #'
+  #' @description Enforces `sample` as the sole identifier in a parsed
+  #' `samples_config.yaml` object. The former `id` key is rejected rather than
+  #' converted so configuration errors cannot propagate into later stages.
+  #'
+  #' @param samples_cfg Parsed samples configuration containing a `samples` list.
+  #'
+  #' @return The configuration with trimmed character `sample` identifiers.
+
+  if (is.null(samples_cfg$samples)) {
+    samples_cfg$samples <- list()
+    return(samples_cfg)
+  }
+
+  sample_value <- function(value, index) {
+    if (is.null(value) || length(value) == 0 || is.na(value[[1]])) {
+      return("")
+    }
+    if (length(value) != 1) {
+      stop(
+        sprintf(
+          "SAMPLE CONFIGURATION FAILED: Sample at index %d has a non-scalar 'sample' identifier.",
+          index
+        ),
+        call. = FALSE
+      )
+    }
+    trimws(as.character(value[[1]]))
+  }
+
+  samples_cfg$samples <- lapply(seq_along(samples_cfg$samples), function(i) {
+    sample_meta <- samples_cfg$samples[[i]]
+    if ("id" %in% names(sample_meta)) {
+      stop(
+        sprintf(
+          "SAMPLE CONFIGURATION FAILED: Sample at index %d uses unsupported 'id'; rename it to 'sample'.",
+          i
+        ),
+        call. = FALSE
+      )
+    }
+    sample_meta$sample <- sample_value(sample_meta$sample, i)
+    sample_meta
+  })
+
+  samples_cfg
+}
+
 prevalidate_setup <- function(dataset_dir_path, config) {
   #' Pre-validate Sample Configuration
   #'
   #' @description Checks if the user has properly filled out the necessary 
   #' configuration files before running the pipeline. Specifically, it reads the 
-  #' samples configuration YAML and verifies that it is not empty, every sample has 
-  #' a valid `id`, and all required metadata attributes are present.
+  #' samples configuration YAML and verifies that it is not empty, every sample
+  #' uses the canonical `sample` identifier, every identifier is valid,
+  #' identifier, and all required metadata attributes are present.
   #'
   #' @param dataset_dir_path Character string specifying the base path to the dataset directory.
   #' @param config List containing general configuration settings, including `config_files$samples`.
   #'
-  #' @return None. Throws a hard error if validation fails, otherwise prints a success message to the console.
+  #' @return The validated parsed configuration, invisibly. Throws a hard error
+  #' if validation fails, otherwise prints a success message to the console.
   
   samples_config_path <- file.path(dataset_dir_path, config$config_files$samples)
-  samples_cfg <- yaml::read_yaml(samples_config_path)
+  samples_cfg <- validate_samples_config(yaml::read_yaml(samples_config_path))
   
   # 1. Hard stop if the config is entirely empty
   if (length(samples_cfg$samples) == 0) {
@@ -167,7 +219,7 @@ prevalidate_setup <- function(dataset_dir_path, config) {
   
   # 2. Define the exact necessary attributes expected in the YAML
   required_attrs <- c(
-    "id", "technology", "cancer_type", "patient", "histology", "site", 
+    "sample", "technology", "cancer_type", "patient", "histology", "site",
     "sample_type", "sample_primary_met", "disease_extent", "diagnosis_recurrence", 
     "instance_at_site", "treated_naive", "age", "sex", "grade", "AJCC_stage", 
     "AJCC_T", "AJCC_N", "AJCC_M", "size", "smoking_status", "PY", "KI67", 
@@ -181,10 +233,22 @@ prevalidate_setup <- function(dataset_dir_path, config) {
   for (i in seq_along(samples_cfg$samples)) {
     sample_meta <- samples_cfg$samples[[i]]
     
-    # Check if ID is empty
-    if (is.null(sample_meta$id) || trimws(sample_meta$id) == "") {
+    # Check if the canonical sample identifier is empty
+    if (is.null(sample_meta$sample) || trimws(sample_meta$sample) == "") {
       stop(
-        sprintf("PREVALIDATION FAILED: Sample at index %d has an empty 'id'.", i), 
+        sprintf("PREVALIDATION FAILED: Sample at index %d has an empty 'sample'.", i),
+        call. = FALSE
+      )
+    }
+    if (
+      sample_meta$sample %in% c(".", "..") ||
+        grepl("[/\\\\]", sample_meta$sample)
+    ) {
+      stop(
+        sprintf(
+          "PREVALIDATION FAILED: Sample '%s' is not a safe directory identifier.",
+          sample_meta$sample
+        ),
         call. = FALSE
       )
     }
@@ -196,7 +260,7 @@ prevalidate_setup <- function(dataset_dir_path, config) {
       stop(
         sprintf(
           "PREVALIDATION FAILED: Sample '%s' is missing the following necessary attributes: %s", 
-          sample_meta$id, 
+          sample_meta$sample,
           paste(missing_attrs, collapse = ", ")
         ), 
         call. = FALSE
@@ -204,67 +268,433 @@ prevalidate_setup <- function(dataset_dir_path, config) {
     }
   }
   
+  sample_names <- vapply(
+    samples_cfg$samples,
+    function(sample_meta) sample_meta$sample,
+    character(1)
+  )
+  duplicate_samples <- unique(sample_names[duplicated(sample_names)])
+  if (length(duplicate_samples) > 0) {
+    stop(
+      "PREVALIDATION FAILED: Duplicate sample identifiers: ",
+      paste(duplicate_samples, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
   message("Prevalidation passed! Configuration files look good.")
+  invisible(samples_cfg)
 }
 
-validate_standardization <- function(processed_dir_path, sample_names, std_names) {
+infer_standardized_expression_type <- function(expmat_filename) {
+  #' Infer Standardized Expression Type From Its Filename
+  #'
+  #' @param expmat_filename Configured Matrix Market filename.
+  #'
+  #' @return One of `counts`, `TPM`, `CPM`, or `NA_character_` when the
+  #' filename does not declare a supported scale.
+
+  filename <- if (is.null(expmat_filename) || length(expmat_filename) == 0) {
+    ""
+  } else {
+    tolower(basename(expmat_filename[[1]]))
+  }
+  if (grepl("umi|count", filename)) return("counts")
+  if (grepl("tpm", filename)) return("TPM")
+  if (grepl("cpm", filename)) return("CPM")
+  NA_character_
+}
+
+
+validate_standardization <- function(
+  processed_dir_path,
+  sample_names,
+  std_names,
+  strict = FALSE
+) {
   #' Validate Standardization Output
   #'
-  #' @description Asserts that the standardization process produced the correct file formats 
-  #' and dimensions. It checks for the existence of standard expression matrices, cell metadata, 
-  #' and gene lists. It also verifies that matrix dimensions match the metadata length and ensures 
-  #' there are no duplicate cell names. Outputs Quarto-styled callouts for reporting.
+  #' @description Validates the complete standardized-data contract: declared
+  #' expression scale, sample directories/files, required cell columns,
+  #' identifiers, expression values, matrix dimensions, gene identifiers, and
+  #' the optional dataset-wide Samples table. All problems are collected so one
+  #' run gives an actionable report.
   #'
-  #' @param processed_dir_path Character string specifying the path to the directory containing processed samples.
-  #' @param sample_names Character vector of sample directories to validate.
-  #' @param std_names List containing the expected standard file names (`expmat`, `genes`, `cells`).
+  #' @param processed_dir_path Directory containing standardized sample folders.
+  #' @param sample_names Canonical sample identifiers expected in the dataset.
+  #' @param std_names Expected filenames (`expmat`, `genes`, `cells`, and
+  #' optionally `samples`).
+  #' @param strict Logical. If `TRUE`, invalid output raises an error after the
+  #' complete report is printed. If `FALSE`, it raises a warning.
   #'
-  #' @return None. Prints diagnostic warning or success messages to the console.
-  
-  error_msgs <- c()
-  
-  for (s_name in sample_names) {
-    sample_dir <- file.path(processed_dir_path, s_name)
-    
-    # 1. Check file existence
-    req_files <- c(std_names$expmat, std_names$genes, std_names$cells)
-    missing <- req_files[!file.exists(file.path(sample_dir, req_files))]
-    
-    if (length(missing) > 0) {
-      error_msgs <- c(error_msgs, paste("Missing files in **", s_name, "**:", paste(missing, collapse = ", ")))
-      next # Skip dimension checks if files are missing to avoid crashing
-    }
-    
-    # 2. Check Matrix Dimensions
-    expmat <- Matrix::readMM(file.path(sample_dir, std_names$expmat))
-    cells <- data.table::fread(file.path(sample_dir, std_names$cells))
-    genes <- data.table::fread(file.path(sample_dir, std_names$genes), header = FALSE)
-    
-    if (nrow(cells) != ncol(expmat)) error_msgs <- c(error_msgs, paste(
-      "Dimension mismatch in **", s_name, "**: Cells (", nrow(cells), ") != Matrix Columns (", ncol(expmat), ").")
-    )
-    if (nrow(genes) != nrow(expmat)) error_msgs <- c(error_msgs, paste(
-      "Dimension mismatch in **", s_name, "**: Genes (", nrow(genes), ") != Matrix Rows (", nrow(expmat), ").")
-    )
-    if (any(duplicated(cells$cell_name))) error_msgs <- c(error_msgs, paste("Duplicate cells found in **", s_name, "**."))
+  #' @return Invisibly returns a structured list with `valid`, `errors`,
+  #' `expression_type`, and per-sample dimensions.
+
+  `%or_empty%` <- function(value, fallback) {
+    if (is.null(value) || length(value) == 0) fallback else value[[1]]
   }
-  
-  # Print Quarto-styled callouts
-  if (length(error_msgs) > 0) {
-    cat("\n:::{.callout-warning appearance='default'}\n")
-    cat("## ⚠️ POST-VALIDATION WARNINGS FOUND\n\n")
-    for (msg in error_msgs) {
-      cat(paste("*", msg, "\n"))
+  add_error <- function(errors, sample_name = NULL, message) {
+    prefix <- if (is.null(sample_name)) "Dataset" else paste0("Sample '", sample_name, "'")
+    c(errors, paste0(prefix, ": ", message))
+  }
+
+  errors <- character()
+  sample_reports <- list()
+  all_cell_names <- character()
+  sample_names <- trimws(as.character(sample_names))
+
+  required_std_names <- c("expmat", "genes", "cells")
+  missing_std_names <- required_std_names[
+    !vapply(std_names[required_std_names], function(x) {
+      length(x) == 1 && !is.na(x) && nzchar(trimws(x))
+    }, logical(1))
+  ]
+  if (length(missing_std_names) > 0) {
+    stop(
+      "Standard filename configuration is missing: ",
+      paste(missing_std_names, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  expression_type <- infer_standardized_expression_type(std_names$expmat)
+  if (is.na(expression_type)) {
+    errors <- add_error(
+      errors,
+      message = paste0(
+        "expression filename '", std_names$expmat,
+        "' does not declare a supported counts, TPM, or CPM scale"
+      )
+    )
+  }
+
+  if (length(sample_names) == 0) {
+    errors <- add_error(errors, message = "no sample identifiers were supplied")
+  }
+  if (any(is.na(sample_names) | !nzchar(sample_names))) {
+    errors <- add_error(errors, message = "sample identifiers contain missing or blank values")
+  }
+  duplicate_samples <- unique(sample_names[duplicated(sample_names)])
+  if (length(duplicate_samples) > 0) {
+    errors <- add_error(
+      errors,
+      message = paste("duplicate sample identifiers:", paste(duplicate_samples, collapse = ", "))
+    )
+  }
+
+  unsafe_samples <- unique(sample_names[
+    !is.na(sample_names) &
+      (sample_names %in% c(".", "..") | grepl("[/\\\\]", sample_names))
+  ])
+  if (length(unsafe_samples) > 0) {
+    errors <- add_error(
+      errors,
+      message = paste(
+        "sample identifiers are not safe directory names:",
+        paste(unsafe_samples, collapse = ", ")
+      )
+    )
+  }
+
+  valid_sample_names <- sample_names[
+    !is.na(sample_names) &
+      nzchar(sample_names) &
+      !(sample_names %in% unsafe_samples)
+  ]
+  for (s_name in unique(valid_sample_names)) {
+    sample_dir <- file.path(processed_dir_path, s_name)
+    if (!dir.exists(sample_dir)) {
+      errors <- add_error(errors, s_name, paste0("directory is missing: ", sample_dir))
+      next
     }
+
+    sample_paths <- file.path(
+      sample_dir,
+      unlist(std_names[required_std_names], use.names = FALSE)
+    )
+    names(sample_paths) <- required_std_names
+    missing_files <- basename(sample_paths[!file.exists(sample_paths)])
+    if (length(missing_files) > 0) {
+      errors <- add_error(
+        errors,
+        s_name,
+        paste("missing required files:", paste(missing_files, collapse = ", "))
+      )
+      next
+    }
+
+    expmat <- tryCatch(Matrix::readMM(sample_paths[["expmat"]]), error = identity)
+    cells <- tryCatch(
+      data.table::fread(
+        sample_paths[["cells"]],
+        colClasses = c(cell_name = "character", sample = "character"),
+        na.strings = ""
+      ),
+      error = identity
+    )
+    genes <- tryCatch(
+      trimws(readLines(sample_paths[["genes"]], warn = FALSE)),
+      error = identity
+    )
+
+    read_failures <- c(
+      if (inherits(expmat, "error")) paste0("expression matrix: ", conditionMessage(expmat)),
+      if (inherits(cells, "error")) paste0("cell metadata: ", conditionMessage(cells)),
+      if (inherits(genes, "error")) paste0("gene list: ", conditionMessage(genes))
+    )
+    if (length(read_failures) > 0) {
+      errors <- add_error(
+        errors,
+        s_name,
+        paste("could not read", paste(read_failures, collapse = "; "))
+      )
+      next
+    }
+
+    required_cell_columns <- c(
+      "cell_name", "sample", "cell_type", "complexity", "cell_subtype",
+      "patient", "subclone", "source"
+    )
+    missing_cell_columns <- setdiff(required_cell_columns, names(cells))
+    if (length(missing_cell_columns) > 0) {
+      errors <- add_error(
+        errors,
+        s_name,
+        paste("Cells file is missing columns:", paste(missing_cell_columns, collapse = ", "))
+      )
+    }
+
+    if (nrow(cells) != ncol(expmat)) {
+      errors <- add_error(
+        errors,
+        s_name,
+        sprintf("Cells rows (%d) do not match matrix columns (%d)", nrow(cells), ncol(expmat))
+      )
+    }
+    if (length(genes) != nrow(expmat)) {
+      errors <- add_error(
+        errors,
+        s_name,
+        sprintf("Genes entries (%d) do not match matrix rows (%d)", length(genes), nrow(expmat))
+      )
+    }
+
+    if (any(is.na(genes) | !nzchar(genes))) {
+      errors <- add_error(errors, s_name, "Genes file contains missing or blank identifiers")
+    }
+    duplicate_genes <- unique(genes[duplicated(genes)])
+    if (length(duplicate_genes) > 0) {
+      errors <- add_error(
+        errors,
+        s_name,
+        paste0(
+          "Genes file contains duplicate identifiers (for example: ",
+          paste(utils::head(duplicate_genes, 5), collapse = ", "), ")"
+        )
+      )
+    }
+
+    if ("cell_name" %in% names(cells)) {
+      invalid_cells <- is.na(cells$cell_name) | !nzchar(trimws(cells$cell_name))
+      if (any(invalid_cells)) {
+        errors <- add_error(errors, s_name, "Cells file contains missing or blank cell identifiers")
+      }
+      duplicate_cells <- unique(cells$cell_name[duplicated(cells$cell_name)])
+      if (length(duplicate_cells) > 0) {
+        errors <- add_error(
+          errors,
+          s_name,
+          paste0(
+            "Cells file contains duplicate cell identifiers (for example: ",
+            paste(utils::head(duplicate_cells, 5), collapse = ", "), ")"
+          )
+        )
+      }
+      all_cell_names <- c(
+        all_cell_names,
+        unique(cells$cell_name[!invalid_cells])
+      )
+    }
+
+    if ("sample" %in% names(cells)) {
+      cell_samples <- trimws(cells$sample)
+      if (any(is.na(cell_samples) | !nzchar(cell_samples))) {
+        errors <- add_error(errors, s_name, "Cells file contains missing sample assignments")
+      }
+      unexpected_samples <- unique(cell_samples[
+        !is.na(cell_samples) & nzchar(cell_samples) & cell_samples != s_name
+      ])
+      if (length(unexpected_samples) > 0) {
+        errors <- add_error(
+          errors,
+          s_name,
+          paste(
+            "Cells file contains assignments to other samples:",
+            paste(unexpected_samples, collapse = ", ")
+          )
+        )
+      }
+    }
+
+    if ("complexity" %in% names(cells)) {
+      complexity <- suppressWarnings(as.numeric(cells$complexity))
+      if (any(!is.finite(complexity) | complexity < 0)) {
+        errors <- add_error(
+          errors,
+          s_name,
+          "Cells complexity must contain finite, non-negative numeric values"
+        )
+      }
+    }
+
+    matrix_values <- if (inherits(expmat, "sparseMatrix")) expmat@x else as.numeric(expmat)
+    if (any(!is.finite(matrix_values))) {
+      errors <- add_error(errors, s_name, "expression matrix contains non-finite values")
+    }
+    if (any(matrix_values < 0, na.rm = TRUE)) {
+      errors <- add_error(errors, s_name, "expression matrix contains negative values")
+    }
+    if (
+      identical(expression_type, "counts") &&
+        any(abs(matrix_values - round(matrix_values)) > sqrt(.Machine$double.eps), na.rm = TRUE)
+    ) {
+      errors <- add_error(errors, s_name, "count matrix contains non-integer values")
+    }
+
+    sample_reports[[s_name]] <- list(
+      genes = nrow(expmat),
+      cells = ncol(expmat)
+    )
+  }
+
+  duplicate_dataset_cells <- unique(all_cell_names[duplicated(all_cell_names)])
+  if (length(duplicate_dataset_cells) > 0) {
+    errors <- add_error(
+      errors,
+      message = paste0(
+        "cell identifiers are not unique across samples (for example: ",
+        paste(utils::head(duplicate_dataset_cells, 5), collapse = ", "), ")"
+      )
+    )
+  }
+
+  samples_filename <- std_names$samples %or_empty% ""
+  if (nzchar(samples_filename)) {
+    samples_path <- file.path(processed_dir_path, samples_filename)
+    if (!file.exists(samples_path)) {
+      errors <- add_error(
+        errors,
+        message = paste0("dataset-wide Samples file is missing: ", samples_filename)
+      )
+    } else {
+      samples <- tryCatch(
+        data.table::fread(
+          samples_path,
+          colClasses = c(sample = "character"),
+          na.strings = ""
+        ),
+        error = identity
+      )
+      if (inherits(samples, "error")) {
+        errors <- add_error(
+          errors,
+          message = paste("could not read Samples file:", conditionMessage(samples))
+        )
+      } else {
+        missing_samples_columns <- setdiff(c("sample", "n_cells"), names(samples))
+        if (length(missing_samples_columns) > 0) {
+          errors <- add_error(
+            errors,
+            message = paste(
+              "Samples file is missing columns:",
+              paste(missing_samples_columns, collapse = ", ")
+            )
+          )
+        }
+        if ("sample" %in% names(samples)) {
+          samples$sample <- trimws(samples$sample)
+          if (any(is.na(samples$sample) | !nzchar(samples$sample))) {
+            errors <- add_error(errors, message = "Samples file contains blank identifiers")
+          }
+          if (anyDuplicated(samples$sample)) {
+            errors <- add_error(errors, message = "Samples file contains duplicate identifiers")
+          }
+          missing_rows <- setdiff(sample_names, samples$sample)
+          unexpected_rows <- setdiff(samples$sample, sample_names)
+          if (length(missing_rows) > 0 || length(unexpected_rows) > 0) {
+            errors <- add_error(
+              errors,
+              message = paste0(
+                "Samples file identifiers do not match configured samples",
+                if (length(missing_rows) > 0) {
+                  paste0("; missing: ", paste(missing_rows, collapse = ", "))
+                } else "",
+                if (length(unexpected_rows) > 0) {
+                  paste0("; unexpected: ", paste(unexpected_rows, collapse = ", "))
+                } else ""
+              )
+            )
+          }
+        }
+        if (all(c("sample", "n_cells") %in% names(samples))) {
+          expected_counts <- vapply(sample_reports, `[[`, integer(1), "cells")
+          recorded_counts <- suppressWarnings(as.numeric(samples$n_cells))
+          names(recorded_counts) <- samples$sample
+          comparable <- intersect(names(expected_counts), names(recorded_counts))
+          mismatched_counts <- comparable[
+            !is.finite(recorded_counts[comparable]) |
+              recorded_counts[comparable] != expected_counts[comparable]
+          ]
+          if (length(mismatched_counts) > 0) {
+            errors <- add_error(
+              errors,
+              message = paste(
+                "Samples n_cells does not match Cells rows for:",
+                paste(mismatched_counts, collapse = ", ")
+              )
+            )
+          }
+        }
+      }
+    }
+  }
+
+  result <- structure(
+    list(
+      valid = length(errors) == 0,
+      errors = errors,
+      expression_type = expression_type,
+      samples = sample_reports
+    ),
+    class = "standardization_validation"
+  )
+
+  if (!result$valid) {
+    cat("\n:::{.callout-warning appearance='default'}\n")
+    cat("## POST-VALIDATION FAILED\n\n")
+    for (msg in result$errors) cat("* ", msg, "\n", sep = "")
     cat(":::\n")
-    
-    # Also throw a standard R warning for the console
-    warning("Post-validation flagged issues. Check the rendered HTML report for details.", call. = FALSE)
+
+    failure_message <- paste0(
+      "Post-validation failed with ", length(result$errors),
+      " issue(s). Review the complete validation report above."
+    )
+    if (isTRUE(strict)) {
+      stop(failure_message, call. = FALSE)
+    }
+    warning(failure_message, call. = FALSE)
   } else {
     cat("\n:::{.callout-success appearance='default'}\n")
-    cat("## ✅ POST-VALIDATION PASSED\n\nAll standard files and dimensions are correct. The dataset is ready to be loaded into the Shiny App.\n")
+    cat("## POST-VALIDATION PASSED\n\n")
+    cat(
+      "All standardized files, identifiers, values, and dimensions satisfy ",
+      "the data contract.\n",
+      sep = ""
+    )
     cat(":::\n")
   }
+
+  invisible(result)
 }
 
 
@@ -280,7 +710,7 @@ build_samples <- function(sample_ids) {
   #' @return A `data.table` containing standard sample metadata columns.
   
   col_names <- c(
-    "id", "technology", "cancer_type", "patient", "histology", "site", 
+    "sample", "technology", "cancer_type", "patient", "histology", "site",
     "sample_type", "sample_primary_met", "disease_extent", "diagnosis_recurrence", 
     "instance_at_site", "treated_naive", "age", "sex", "grade", "AJCC_stage", 
     "AJCC_T", "AJCC_N", "AJCC_M", "size", "smoking_status", "PY", "KI67", 
@@ -295,8 +725,7 @@ build_samples <- function(sample_ids) {
   samples_dt <- data.table::as.data.table(blank_matrix)
   data.table::setnames(samples_dt, col_names)
   
-  samples_dt[, sample := sample_ids]
-  samples_dt[, id := sample_ids]
+  samples_dt[, sample := as.character(sample_ids)]
   
   return(samples_dt)
 }

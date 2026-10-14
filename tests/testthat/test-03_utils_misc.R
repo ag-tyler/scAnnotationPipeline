@@ -83,13 +83,13 @@ test_that("setup_selected_config initializes every sample under every section", 
   expect_identical(cfg$cna_ref_cells$sample1, list())
 })
 
-test_that("build_samples creates one row per id with 'sample' and 'id' populated", {
+test_that("build_samples creates one canonical row per sample", {
   ids <- c("s1", "s2", "s3")
   dt <- build_samples(ids)
 
   expect_equal(nrow(dt), length(ids))
   expect_equal(dt$sample, ids)
-  expect_equal(dt$id, ids)
+  expect_false("id" %in% names(dt))
   # every other column exists and starts blank
   expect_true(all(is.na(dt$cancer_type)))
 })
@@ -104,12 +104,48 @@ test_that("build_cells creates one row per cell id with expected columns", {
   expect_true(all(is.na(dt$cell_type)))
 })
 
+test_that("validate_samples_config preserves canonical sample identifiers", {
+  config <- list(samples = list(make_valid_sample_entry("sample1")))
+
+  validated <- validate_samples_config(config)
+
+  expect_equal(validated$samples[[1]]$sample, "sample1")
+})
+
+test_that("validate_samples_config rejects the unsupported id key", {
+  legacy_entry <- make_valid_sample_entry("sample1")
+  legacy_entry$id <- legacy_entry$sample
+  legacy_entry$sample <- NULL
+
+  expect_error(
+    validate_samples_config(list(samples = list(legacy_entry))),
+    "unsupported 'id'; rename it to 'sample'"
+  )
+})
+
 test_that("prevalidate_setup passes silently on a fully filled-in config", {
   dir <- withr::local_tempdir()
   write_samples_config(file.path(dir, "samples_config.yaml"), problem = "none")
   config <- list(config_files = list(samples = "samples_config.yaml"))
 
   expect_message(prevalidate_setup(dir, config), "Prevalidation passed")
+})
+
+test_that("prevalidate_setup rejects id-only configuration", {
+  dir <- withr::local_tempdir()
+  legacy_entry <- make_valid_sample_entry("sample1")
+  legacy_entry$id <- legacy_entry$sample
+  legacy_entry$sample <- NULL
+  yaml::write_yaml(
+    list(samples = list(legacy_entry)),
+    file.path(dir, "samples_config.yaml")
+  )
+  config <- list(config_files = list(samples = "samples_config.yaml"))
+
+  expect_error(
+    prevalidate_setup(dir, config),
+    "unsupported 'id'; rename it to 'sample'"
+  )
 })
 
 test_that("prevalidate_setup fails hard on an empty samples list", {
@@ -120,12 +156,12 @@ test_that("prevalidate_setup fails hard on an empty samples list", {
   expect_error(prevalidate_setup(dir, config), "no samples")
 })
 
-test_that("prevalidate_setup fails hard on a blank sample id", {
+test_that("prevalidate_setup fails hard on a blank sample identifier", {
   dir <- withr::local_tempdir()
-  write_samples_config(file.path(dir, "samples_config.yaml"), problem = "blank_id")
+  write_samples_config(file.path(dir, "samples_config.yaml"), problem = "blank_sample")
   config <- list(config_files = list(samples = "samples_config.yaml"))
 
-  expect_error(prevalidate_setup(dir, config), "empty 'id'")
+  expect_error(prevalidate_setup(dir, config), "empty 'sample'")
 })
 
 test_that("prevalidate_setup fails hard when a required attribute is missing", {
@@ -136,6 +172,33 @@ test_that("prevalidate_setup fails hard when a required attribute is missing", {
   expect_error(prevalidate_setup(dir, config), "missing the following necessary attributes")
 })
 
+test_that("prevalidate_setup rejects duplicate and unsafe sample identifiers", {
+  config <- list(config_files = list(samples = "samples_config.yaml"))
+
+  duplicate_dir <- withr::local_tempdir()
+  yaml::write_yaml(
+    list(samples = list(
+      make_valid_sample_entry("sample1"),
+      make_valid_sample_entry("sample1")
+    )),
+    file.path(duplicate_dir, "samples_config.yaml")
+  )
+  expect_error(
+    prevalidate_setup(duplicate_dir, config),
+    "Duplicate sample identifiers"
+  )
+
+  unsafe_dir <- withr::local_tempdir()
+  yaml::write_yaml(
+    list(samples = list(make_valid_sample_entry("../outside"))),
+    file.path(unsafe_dir, "samples_config.yaml")
+  )
+  expect_error(
+    prevalidate_setup(unsafe_dir, config),
+    "not a safe directory identifier"
+  )
+})
+
 test_that("validate_standardization passes on a well-formed sample", {
   dir <- withr::local_tempdir()
   fixture <- write_mini_sample(dir, "sample1", n_genes = 10, n_cells = 8)
@@ -143,35 +206,272 @@ test_that("validate_standardization passes on a well-formed sample", {
 
   # validate_standardization() reports success via cat() (Quarto callout
   # markup), not message()/warning(), so we assert on printed output.
+  result <- NULL
   expect_output(
-    validate_standardization(dir, "sample1", std_names),
+    result <- validate_standardization(dir, "sample1", std_names, strict = TRUE),
     "POST-VALIDATION PASSED"
   )
+  expect_true(result$valid)
+  expect_equal(result$expression_type, "counts")
+  expect_equal(result$samples$sample1, list(genes = 10L, cells = 8L))
 })
 
-test_that("validate_standardization warns on dimension mismatch and duplicate cells", {
+test_that("validate_standardization reports duplicate cells", {
   dir <- withr::local_tempdir()
   fixture <- write_mini_sample(dir, "sample1", n_genes = 10, n_cells = 8)
   std_names <- list(expmat = "Exp_data_UMIcounts.mtx", genes = "Genes.txt", cells = "Cells.csv")
 
-  # Corrupt Cells.csv: drop a row (dimension mismatch) and duplicate another.
+  # Replace one cell with a duplicate while preserving the row count.
   cells <- fixture$cells
   cells <- rbind(cells[-1, ], cells[2, ])
   data.table::fwrite(cells, fixture$cells_path)
 
+  result <- NULL
   expect_warning(
-    validate_standardization(dir, "sample1", std_names),
-    "Post-validation flagged issues"
+    result <- validate_standardization(dir, "sample1", std_names),
+    "Post-validation failed"
   )
+  expect_false(result$valid)
+  expect_match(result$errors, "duplicate cell identifiers")
 })
 
-test_that("validate_standardization warns on missing files instead of erroring", {
+test_that("validate_standardization reports all missing files and can fail strictly", {
   dir <- withr::local_tempdir()
   dir.create(file.path(dir, "sample1"))
   std_names <- list(expmat = "Exp_data_UMIcounts.mtx", genes = "Genes.txt", cells = "Cells.csv")
 
+  result <- NULL
   expect_warning(
-    validate_standardization(dir, "sample1", std_names),
-    "Post-validation flagged issues"
+    result <- validate_standardization(dir, "sample1", std_names),
+    "Post-validation failed"
   )
+  expect_match(result$errors, "missing required files")
+  expect_match(result$errors, "Exp_data_UMIcounts.mtx")
+  expect_error(
+    validate_standardization(dir, "sample1", std_names, strict = TRUE),
+    "Post-validation failed"
+  )
+})
+
+test_that("expression type is explicit in the standardized matrix filename", {
+  expect_equal(infer_standardized_expression_type("Exp_data_UMIcounts.mtx"), "counts")
+  expect_equal(infer_standardized_expression_type("Exp_data_counts.mtx"), "counts")
+  expect_equal(infer_standardized_expression_type("Exp_data_TPM.mtx"), "TPM")
+  expect_equal(infer_standardized_expression_type("Exp_data_CPM.mtx"), "CPM")
+  expect_true(is.na(infer_standardized_expression_type("expression.mtx")))
+})
+
+test_that("validate_standardization detects matrix/table dimension mismatches", {
+  dir <- withr::local_tempdir()
+  fixture <- write_mini_sample(dir, "sample1", n_genes = 10, n_cells = 8)
+  std_names <- list(
+    expmat = "Exp_data_UMIcounts.mtx",
+    genes = "Genes.txt",
+    cells = "Cells.csv"
+  )
+  writeLines(rownames(fixture$mat)[-1], fixture$genes_path)
+  data.table::fwrite(fixture$cells[-1], fixture$cells_path)
+
+  result <- NULL
+  expect_warning(
+    result <- validate_standardization(dir, "sample1", std_names),
+    "Post-validation failed"
+  )
+  expect_true(any(grepl("Cells rows.*matrix columns", result$errors)))
+  expect_true(any(grepl("Genes entries.*matrix rows", result$errors)))
+})
+
+test_that("validate_standardization enforces cell schema and sample assignment", {
+  dir <- withr::local_tempdir()
+  fixture <- write_mini_sample(dir, "sample1", n_genes = 10, n_cells = 8)
+  std_names <- list(
+    expmat = "Exp_data_UMIcounts.mtx",
+    genes = "Genes.txt",
+    cells = "Cells.csv"
+  )
+  cells <- data.table::copy(fixture$cells)
+  cells[, cell_type := NULL]
+  cells[1, sample := "another_sample"]
+  cells[2, complexity := NA_real_]
+  data.table::fwrite(cells, fixture$cells_path)
+
+  result <- NULL
+  expect_warning(
+    result <- validate_standardization(dir, "sample1", std_names),
+    "Post-validation failed"
+  )
+  expect_true(any(grepl("missing columns: cell_type", result$errors)))
+  expect_true(any(grepl("assignments to other samples", result$errors)))
+  expect_true(any(grepl("complexity must contain finite", result$errors)))
+})
+
+test_that("validate_standardization rejects blank and duplicate gene identifiers", {
+  dir <- withr::local_tempdir()
+  fixture <- write_mini_sample(dir, "sample1", n_genes = 10, n_cells = 8)
+  std_names <- list(
+    expmat = "Exp_data_UMIcounts.mtx",
+    genes = "Genes.txt",
+    cells = "Cells.csv"
+  )
+  genes <- rownames(fixture$mat)
+  genes[2] <- ""
+  genes[3] <- genes[1]
+  writeLines(genes, fixture$genes_path)
+
+  result <- NULL
+  expect_warning(
+    result <- validate_standardization(dir, "sample1", std_names),
+    "Post-validation failed"
+  )
+  expect_true(any(grepl("missing or blank", result$errors)))
+  expect_true(any(grepl("duplicate identifiers", result$errors)))
+})
+
+test_that("validate_standardization checks expression values for the declared scale", {
+  count_dir <- withr::local_tempdir()
+  count_fixture <- write_mini_sample(
+    count_dir,
+    "sample1",
+    n_genes = 10,
+    n_cells = 8
+  )
+  count_matrix <- count_fixture$mat
+  count_matrix@x[1] <- 1.5
+  count_matrix@x[2] <- -1
+  Matrix::writeMM(count_matrix, count_fixture$expmat_path)
+  count_names <- list(
+    expmat = "Exp_data_UMIcounts.mtx",
+    genes = "Genes.txt",
+    cells = "Cells.csv"
+  )
+
+  count_result <- NULL
+  expect_warning(
+    count_result <- validate_standardization(count_dir, "sample1", count_names),
+    "Post-validation failed"
+  )
+  expect_true(any(grepl("count matrix contains non-integer", count_result$errors)))
+  expect_true(any(grepl("negative values", count_result$errors)))
+
+  tpm_dir <- withr::local_tempdir()
+  tpm_names <- list(
+    expmat = "Exp_data_TPM.mtx",
+    genes = "Genes.txt",
+    cells = "Cells.csv"
+  )
+  tpm_fixture <- write_mini_sample(
+    tpm_dir,
+    "sample1",
+    n_genes = 10,
+    n_cells = 8,
+    std_names = tpm_names
+  )
+  Matrix::writeMM(tpm_fixture$mat / 3, tpm_fixture$expmat_path)
+
+  tpm_result <- NULL
+  expect_output(
+    tpm_result <- validate_standardization(
+      tpm_dir,
+      "sample1",
+      tpm_names,
+      strict = TRUE
+    ),
+    "POST-VALIDATION PASSED"
+  )
+  expect_true(tpm_result$valid)
+  expect_equal(tpm_result$expression_type, "TPM")
+})
+
+test_that("validate_standardization rejects an undeclared expression scale", {
+  dir <- withr::local_tempdir()
+  std_names <- list(
+    expmat = "expression.mtx",
+    genes = "Genes.txt",
+    cells = "Cells.csv"
+  )
+  write_mini_sample(
+    dir,
+    "sample1",
+    n_genes = 10,
+    n_cells = 8,
+    std_names = std_names
+  )
+
+  result <- NULL
+  expect_warning(
+    result <- validate_standardization(dir, "sample1", std_names),
+    "Post-validation failed"
+  )
+  expect_true(any(grepl("does not declare a supported", result$errors)))
+})
+
+test_that("validate_standardization validates dataset-wide sample metadata", {
+  dir <- withr::local_tempdir()
+  first <- write_mini_sample(dir, "sample1", n_genes = 10, n_cells = 8)
+  second <- write_mini_sample(dir, "sample2", n_genes = 10, n_cells = 7)
+  second_cells <- data.table::copy(second$cells)
+  second_cells[, cell_name := paste0("sample2_", cell_name)]
+  data.table::fwrite(second_cells, second$cells_path)
+
+  data.table::fwrite(
+    data.table::data.table(
+      sample = c("sample1", "sample2"),
+      n_cells = c(nrow(first$cells), nrow(second$cells))
+    ),
+    file.path(dir, "Samples.csv")
+  )
+  std_names <- list(
+    expmat = "Exp_data_UMIcounts.mtx",
+    genes = "Genes.txt",
+    cells = "Cells.csv",
+    samples = "Samples.csv"
+  )
+
+  result <- NULL
+  expect_output(
+    result <- validate_standardization(
+      dir,
+      c("sample1", "sample2"),
+      std_names,
+      strict = TRUE
+    ),
+    "POST-VALIDATION PASSED"
+  )
+  expect_true(result$valid)
+
+  samples <- data.table::fread(file.path(dir, "Samples.csv"))
+  samples[sample == "sample2", n_cells := 999]
+  data.table::fwrite(samples, file.path(dir, "Samples.csv"))
+  invalid <- NULL
+  expect_warning(
+    invalid <- validate_standardization(
+      dir,
+      c("sample1", "sample2"),
+      std_names
+    ),
+    "Post-validation failed"
+  )
+  expect_true(any(grepl("n_cells does not match", invalid$errors)))
+})
+
+test_that("validate_standardization detects cell identifiers reused across samples", {
+  dir <- withr::local_tempdir()
+  write_mini_sample(dir, "sample1", n_genes = 10, n_cells = 8)
+  write_mini_sample(dir, "sample2", n_genes = 10, n_cells = 8)
+  std_names <- list(
+    expmat = "Exp_data_UMIcounts.mtx",
+    genes = "Genes.txt",
+    cells = "Cells.csv"
+  )
+
+  result <- NULL
+  expect_warning(
+    result <- validate_standardization(
+      dir,
+      c("sample1", "sample2"),
+      std_names
+    ),
+    "Post-validation failed"
+  )
+  expect_true(any(grepl("not unique across samples", result$errors)))
 })

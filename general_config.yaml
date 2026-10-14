@@ -23,5 +23,4 @@ config_files:
   selected: "selected_config.yaml"
 
 standardization_pipelines:
-  - 10x
-  - undefined
+  - general

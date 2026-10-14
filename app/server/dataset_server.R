@@ -9,6 +9,7 @@ register_dataset_server <- function(input, output, session, state, context) {
   mt_genes <- context$resources$mt_genes
   cancer_cell_map <- context$resources$cancer_cell_map
   dataset_base_dir <- context$paths$datasets_dir
+  templates_dir <- context$paths$templates_dir
   available_datasets <- context$available_datasets
 
 
@@ -33,7 +34,18 @@ register_dataset_server <- function(input, output, session, state, context) {
 
     # 2. Parse Configs
     dataset_config <- yaml::read_yaml(dataset_config_path)
-    samples_config <- tryCatch(yaml::read_yaml(samples_config_path), error = function(e) list())
+    samples_config <- tryCatch(
+      validate_samples_config(yaml::read_yaml(samples_config_path)),
+      error = identity
+    )
+    if (inherits(samples_config, "error")) {
+      showNotification(
+        paste("Sample configuration could not be loaded:", conditionMessage(samples_config)),
+        type = "error",
+        duration = 10
+      )
+      return()
+    }
 
     if (file.exists(selected_config_path)) {
       selected_config <- yaml::read_yaml(selected_config_path)
@@ -195,7 +207,12 @@ register_dataset_server <- function(input, output, session, state, context) {
       title = "Create New Dataset Workspace",
       textInput("new_ds_name", "Dataset Name (Folder Name):", placeholder = "e.g., Pancreas_Dataset_02"),
       textInput("new_ds_location", "Location (Parent Directory):", value = dataset_base_dir),
-      selectInput("new_ds_tech", "Technology:", choices = config$standardization_pipelines),
+      selectInput(
+        "new_ds_tech",
+        "Standardization Template:",
+        choices = config$standardization_pipelines,
+        selected = "general"
+      ),
       footer = tagList(
         modalButton("Cancel"),
         actionButton("btn_confirm_create_ds", "Create Dataset", class = "btn-primary")
@@ -207,6 +224,15 @@ register_dataset_server <- function(input, output, session, state, context) {
     req(input$new_ds_name, input$new_ds_location, input$new_ds_tech)
 
     parent_dir <- trimws(input$new_ds_location)
+
+    if (!identical(input$new_ds_tech, "general")) {
+      showNotification(
+        "Only the general standardization template is supported.",
+        type = "error",
+        duration = 8
+      )
+      return()
+    }
 
     # Validate the name — stop with a clear notification instead of a raw error
     ds_name <- tryCatch(
@@ -238,9 +264,21 @@ register_dataset_server <- function(input, output, session, state, context) {
       return()
     }
 
-    template_path <- "templates/dataset_config_template.yaml"
+    template_path <- file.path(templates_dir, "dataset_config_template.yaml")
     if (!file.exists(template_path)) {
       showNotification("dataset_config_template.yaml not found in the template folder!", type = "error")
+      return()
+    }
+    standardization_template_path <- file.path(
+      templates_dir,
+      "standardize_general.R"
+    )
+    if (!file.exists(standardization_template_path)) {
+      showNotification(
+        "standardize_general.R not found in the template folder!",
+        type = "error",
+        duration = 8
+      )
       return()
     }
 
@@ -252,17 +290,18 @@ register_dataset_server <- function(input, output, session, state, context) {
     # 3. Handle dataset_config.yaml
     ds_config <- yaml::read_yaml(template_path)
 
-    # Write the technology choice (including 'Undefined') to the config
+    # The general template is independent of sequencing technology. Users fill
+    # in the actual technology while completing the dataset/sample metadata.
     ds_config$project_info$dataset_id <- ds_name
-    ds_config$project_info$technology <- input$new_ds_tech
-    ds_config$raw_files$type <- input$new_ds_tech
+    ds_config$project_info$technology <- ""
+    ds_config$raw_files$type <- "general"
     yaml::write_yaml(ds_config, file.path(new_ds_path, config$config_files$dataset))
 
     # 4. Handle samples_config.yaml
     samples_config <- list(
       samples = list(
         list(
-          id = "", technology = input$new_ds_tech, cancer_type = "", patient = "", histology = "",
+          sample = "", technology = "", cancer_type = "", patient = "", histology = "",
           site = "", sample_type = "", sample_primary_met = "", disease_extent = "", diagnosis_recurrence = "",
           instance_at_site = "", treated_naive = "", age = "", sex = "", grade = "", AJCC_stage = "",
           AJCC_T = "", AJCC_N = "", AJCC_M = "", size = "", smoking_status = "", PY = "", KI67 = "",
@@ -282,16 +321,18 @@ register_dataset_server <- function(input, output, session, state, context) {
     )
     yaml::write_yaml(selected_config, file.path(new_ds_path, config$config_files$selected))
 
-    # 6. Copy the Standardization R script Template
-    # Map the technology to the correct template file
-    tech_template_name <- paste0("standardize_", input$new_ds_tech, ".R")
-    r_template_path <- file.path("templates/", tech_template_name)
-
-    if (file.exists(r_template_path)) {
-      file.copy(from = r_template_path,
-                to = file.path(new_ds_path, "standardize.R"))
-    } else {
-      showNotification(paste("Warning: Template", tech_template_name, "not found. No standardization script copied."), type = "warning", duration = 8)
+    # 6. Copy the sole supported standardization template.
+    template_copied <- file.copy(
+      from = standardization_template_path,
+      to = file.path(new_ds_path, "standardize.R")
+    )
+    if (!isTRUE(template_copied)) {
+      showNotification(
+        "The general standardization template could not be copied.",
+        type = "error",
+        duration = 8
+      )
+      return()
     }
 
     # 7. Update UI and Close

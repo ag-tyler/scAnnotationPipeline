@@ -1,6 +1,6 @@
 samples:
 
-  - id: ""
+  - sample: ""
 
     technology: ""
 
@@ -445,7 +445,7 @@ Sample annotation fields
 
 Column name — Meaning
 
-id
+sample
 Sample ID. Prefer the identifier used by the authors, optionally combined with tissue/site when a patient contributes multiple samples.
 
 technology

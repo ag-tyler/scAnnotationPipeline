@@ -118,3 +118,31 @@ test_that("each server registration is composed exactly once", {
     )
   }
 })
+
+
+test_that("new dataset creation offers and copies only the general template", {
+  app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
+  config <- yaml::read_yaml(file.path(app_dir, "general_config.yaml"))
+  server_lines <- readLines(file.path(app_dir, "app/server/dataset_server.R"))
+  server_text <- paste(server_lines, collapse = "\n")
+
+  expect_identical(unlist(config$standardization_pipelines), "general")
+  expect_true(file.exists(file.path(
+    app_dir,
+    "templates",
+    "standardize_general.R"
+  )))
+  expect_match(server_text, '"Standardization Template:"', fixed = TRUE)
+  expect_match(server_text, '"standardize_general.R"', fixed = TRUE)
+  expect_false(grepl('paste0("standardize_"', server_text, fixed = TRUE))
+  expect_match(
+    server_text,
+    'ds_config$project_info$technology <- ""',
+    fixed = TRUE
+  )
+  expect_match(
+    server_text,
+    'sample = "", technology = ""',
+    fixed = TRUE
+  )
+})

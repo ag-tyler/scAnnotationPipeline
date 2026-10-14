@@ -58,7 +58,10 @@ register_annotation_server <- function(input, output, session, state, context) {
     current_types <- unique(current_types)
 
     samples_list <- rv$samples_config$samples
-    matching_sample <- Filter(function(x) x$id == rv$sample_name, samples_list)
+    matching_sample <- Filter(
+      function(x) identical(x$sample, rv$sample_name),
+      samples_list
+    )
 
     cancer_type <- "Unknown"
     if (length(matching_sample) > 0) {

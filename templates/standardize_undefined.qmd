@@ -65,10 +65,10 @@ Before continuing, we verify that you have filled out the `samples_config.yaml` 
 
 ```{r pre-validation}
 # This will trigger a hard stop if samples_config.yaml is empty
-prevalidate_setup(dataset_dir_path, config)
+samples_config <- prevalidate_setup(dataset_dir_path, config)
 
 samples_info_dt <- rbindlist(samples_config$samples, fill = TRUE, use.names = TRUE)
-sample_names <- samples_info_dt$id
+sample_names <- samples_info_dt$sample
 ```
 
 ## 3. Data Ingestion (USER ACTION REQUIRED)
@@ -163,8 +163,8 @@ This automated step creates the final `Samples.csv` registry and initializes the
 # Build Samples.csv 
 samples <- build_samples(sample_names) # from utils
 
-cols_to_add <- setdiff(names(samples_info_dt), "id")
-samples[samples_info_dt, (cols_to_add) := mget(paste0("i.", cols_to_add)), on = .(sample = id)]
+cols_to_add <- setdiff(names(samples_info_dt), "sample")
+samples[samples_info_dt, (cols_to_add) := mget(paste0("i.", cols_to_add)), on = .(sample)]
 
 # Map cell counts (requires sample_cell_counts list to be populated in Step 5)
 # invisible(samples[, n_cells := unlist(sample_cell_counts)[sample]])
@@ -188,6 +188,7 @@ Run this final check to ensure the output matches the strict structural requirem
 validate_standardization(
   processed_dir_path = processed_dataset_dir_path, 
   sample_names = sample_names, 
-  std_names = dataset_config$std_names
+  std_names = dataset_config$std_names,
+  strict = TRUE
 )
 ```

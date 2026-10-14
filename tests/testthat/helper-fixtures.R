@@ -66,6 +66,7 @@ write_mini_sample <- function(parent_dir, sample_name = "sample1",
 
   mat <- make_mini_expmat(n_genes = n_genes, n_cells = n_cells, seed = seed)
   cells <- make_mini_cells_dt(colnames(mat), sample_name = sample_name)
+  cells[, complexity := as.numeric(Matrix::colSums(mat != 0))]
 
   Matrix::writeMM(mat, file.path(sample_dir, std_names$expmat))
   writeLines(rownames(mat), file.path(sample_dir, std_names$genes))
@@ -95,7 +96,7 @@ make_mini_hgnc <- function(n = 10, seed = 1) {
 #' 03_utils_misc.R.
 required_sample_attrs <- function() {
   c(
-    "id", "technology", "cancer_type", "patient", "histology", "site",
+    "sample", "technology", "cancer_type", "patient", "histology", "site",
     "sample_type", "sample_primary_met", "disease_extent", "diagnosis_recurrence",
     "instance_at_site", "treated_naive", "age", "sex", "grade", "AJCC_stage",
     "AJCC_T", "AJCC_N", "AJCC_M", "size", "smoking_status", "PY", "KI67",
@@ -107,11 +108,11 @@ required_sample_attrs <- function() {
 }
 
 #' One fully-populated (blank-but-present) sample metadata entry.
-make_valid_sample_entry <- function(id = "sample1") {
+make_valid_sample_entry <- function(sample = "sample1") {
   attrs <- required_sample_attrs()
   entry <- as.list(rep(NA, length(attrs)))
   names(entry) <- attrs
-  entry$id <- id
+  entry$sample <- sample
   entry
 }
 
@@ -145,16 +146,17 @@ make_cna_golden_inputs <- function(n_genes = 12, n_cells = 15, seed = 123) {
 #' Write a samples_config.yaml fixture to `path`.
 #'
 #' @param problem One of "none" (valid), "empty" (no samples at all),
-#'   "blank_id" (a sample with an empty id), or "missing_attr" (a sample
+#'   "blank_sample" (a sample with an empty sample identifier), or
+#'   "missing_attr" (a sample
 #'   missing a required attribute), to exercise prevalidate_setup()'s
 #'   individual failure branches.
-write_samples_config <- function(path, problem = c("none", "empty", "blank_id", "missing_attr")) {
+write_samples_config <- function(path, problem = c("none", "empty", "blank_sample", "missing_attr")) {
   problem <- match.arg(problem)
 
   samples <- switch(problem,
     none = list(make_valid_sample_entry("sample1"), make_valid_sample_entry("sample2")),
     empty = list(),
-    blank_id = list(modifyList(make_valid_sample_entry(""), list(id = ""))),
+    blank_sample = list(modifyList(make_valid_sample_entry(""), list(sample = ""))),
     missing_attr = {
       entry <- make_valid_sample_entry("sample1")
       entry[["cancer_type"]] <- NULL

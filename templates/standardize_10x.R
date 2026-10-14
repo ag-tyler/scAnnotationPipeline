@@ -203,7 +203,7 @@ hgnc_complete_set <- hgnc_complete_set[
 #
 # ==============================================================================
 
-prevalidate_setup(
+samples_config <- prevalidate_setup(
   dataset_dir_path,
   config
 )
@@ -219,7 +219,7 @@ samples_info_dt <- rbindlist(
   use.names = TRUE
 )
 
-sample_names <- samples_info_dt$id
+sample_names <- samples_info_dt$sample
 
 
 # ==============================================================================
@@ -723,6 +723,13 @@ for (i in seq_len(nrow(sample_map))) {
   genes_mapped <- genes_mapped[
     valid_genes
   ]
+
+  # Multiple Ensembl IDs can resolve to the same HGNC symbol. Preserve their
+  # total expression by collapsing those rows before writing standardized data.
+  if (anyDuplicated(genes_mapped)) {
+    expmat <- sum_dup_rows_sparse(expmat)
+    genes_mapped <- rownames(expmat)
+  }
   
   
   # ---------------------------------------------------------------------------
@@ -855,16 +862,15 @@ samples <- build_samples(
 # 10.2 Add metadata from samples_config.yaml
 # ---------------------------------------------------------------------------
 #
-# The "id" column from samples_config.yaml corresponds to the "sample" column
-# in the standardized Samples table.
-#
-# All remaining fields are copied into Samples.csv.
+# The canonical "sample" column identifies the same row in both the
+# configuration and the standardized Samples table. All remaining fields are
+# copied into Samples.csv.
 #
 # ------------------------------------------------------------------------------
 
 cols_to_add <- setdiff(
   names(samples_info_dt),
-  "id"
+  "sample"
 )
 
 samples[
@@ -872,9 +878,7 @@ samples[
   (cols_to_add) := mget(
     paste0("i.", cols_to_add)
   ),
-  on = .(
-    sample = id
-  )
+  on = .(sample)
 ]
 
 
@@ -934,7 +938,8 @@ write_yaml(
 validate_standardization(
   processed_dir_path = processed_dataset_dir_path,
   sample_names = sample_names,
-  std_names = dataset_config$std_names
+  std_names = dataset_config$std_names,
+  strict = TRUE
 )
 
 
