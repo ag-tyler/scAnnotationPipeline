@@ -71,7 +71,7 @@ cna_panel <- function(sample_choices) {
             class = "container mt-5 text-center",
             h3(textOutput("cna_header_text")),
             p(
-              "Select a sample from the sidebar to check the cache status.",
+              "Select a sample from the sidebar to check its persisted workflow status.",
               class = "text-muted"
             ),
             uiOutput("cna_status_ui")

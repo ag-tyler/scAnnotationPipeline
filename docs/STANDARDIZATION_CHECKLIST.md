@@ -36,6 +36,7 @@ A dataset is standardized only when all of the following are true:
 ├── data/
 ├── processed_data/
 ├── results/
+├── logs/
 ├── dataset_config.yaml
 ├── samples_config.yaml
 ├── selected_config.yaml

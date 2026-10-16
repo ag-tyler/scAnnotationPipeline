@@ -137,6 +137,7 @@ test_that("single_de_analysis runs from cached clustering results and writes DE 
 
 test_that("de_analysis sends every sample through single_de_analysis", {
   calls <- integer()
+  state_events <- list()
   
   test_env <- new.env(
     parent = environment(de_analysis)
@@ -172,10 +173,21 @@ test_that("de_analysis sends every sample through single_de_analysis", {
     selected_config = list(),
     complete_markers = data.table::data.table(),
     results_dir_path = tempfile(),
-    dataset_dir_path = tempfile()
+    dataset_dir_path = tempfile(),
+    state_callback = function(sample_name, status, reason = NULL, details = NULL) {
+      state_events[[length(state_events) + 1L]] <<- c(sample_name, status)
+    }
   )
   
   expect_equal(calls, 1:3)
+  expect_identical(
+    state_events,
+    list(
+      c("sample1", "in_progress"), c("sample1", "completed"),
+      c("sample2", "in_progress"), c("sample2", "completed"),
+      c("sample3", "in_progress"), c("sample3", "completed")
+    )
+  )
 })
 
 

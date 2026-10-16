@@ -47,7 +47,7 @@ make_mini_expmat <- function(n_genes = 30, n_cells = 20, seed = 1,
 #' Build a Cells.csv-shaped data.table for a set of cell names.
 make_mini_cells_dt <- function(cell_names, sample_name = "sample1") {
   cells <- build_cells(cell_names) # defined in 03_utils_misc.R
-  cells[, sample := sample_name]
+  data.table::set(cells, j = "sample", value = sample_name)
   cells
 }
 
@@ -66,7 +66,11 @@ write_mini_sample <- function(parent_dir, sample_name = "sample1",
 
   mat <- make_mini_expmat(n_genes = n_genes, n_cells = n_cells, seed = seed)
   cells <- make_mini_cells_dt(colnames(mat), sample_name = sample_name)
-  cells[, complexity := as.numeric(Matrix::colSums(mat != 0))]
+  data.table::set(
+    cells,
+    j = "complexity",
+    value = as.numeric(Matrix::colSums(mat != 0))
+  )
 
   Matrix::writeMM(mat, file.path(sample_dir, std_names$expmat))
   writeLines(rownames(mat), file.path(sample_dir, std_names$genes))

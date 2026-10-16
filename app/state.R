@@ -10,6 +10,8 @@ create_app_state <- function(context) {
     complete_markers = NULL,
     results_dir_path = NULL,
     selected_config_path = NULL,
+    pipeline_state = NULL,
+    pipeline_state_path = NULL,
     dataset_dir_path = NULL,
     config = NULL,
 

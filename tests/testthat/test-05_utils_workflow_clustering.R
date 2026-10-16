@@ -64,11 +64,15 @@ test_that("cluster_all_samples writes cluster cache, expression cache, and plot"
     )
   )
   
+  state_events <- list()
   cluster_all_samples(
     paths_list = paths_list,
     config = config,
     results_dir_path = results_dir,
-    dataset_dir_path = dataset_dir
+    dataset_dir_path = dataset_dir,
+    state_callback = function(sample_name, status, reason = NULL, details = NULL) {
+      state_events[[length(state_events) + 1L]] <<- c(sample_name, status)
+    }
   )
   
   expect_true(
@@ -84,6 +88,17 @@ test_that("cluster_all_samples writes cluster cache, expression cache, and plot"
       dataset_dir
     )
   )
+
+  expect_true(cache_check_valid(
+    "expmat_filt_sample1.qs2",
+    dataset_dir,
+    filter_cache_dependencies(paths_list, 1, config)
+  ))
+  expect_true(cache_check_valid(
+    "cells_filt_clust_res_0.5_sample1.qs2",
+    dataset_dir,
+    clustering_cache_dependencies(paths_list, 1, config, 0.5)
+  ))
   
   plot_path <- file.path(
     results_dir,
@@ -122,5 +137,9 @@ test_that("cluster_all_samples writes cluster cache, expression cache, and plot"
   
   expect_false(
     anyNA(cells_out$clust)
+  )
+  expect_identical(
+    state_events,
+    list(c("sample1", "in_progress"), c("sample1", "completed"))
   )
 })

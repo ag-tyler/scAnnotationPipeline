@@ -3,6 +3,59 @@
 register_annotation_server <- function(input, output, session, state, context) {
   rv <- state
 
+  persist_annotation_step <- function(
+    step,
+    status,
+    reason = NULL,
+    details = NULL,
+    invalidate_downstream = FALSE,
+    invalidation_reason = NULL
+  ) {
+    current <- get_pipeline_step(rv$pipeline_state, step, rv$sample_name)
+    if (
+      status == "incomplete" &&
+        current$status %in% c("completed", "skipped")
+    ) {
+      rv$pipeline_state <- persist_pipeline_step_update(
+        rv$pipeline_state,
+        rv$pipeline_state_path,
+        step = step,
+        status = "in_progress",
+        sample = rv$sample_name,
+        invalidate_downstream = invalidate_downstream,
+        invalidation_reason = invalidation_reason
+      )
+      invalidate_downstream <- FALSE
+      invalidation_reason <- NULL
+    }
+    rv$pipeline_state <- persist_pipeline_step_update(
+      rv$pipeline_state,
+      rv$pipeline_state_path,
+      step = step,
+      status = status,
+      sample = rv$sample_name,
+      reason = reason,
+      details = details,
+      invalidate_downstream = invalidate_downstream,
+      invalidation_reason = invalidation_reason
+    )
+    invisible(rv$pipeline_state)
+  }
+
+  status_badge <- function(step, label) {
+    view <- pipeline_status_presentation(
+      get_pipeline_step(rv$pipeline_state, step, rv$sample_name),
+      label
+    )
+    tags$div(
+      class = paste("badge w-100 py-2 mt-1", paste0("bg-", view$class)),
+      style = "font-size: 14px; white-space: normal;",
+      icon(view$icon),
+      paste0(" ", view$label),
+      if (!is.null(view$reason)) tags$div(class = "fw-normal mt-1", view$reason)
+    )
+  }
+
   observeEvent(input$btn_anno_next, {
     req(rv$paths_list, input$sample_idx)
     idx <- as.numeric(input$sample_idx)
@@ -30,23 +83,11 @@ register_annotation_server <- function(input, output, session, state, context) {
   })
 
   output$anno_status_badge <- renderUI({
-    req(rv$sample_name)
-    refs <- rv$live_selected_config$cna_ref_cells[[rv$sample_name]]
-    pot_mal <- rv$live_selected_config$cna_pot_mal_cells[[rv$sample_name]]
-
-    missing_config <- c()
-    if (is.null(refs) || length(refs) == 0) missing_config <- c(missing_config, "Refs")
-    if (is.null(pot_mal) || length(pot_mal) == 0) missing_config <- c(missing_config, "Malig")
-
-    if (length(missing_config) > 0) {
-      tags$div(class = "badge bg-warning text-dark w-100 py-2 mt-2",
-               style = "font-size: 14px; white-space: normal;",
-               icon("exclamation-circle"), paste(" CNA Config Missing:", paste(missing_config, collapse = ", ")))
-    } else {
-      tags$div(class = "badge bg-success w-100 py-2 mt-2",
-               style = "font-size: 14px; white-space: normal;",
-               icon("check-circle"), paste(" CNA Configured for:", rv$sample_name))
-    }
+    req(rv$sample_name, rv$pipeline_state)
+    tagList(
+      status_badge("annotation", "Annotation"),
+      status_badge("cna_configuration", "CNA configuration")
+    )
   })
 
   output$ref_cell_selector <- renderUI({
@@ -107,17 +148,94 @@ register_annotation_server <- function(input, output, session, state, context) {
   observeEvent(input$btn_save_refs, {
     req(rv$sample_name)
 
+    readiness <- pipeline_step_readiness(
+      rv$pipeline_state,
+      "cna_configuration",
+      rv$sample_name
+    )
+    if (!readiness$ready) {
+      showNotification(
+        paste("Cannot save CNA configuration:", paste(readiness$reasons, collapse = "; ")),
+        type = "error",
+        duration = 10
+      )
+      return()
+    }
+
     selected_refs <- input$cna_refs_input
     if (is.null(selected_refs)) selected_refs <- list()
 
     selected_pot_mal <- input$cna_pot_mal_input
     if (is.null(selected_pot_mal)) selected_pot_mal <- list()
 
+    previous_refs <- rv$live_selected_config$cna_ref_cells[[rv$sample_name]]
+    previous_pot_mal <- rv$live_selected_config$cna_pot_mal_cells[[rv$sample_name]]
+    configuration_changed <- !identical(
+      sort(as.character(previous_refs)),
+      sort(as.character(selected_refs))
+    ) || !identical(
+      sort(as.character(previous_pot_mal)),
+      sort(as.character(selected_pot_mal))
+    )
+
     rv$live_selected_config$cna_ref_cells[[rv$sample_name]] <- selected_refs
     rv$live_selected_config$cna_pot_mal_cells[[rv$sample_name]] <- selected_pot_mal
 
     rv$config$selected <- rv$live_selected_config
     yaml::write_yaml(rv$live_selected_config, rv$selected_config_path)
+
+    config_complete <- length(selected_refs) > 0L && length(selected_pot_mal) > 0L
+    state_result <- tryCatch({
+      persist_annotation_step(
+        "cna_configuration",
+        if (config_complete) "completed" else "incomplete",
+        reason = if (!config_complete) {
+          "Both reference and potentially malignant cell types must be selected."
+        } else NULL,
+        details = list(
+          reference_cell_types = unname(selected_refs),
+          potentially_malignant_cell_types = unname(selected_pot_mal)
+        ),
+        invalidate_downstream = configuration_changed,
+        invalidation_reason = if (configuration_changed) {
+          "The CNA reference or potentially malignant cell-type configuration changed."
+        } else NULL
+      )
+    }, error = identity)
+    if (inherits(state_result, "error")) {
+      record_state_event(
+        rv,
+        stage = "state",
+        event_type = "cna_configuration_state",
+        outcome = "failed",
+        sample = rv$sample_name,
+        reason = conditionMessage(state_result)
+      )
+      showNotification(
+        paste("Configuration was saved, but workflow state failed:", conditionMessage(state_result)),
+        type = "error",
+        duration = 10
+      )
+      return()
+    }
+
+    invalidated_cache <- character()
+    if (configuration_changed) {
+      invalidated_cache <- cache_invalidate_sample(rv$sample_name, rv$dataset_dir_path)
+    }
+
+    record_state_event(
+      rv,
+      stage = "cna_configuration",
+      event_type = "cna_configuration_saved",
+      outcome = "saved",
+      sample = rv$sample_name,
+      parameters = list(
+        reference_cell_types = unname(selected_refs),
+        potentially_malignant_cell_types = unname(selected_pot_mal),
+        invalidated_cache_files = length(invalidated_cache)
+      )
+    )
 
     showNotification(paste("CNA Configuration saved for", rv$sample_name), type = "message")
   })
@@ -137,6 +255,13 @@ register_annotation_server <- function(input, output, session, state, context) {
     rv$sample_name <- unique(rv$cells_raw$sample)
     rv$res <- rv$live_selected_config$resolutions[[rv$sample_name]]
 
+    readiness <- pipeline_step_readiness(rv$pipeline_state, "annotation", rv$sample_name)
+    if (!readiness$ready) {
+      rv$cells_filt <- NULL
+      rv$all_matches <- NULL
+      return()
+    }
+
     tryCatch({
       results_list <- cell_type_annotation_setup(idx, rv$paths_list, rv$results_dir_path,
                                                  rv$config, rv$dataset_dir_path, rv$complete_markers,
@@ -152,6 +277,14 @@ register_annotation_server <- function(input, output, session, state, context) {
       }
     }, error = function(e) {
       message("Error loading annotation setup: ", e$message)
+      record_state_event(
+        rv,
+        stage = "annotation",
+        event_type = "annotation_load",
+        outcome = "failed",
+        sample = rv$sample_name,
+        reason = conditionMessage(e)
+      )
       showNotification("Could not load DE data. Did you run the DE Analysis step?", type = "error")
     })
   })
@@ -240,6 +373,19 @@ register_annotation_server <- function(input, output, session, state, context) {
     tmp[clust == input$cluster, cell_type := curr_annotation]
     rv$cells_filt <- tmp
 
+    record_state_event(
+      rv,
+      stage = "annotation",
+      event_type = "annotation_changed",
+      outcome = "changed",
+      sample = rv$sample_name,
+      parameters = list(
+        cluster = as.character(input$cluster),
+        cell_type = curr_annotation,
+        affected_cells = sum(tmp$clust == input$cluster)
+      )
+    )
+
     showNotification(paste0("Assigned '", curr_annotation, "' to cluster ", input$cluster), type = "message")
 
     clusters <- unique(as.character(rv$cells_filt$clust))
@@ -267,6 +413,15 @@ register_annotation_server <- function(input, output, session, state, context) {
 
   observeEvent(input$save_btn, {
     req(rv$paths_list, rv$cells_filt, rv$cells_raw, rv$sample_name, rv$res, rv$results_dir_path)
+    readiness <- pipeline_step_readiness(rv$pipeline_state, "annotation", rv$sample_name)
+    if (!readiness$ready) {
+      showNotification(
+        paste("Cannot save annotations:", paste(readiness$reasons, collapse = "; ")),
+        type = "error",
+        duration = 10
+      )
+      return()
+    }
     id <- showNotification("Saving annotations and plot to disk...", duration = NULL, type = "message")
     on.exit(removeNotification(id), add = TRUE)
 
@@ -282,6 +437,12 @@ register_annotation_server <- function(input, output, session, state, context) {
     cells_to_save <- data.table::copy(rv$cells_filt)
     cells_to_save[, cell_type_pre_cna := cell_type]
 
+    old_annotations <- as.character(
+      rv$cells_raw$cell_type[match(cells_to_save$cell_name, rv$cells_raw$cell_name)]
+    )
+    new_annotations <- as.character(cells_to_save$cell_type)
+    annotations_changed <- !identical(old_annotations, new_annotations)
+
     # 1. Save to raw Cells.csv (Using the safe, copied object)
     rv$cells_raw[cells_to_save, on = 'cell_name', cell_type := i.cell_type]
     rv$cells_raw[cells_to_save, on = 'cell_name', cell_type_pre_cna := i.cell_type_pre_cna]
@@ -293,6 +454,58 @@ register_annotation_server <- function(input, output, session, state, context) {
 
     # Update the active session memory so it doesn't complain later
     rv$cells_filt <- cells_to_save
+
+    state_result <- tryCatch(
+      persist_annotation_step(
+        "annotation",
+        "completed",
+        details = list(
+          resolution = rv$res,
+          cell_count = nrow(cells_to_save),
+          assigned_count = sum(!is.na(cells_to_save$cell_type))
+        ),
+        invalidate_downstream = annotations_changed,
+        invalidation_reason = if (annotations_changed) {
+          "Saved cell annotations changed."
+        } else NULL
+      ),
+      error = identity
+    )
+    if (inherits(state_result, "error")) {
+      record_state_event(
+        rv,
+        stage = "state",
+        event_type = "annotation_state",
+        outcome = "failed",
+        sample = rv$sample_name,
+        reason = conditionMessage(state_result)
+      )
+      showNotification(
+        paste("Annotations were saved, but workflow state failed:", conditionMessage(state_result)),
+        type = "error",
+        duration = 10
+      )
+      return()
+    }
+
+    invalidated_cache <- character()
+    if (annotations_changed) {
+      invalidated_cache <- cache_invalidate_sample(rv$sample_name, rv$dataset_dir_path)
+    }
+
+    record_state_event(
+      rv,
+      stage = "annotation",
+      event_type = "annotations_saved",
+      outcome = "saved",
+      sample = rv$sample_name,
+      parameters = list(
+        resolution = rv$res,
+        cell_count = nrow(cells_to_save),
+        assigned_count = sum(!is.na(cells_to_save$cell_type)),
+        invalidated_cache_files = length(invalidated_cache)
+      )
+    )
 
     showNotification("Successfully saved annotations to disk!", type = "default")
   })

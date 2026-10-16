@@ -25,9 +25,9 @@ register_cna_status_server <- function(input, output, session, state, context) {
     paste("CNA Analysis:", s_name)
   })
 
-  # Monitor cache and config to enable/disable pipeline buttons
-  observeEvent(input$cna_sample_idx, {
-    req(rv$paths_list, input$cna_sample_idx)
+  # Render persisted workflow state and enable only completed prerequisites.
+  observe({
+    req(rv$paths_list, input$cna_sample_idx, rv$pipeline_state)
     idx <- as.numeric(input$cna_sample_idx)
     s_name <- basename(rv$paths_list$sample_dir_paths)[idx]
 
@@ -44,24 +44,50 @@ register_cna_status_server <- function(input, output, session, state, context) {
     output$cna_preview_umap <- renderPlot({ NULL })
     output$cna_preview_heatmap <- renderPlot({ NULL })
 
-    # We will build an HTML status string to show the user what is done
-    status_html <- c("<strong>Pipeline Status:</strong><ul class='list-group mt-2 text-start'>")
+    step_records <- lapply(
+      c(
+        "cna_compute",
+        "cna_cluster_selection",
+        "cna_signal_correlation",
+        "cna_thresholds",
+        "cna_assignment"
+      ),
+      function(step) get_pipeline_step(rv$pipeline_state, step, s_name)
+    )
+    names(step_records) <- c(
+      "cna_compute",
+      "cna_cluster_selection",
+      "cna_signal_correlation",
+      "cna_thresholds",
+      "cna_assignment"
+    )
 
-    # 1. Check if CNA and Heatmaps are computed (Step 1)
-    # We look for the hclust cache file as an indicator
-    hclust_file <- paste0('hclust_', s_name, '.qs2')
-    step1_done <- cache_check_exists(hclust_file, rv$dataset_dir_path)
-
-    if (step1_done) {
-      shinyjs::enable("btn_cna_go_malig_clust")
-      status_html <- c(status_html, "<li class='list-group-item list-group-item-success'>1. Base CNA & Heatmaps: Complete</li>")
-    } else {
-      status_html <- c(status_html, "<li class='list-group-item list-group-item-warning'>1. Base CNA & Heatmaps: Pending</li>")
+    status_item <- function(number, label, record) {
+      view <- pipeline_status_presentation(record)
+      reason <- if (is.null(view$reason)) "" else paste0(
+        "<div class='small'>",
+        htmltools::htmlEscape(view$reason),
+        "</div>"
+      )
+      paste0(
+        "<li class='list-group-item list-group-item-", view$class, "'>",
+        number, ". ", label, ": ", view$label, reason, "</li>"
+      )
     }
 
-    # 2. Check if Malignant Clusters are selected (Step 2)
+    status_html <- c("<strong>Pipeline Status:</strong><ul class='list-group mt-2 text-start'>")
+
+    step1_done <- identical(step_records$cna_compute$status, "completed")
+    if (step1_done) {
+      shinyjs::enable("btn_cna_go_malig_clust")
+    }
+    status_html <- c(status_html, status_item(1, "Base CNA & Heatmaps", step_records$cna_compute))
+
     ward_refs <- rv$live_selected_config$cna_ward_ref_cluster[[s_name]]
-    step2_done <- step1_done && !is.null(ward_refs) && length(ward_refs) > 0
+    step2_done <- step1_done && identical(
+      step_records$cna_cluster_selection$status,
+      "completed"
+    )
 
     if (step2_done) {
       shinyjs::enable("btn_cna_compute_sig_cor")
@@ -74,38 +100,37 @@ register_cna_status_server <- function(input, output, session, state, context) {
                            choices = as.character(1:saved_k),
                            selected = saved_clusters)
 
-      status_html <- c(status_html, "<li class='list-group-item list-group-item-success'>2. Cluster Selection: Complete</li>")
     } else {
       updateSelectizeInput(session, "cna_selected_clusters", selected = character(0))
-      status_html <- c(status_html, "<li class='list-group-item list-group-item-warning'>2. Cluster Selection: Pending</li>")
     }
+    status_html <- c(
+      status_html,
+      status_item(2, "Cluster Selection", step_records$cna_cluster_selection)
+    )
 
-    # 3. Check if Signal & Cor are computed (Step 3)
-    # Check if subclone 1 exists as a baseline
-    sig_cor_file <- paste0('cna_sig_cor_', s_name, '_subclone_1.qs2')
-    step3_done <- step2_done && cache_check_exists(sig_cor_file, rv$dataset_dir_path)
+    step3_done <- step2_done && identical(
+      step_records$cna_signal_correlation$status,
+      "completed"
+    )
 
     if (step3_done) {
       shinyjs::enable("btn_cna_go_thresholds")
-      status_html <- c(status_html, "<li class='list-group-item list-group-item-success'>3. Signal & Correlation: Complete</li>")
-    } else {
-      status_html <- c(status_html, "<li class='list-group-item list-group-item-warning'>3. Signal & Correlation: Pending</li>")
     }
+    status_html <- c(
+      status_html,
+      status_item(3, "Signal & Correlation", step_records$cna_signal_correlation)
+    )
 
-    # 4. Check if Thresholds are saved (Step 4)
-    thresholds <- rv$live_selected_config$cna_thresholds[[s_name]]
-    step4_done <- step3_done && !is.null(thresholds) && length(thresholds) > 0
+    step4_done <- step3_done && identical(step_records$cna_thresholds$status, "completed")
 
     if (step4_done) {
       shinyjs::enable("btn_cna_go_summary")
-
-
-      status_html <- c(status_html, "<li class='list-group-item list-group-item-success'>4. Malignant Thresholds: Saved</li>")
-    } else {
-      status_html <- c(status_html, "<li class='list-group-item list-group-item-warning'>4. Malignant Thresholds: Pending</li>")
     }
-    # Step 4 (Thresholds) and 5 (Summary) state logic can be expanded here once we define where
-    # the thresholds are stored (e.g., config file or another qs2 object).
+    status_html <- c(
+      status_html,
+      status_item(4, "Malignant Thresholds", step_records$cna_thresholds),
+      status_item(5, "Final Assignment", step_records$cna_assignment)
+    )
 
     status_html <- c(status_html, "</ul>")
 

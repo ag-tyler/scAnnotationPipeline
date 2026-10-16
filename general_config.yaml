@@ -16,11 +16,13 @@ dataset_paths:
   raw_dir: "data"
   processed_dir: "processed_data"
   results_dir: "results"
+  logs_dir: "logs"
 
 config_files:
   dataset: "dataset_config.yaml"
   samples: "samples_config.yaml"
   selected: "selected_config.yaml"
+  state: "pipeline_state.yaml"
 
 standardization_pipelines:
   - general

@@ -144,7 +144,10 @@ Sys.setenv(NOT_CRAN = "true")
 testthat::test_file("tests/testthat/test-app-ui-baseline.R")
 ```
 
-The test is read-only: it loads the workspace and visits the main workflow screens without invoking compute, save, reset, or batch actions. Approved screenshots are stored under `tests/testthat/fixtures/ui-baseline/`.
+The test does not invoke compute, scientific-output saves, reset, or batch
+actions. Loading may append a dataset-load event and initialize or reconcile
+`pipeline_state.yaml`, just as a normal app restart does. Approved screenshots
+are stored under `tests/testthat/fixtures/ui-baseline/`.
 
 See the [Testing](docs/USER_GUIDE.md#testing) section for the test-file breakdown and coverage summary.
 
@@ -153,13 +156,20 @@ See the [Testing](docs/USER_GUIDE.md#testing) section for the test-file breakdow
 * `datasets/` contains local runtime data and should remain outside version control.
 * Most biological resource files under `resources/` are also intentionally untracked.
 * `general\_config.yaml`, source code, templates, tests, documentation, and the committed CNA golden fixture are version-controlled.
-* The app uses on-disk `.qs2` caches for expensive intermediate results. Changing analysis parameters may require cache invalidation; see [Cache Behavior \& Invalidation](docs/USER_GUIDE.md#cache-behavior--invalidation).
+* The app uses validated, dependency-aware `.qs2` caches for expensive intermediate results; see [Cache Validity and Invalidation](docs/CACHE_VALIDITY.md).
 
 ## Documentation
 
 The detailed documentation is maintained in:
 
 [**docs/USER\_GUIDE.md**](docs/USER_GUIDE.md)
+
+The latest per-step workflow-state contract is described in
+[**docs/PIPELINE\_STATE.md**](docs/PIPELINE_STATE.md), while the complete
+append-only processing history is described in
+[**docs/PIPELINE\_LOGGING.md**](docs/PIPELINE_LOGGING.md). Cache manifests,
+dependency fingerprints, recovery, and migration are described in
+[**docs/CACHE\_VALIDITY.md**](docs/CACHE_VALIDITY.md).
 
 It covers:
 

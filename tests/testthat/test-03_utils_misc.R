@@ -270,7 +270,7 @@ test_that("validate_standardization detects matrix/table dimension mismatches", 
     cells = "Cells.csv"
   )
   writeLines(rownames(fixture$mat)[-1], fixture$genes_path)
-  data.table::fwrite(fixture$cells[-1], fixture$cells_path)
+  data.table::fwrite(fixture$cells[-1, ], fixture$cells_path)
 
   result <- NULL
   expect_warning(
@@ -290,9 +290,9 @@ test_that("validate_standardization enforces cell schema and sample assignment",
     cells = "Cells.csv"
   )
   cells <- data.table::copy(fixture$cells)
-  cells[, cell_type := NULL]
-  cells[1, sample := "another_sample"]
-  cells[2, complexity := NA_real_]
+  cells$cell_type <- NULL
+  cells$sample[[1]] <- "another_sample"
+  cells$complexity[[2]] <- NA_real_
   data.table::fwrite(cells, fixture$cells_path)
 
   result <- NULL
@@ -410,7 +410,7 @@ test_that("validate_standardization validates dataset-wide sample metadata", {
   first <- write_mini_sample(dir, "sample1", n_genes = 10, n_cells = 8)
   second <- write_mini_sample(dir, "sample2", n_genes = 10, n_cells = 7)
   second_cells <- data.table::copy(second$cells)
-  second_cells[, cell_name := paste0("sample2_", cell_name)]
+  second_cells$cell_name <- paste0("sample2_", second_cells$cell_name)
   data.table::fwrite(second_cells, second$cells_path)
 
   data.table::fwrite(
@@ -440,7 +440,7 @@ test_that("validate_standardization validates dataset-wide sample metadata", {
   expect_true(result$valid)
 
   samples <- data.table::fread(file.path(dir, "Samples.csv"))
-  samples[sample == "sample2", n_cells := 999]
+  samples$n_cells[samples$sample == "sample2"] <- 999
   data.table::fwrite(samples, file.path(dir, "Samples.csv"))
   invalid <- NULL
   expect_warning(

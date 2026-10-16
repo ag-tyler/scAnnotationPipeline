@@ -280,6 +280,54 @@ make_cna_visualization_fixture <- function(dataset_dir) {
 }
 
 
+test_that("CNA hclust dependencies ignore final assignments but track manual annotations", {
+  skip_if_not_installed("qs2")
+  dataset_dir <- withr::local_tempdir()
+  cells_file <- "cells_filt_clust_res_0.5_sample1.qs2"
+  cells <- data.table::data.table(
+    cell_name = c("c1", "c2"),
+    sample = "sample1",
+    cell_type = c("TumorLike", "Reference"),
+    cell_type_pre_cna = c("TumorLike", "Reference")
+  )
+  cna_matrix <- data.table::data.table(
+    gene = c("g1", "g2"),
+    chr = c("1", "1"),
+    start_pos = c(1, 2),
+    c1 = c(0.1, 0.2),
+    c2 = c(0, 0.1)
+  )
+  selected_config <- list(
+    resolutions = list(sample1 = 0.5),
+    cna_pot_mal_cells = list(sample1 = "TumorLike")
+  )
+  cache_save_data(cells, cells_file, dataset_dir)
+  cache_save_data(cna_matrix, "cna_matrix_sample1.qs2", dataset_dir)
+  before <- cna_hclust_cache_dependencies("sample1", dataset_dir, selected_config)
+
+  cells$cell_type <- c("Malignant", "Reference")
+  cells$subclone <- c(1L, NA_integer_)
+  cache_save_data(cells, cells_file, dataset_dir)
+  after_assignment <- cna_hclust_cache_dependencies(
+    "sample1", dataset_dir, selected_config
+  )
+  expect_identical(
+    cache_dependency_fingerprint(after_assignment),
+    cache_dependency_fingerprint(before)
+  )
+
+  cells$cell_type_pre_cna[[1]] <- "DifferentManualType"
+  cache_save_data(cells, cells_file, dataset_dir)
+  after_annotation <- cna_hclust_cache_dependencies(
+    "sample1", dataset_dir, selected_config
+  )
+  expect_false(identical(
+    cache_dependency_fingerprint(after_annotation),
+    cache_dependency_fingerprint(before)
+  ))
+})
+
+
 test_that("apply_cna_thresholds assigns unique malignant subclones and gray-zone cells", {
   skip_if_not_installed("qs2")
   
@@ -651,6 +699,7 @@ test_that("batch_compute_cna_and_heatmaps skips samples without CNA configuratio
     )
   )
   
+  state_events <- list()
   res <- batch_compute_cna_and_heatmaps(
     paths_list = paths_list,
     dataset_dir_path = dataset_dir,
@@ -659,7 +708,14 @@ test_that("batch_compute_cna_and_heatmaps skips samples without CNA configuratio
       "results"
     ),
     selected_config = selected_config,
-    gene_positions = data.table::data.table()
+    gene_positions = data.table::data.table(),
+    state_callback = function(sample_name, status, reason = NULL, details = NULL) {
+      state_events[[length(state_events) + 1L]] <<- list(
+        sample = sample_name,
+        status = status,
+        reason = reason
+      )
+    }
   )
   
   expect_length(
@@ -671,6 +727,8 @@ test_that("batch_compute_cna_and_heatmaps skips samples without CNA configuratio
     res$skipped,
     "sample1"
   )
+  expect_identical(state_events[[1]]$status, "incomplete")
+  expect_match(state_events[[1]]$reason, "not configured")
 })
 
 
@@ -793,14 +851,16 @@ test_that("batch_compute_cna_and_heatmaps forwards dataset_dir_path to CNA helpe
   
   calls$compute_called <- FALSE
   calls$heatmap_called <- FALSE
+  calls$state_events <- list()
   
   test_env <- new.env(
     parent = environment(batch_compute_cna_and_heatmaps)
   )
   
-  test_env$cache_check_exists <- function(
+  test_env$cache_check_valid <- function(
     file_name,
-    dataset_dir_path
+    dataset_dir_path,
+    dependencies = NULL
   ) {
     !startsWith(
       file_name,
@@ -876,7 +936,10 @@ test_that("batch_compute_cna_and_heatmaps forwards dataset_dir_path to CNA helpe
       symbol = paste0("GENE", 1:4),
       chromosome_name = "1",
       start_position = 1:4
-    )
+    ),
+    state_callback = function(sample_name, status, reason = NULL, details = NULL) {
+      calls$state_events[[length(calls$state_events) + 1L]] <- c(sample_name, status)
+    }
   )
   
   expect_true(
@@ -905,6 +968,10 @@ test_that("batch_compute_cna_and_heatmaps forwards dataset_dir_path to CNA helpe
   expect_length(
     res$skipped,
     0
+  )
+  expect_identical(
+    calls$state_events,
+    list(c("sample1", "in_progress"), c("sample1", "completed"))
   )
 })
 

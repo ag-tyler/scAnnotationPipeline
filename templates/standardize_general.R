@@ -315,7 +315,11 @@ prepare_standardized_sample <- function(
         call. = FALSE
       )
     }
-    supplied_metadata[, cell_name := trimws(as.character(cell_name))]
+    data.table::set(
+      supplied_metadata,
+      j = "cell_name",
+      value = trimws(as.character(supplied_metadata$cell_name))
+    )
     if (anyDuplicated(supplied_metadata$cell_name)) {
       stop(
         "Sample '", sample_name,
@@ -341,10 +345,22 @@ prepare_standardized_sample <- function(
     }
   }
 
-  cells[, sample := sample_name]
-  cells[, patient := sample_config_value(sample_meta, "patient")]
-  cells[, source := sample_config_value(sample_meta, "site")]
-  cells[, complexity := as.numeric(Matrix::colSums(expmat != 0))]
+  data.table::set(cells, j = "sample", value = sample_name)
+  data.table::set(
+    cells,
+    j = "patient",
+    value = sample_config_value(sample_meta, "patient")
+  )
+  data.table::set(
+    cells,
+    j = "source",
+    value = sample_config_value(sample_meta, "site")
+  )
+  data.table::set(
+    cells,
+    j = "complexity",
+    value = as.numeric(Matrix::colSums(expmat != 0))
+  )
 
   list(
     expmat = expmat,
@@ -388,7 +404,7 @@ write_standardized_sample <- function(
 run_general_standardization <- function(settings) {
   settings <- validate_general_settings(settings)
 
-  required_packages <- c("data.table", "docstring", "Matrix", "yaml")
+  required_packages <- c("data.table", "docstring", "jsonlite", "Matrix", "yaml")
   missing_packages <- required_packages[
     !vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)
   ]
@@ -405,14 +421,24 @@ run_general_standardization <- function(settings) {
     winslash = "/",
     mustWork = TRUE
   )
-  utils_path <- file.path(app_folder_path, "util_scripts", "03_utils_misc.R")
-  if (!file.exists(utils_path)) {
-    stop("Standardization utilities are missing: ", utils_path, call. = FALSE)
-  }
-  source(
-    utils_path,
-    local = environment(prepare_standardized_sample)
+  utils_paths <- file.path(
+    app_folder_path,
+    "util_scripts",
+    c("03_utils_misc.R", "06_utils_logging.R", "07_utils_state.R")
   )
+  missing_utils <- utils_paths[!file.exists(utils_paths)]
+  if (length(missing_utils) > 0L) {
+    stop(
+      "Standardization utilities are missing: ",
+      paste(missing_utils, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  invisible(lapply(
+    utils_paths,
+    source,
+    local = environment(prepare_standardized_sample)
+  ))
 
   dataset_name <- sanitize_dataset_name(settings$dataset_name)
   config_path <- file.path(app_folder_path, "general_config.yaml")
@@ -529,13 +555,20 @@ run_general_standardization <- function(settings) {
     c("sample", "n_cells")
   )
   if (length(metadata_columns) > 0) {
-    samples[
-      samples_info_dt,
-      (metadata_columns) := mget(paste0("i.", metadata_columns)),
-      on = .(sample)
-    ]
+    metadata_order <- match(samples$sample, samples_info_dt$sample)
+    for (column in metadata_columns) {
+      data.table::set(
+        samples,
+        j = column,
+        value = samples_info_dt[[column]][metadata_order]
+      )
+    }
   }
-  samples[, n_cells := as.integer(sample_cell_counts[sample])]
+  data.table::set(
+    samples,
+    j = "n_cells",
+    value = as.integer(sample_cell_counts[samples$sample])
+  )
   data.table::fwrite(
     samples,
     file.path(processed_dir_path, std_names$samples)
@@ -562,6 +595,82 @@ run_general_standardization <- function(settings) {
     std_names = dataset_config$std_names,
     strict = TRUE
   )
+
+  record_pipeline_event(
+    dataset_dir_path = dataset_dir_path,
+    dataset = dataset_name,
+    stage = "standardization",
+    event_type = "standardization_validated",
+    outcome = "completed",
+    parameters = list(
+      sample_count = length(sample_names),
+      expression_type = validation$expression_type,
+      matrix_state = settings$matrix_state
+    )
+  )
+
+  state_filename <- .pipeline_value_or(
+    config$config_files$state,
+    "pipeline_state.yaml"
+  )
+  pipeline_state <- tryCatch({
+    current_state <- load_or_initialize_pipeline_state(
+      dataset_dir_path = dataset_dir_path,
+      dataset_id = dataset_name,
+      sample_names = sample_names,
+      dataset_config = dataset_config,
+      selected_config = yaml::read_yaml(selected_config_path),
+      config = config,
+      state_filename = state_filename,
+      infer_legacy = FALSE
+    )
+    previous_standardization <- get_pipeline_step(
+      current_state,
+      "standardization"
+    )$status
+    if (identical(previous_standardization, "completed")) {
+      current_state <- mark_pipeline_steps_stale(
+        current_state,
+        upstream_step = "standardization",
+        reason = "Standardized inputs were regenerated."
+      )
+    }
+    current_state <- transition_pipeline_step(
+      current_state,
+      step = "standardization",
+      status = "in_progress"
+    )
+    current_state <- transition_pipeline_step(
+      current_state,
+      step = "standardization",
+      status = "completed",
+      details = list(
+        sample_count = length(sample_names),
+        expression_type = validation$expression_type,
+        matrix_state = settings$matrix_state
+      )
+    )
+    save_pipeline_state_atomic(
+      current_state,
+      dataset_dir_path = dataset_dir_path,
+      state_filename = state_filename
+    )
+  }, error = identity)
+  if (inherits(pipeline_state, "error")) {
+    record_pipeline_event(
+      dataset_dir_path = dataset_dir_path,
+      dataset = dataset_name,
+      stage = "state",
+      event_type = "pipeline_state_update",
+      outcome = "failed",
+      reason = conditionMessage(pipeline_state)
+    )
+    stop(
+      "Standardization passed, but pipeline state could not be persisted: ",
+      conditionMessage(pipeline_state),
+      call. = FALSE
+    )
+  }
 
   message(
     "Standardization complete for ", length(sample_names),

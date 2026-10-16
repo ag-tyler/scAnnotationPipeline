@@ -3,6 +3,29 @@
 register_cna_cluster_server <- function(input, output, session, state, context) {
   rv <- state
 
+  persist_cna_step <- function(
+    step,
+    sample_name,
+    status,
+    reason = NULL,
+    details = NULL,
+    invalidate_downstream = FALSE,
+    invalidation_reason = NULL
+  ) {
+    rv$pipeline_state <- persist_pipeline_step_update(
+      rv$pipeline_state,
+      rv$pipeline_state_path,
+      step = step,
+      status = status,
+      sample = sample_name,
+      reason = reason,
+      details = details,
+      invalidate_downstream = invalidate_downstream,
+      invalidation_reason = invalidation_reason
+    )
+    invisible(rv$pipeline_state)
+  }
+
   # --- STEP 2: MALIGNANT CLUSTER SELECTION (CUTREE METHOD) ---
 
   # 1. Update the dropdown choices automatically based on the k-slider
@@ -29,7 +52,7 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
 
     hclust_file_name <- paste0('hclust_', s_name, '.qs2')
     cells_file_name <- paste0('cells_filt_clust_res_', cfg$resolutions[[s_name]], '_', s_name, '.qs2')
-    req(cache_check_exists(hclust_file_name, rv$dataset_dir_path))
+    req(cache_check_valid(hclust_file_name, rv$dataset_dir_path))
 
     clust_hclust <- cache_load_data(hclust_file_name, rv$dataset_dir_path)
     cells_filt <- cache_load_data(cells_file_name, rv$dataset_dir_path)
@@ -151,6 +174,17 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
   observeEvent(input$btn_cna_save_malignant, {
     # 1. Provide an explicit, visible warning if no clusters are selected
     if (is.null(input$cna_selected_clusters) || length(input$cna_selected_clusters) == 0) {
+      if (!is.null(input$cna_sample_idx) && !is.null(rv$paths_list)) {
+        s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
+        record_state_event(
+          rv,
+          stage = "cna",
+          event_type = "malignant_clusters_saved",
+          outcome = "incomplete",
+          sample = s_name,
+          reason = "No malignant subclone was selected."
+        )
+      }
       showNotification("Please select at least one Malignant Subclone from the dropdown before saving.",
                        type = "warning", duration = 5)
       return()
@@ -161,22 +195,74 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
 
     s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
 
+    readiness <- pipeline_step_readiness(
+      rv$pipeline_state,
+      "cna_cluster_selection",
+      s_name
+    )
+    if (!readiness$ready) {
+      showNotification(
+        paste("Cannot save malignant clusters:", paste(readiness$reasons, collapse = "; ")),
+        type = "error",
+        duration = 10
+      )
+      return()
+    }
+
     # 3. Save as a structured, named list for the backend
     subclones <- lapply(input$cna_selected_clusters, function(cl) {
       list(method = 'cutree', k = as.numeric(input$cna_k_clusters), cluster = as.numeric(cl))
     })
 
+    previous_subclones <- rv$live_selected_config$cna_ward_ref_cluster[[s_name]]
+    selection_changed <- !identical(previous_subclones, subclones)
+
     rv$live_selected_config$cna_ward_ref_cluster[[s_name]] <- subclones
     # --- NEW CLEANUP LOGIC ---
     # 1. Clear old thresholds from the active config to prevent UI mismatches
-    rv$live_selected_config$cna_thresholds[[s_name]] <- NULL
+    if (selection_changed) {
+      rv$live_selected_config$cna_thresholds[[s_name]] <- NULL
+    }
 
     rv$config$selected <- rv$live_selected_config
     yaml::write_yaml(rv$live_selected_config, rv$selected_config_path)
 
+    state_result <- tryCatch(
+      persist_cna_step(
+        "cna_cluster_selection",
+        s_name,
+        "completed",
+        details = list(
+          k = as.numeric(input$cna_k_clusters),
+          clusters = as.numeric(input$cna_selected_clusters)
+        ),
+        invalidate_downstream = selection_changed,
+        invalidation_reason = if (selection_changed) {
+          "The malignant subclone selection changed."
+        } else NULL
+      ),
+      error = identity
+    )
+    if (inherits(state_result, "error")) {
+      record_state_event(
+        rv,
+        stage = "state",
+        event_type = "cna_cluster_selection_state",
+        outcome = "failed",
+        sample = s_name,
+        reason = conditionMessage(state_result)
+      )
+      showNotification(
+        paste("Selection was saved, but workflow state failed:", conditionMessage(state_result)),
+        type = "error",
+        duration = 10
+      )
+      return()
+    }
+
     # 2. Delete old subclone plots
     cna_plots_dir_path <- file.path(rv$results_dir_path, s_name, '3_cna_plots')
-    if (dir.exists(cna_plots_dir_path)) {
+    if (selection_changed && dir.exists(cna_plots_dir_path)) {
       old_plots <- list.files(cna_plots_dir_path,
                               pattern = paste0("subclone_.*_", s_name, "\\.png$"),
                               full.names = TRUE)
@@ -185,11 +271,38 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
 
     # 3. Delete old subclone cache files
     cache_dir <- file.path(rv$dataset_dir_path, "cache")
-    old_cache <- list.files(cache_dir,
-                            pattern = paste0("^cna_sig_cor_", s_name, "_subclone_.*\\.qs2$"),
-                            full.names = TRUE)
-    if (length(old_cache) > 0) file.remove(old_cache)
+    old_cache <- if (selection_changed) list.files(
+      cache_dir,
+      pattern = paste0("^cna_sig_cor_", s_name, "_subclone_.*\\.qs2$"),
+      full.names = TRUE
+    ) else character()
+    if (length(old_cache) > 0) {
+      cache_invalidate_artifacts(basename(old_cache), rv$dataset_dir_path)
+    }
     # -------------------------
+
+    record_state_event(
+      rv,
+      stage = "cna",
+      event_type = "malignant_clusters_saved",
+      outcome = "saved",
+      sample = s_name,
+      parameters = list(
+        k = as.numeric(input$cna_k_clusters),
+        clusters = as.numeric(input$cna_selected_clusters)
+      )
+    )
+    if (length(old_cache) > 0L) {
+      record_state_event(
+        rv,
+        stage = "cache",
+        event_type = "cna_signal_cache",
+        outcome = "invalidated",
+        sample = s_name,
+        parameters = list(file_count = length(old_cache)),
+        reason = "The malignant cluster selection changed."
+      )
+    }
 
     id_plot <- showNotification("Saving k-clusters plot to disk...", duration = NULL, type = "message")
 
@@ -247,21 +360,105 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
     req(input$cna_sample_idx)
     s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
 
-    id <- showNotification("Computing Signal and Correlation...", duration = NULL, type = "message")
-    on.exit(removeNotification(id), add = TRUE)
-
-    cells_file <- paste0('cells_filt_clust_res_', rv$live_selected_config$resolutions[[s_name]], '_', s_name, '.qs2')
-    cells_filt <- cache_load_data(cells_file, rv$dataset_dir_path)
-    cells_filt[is.na(cell_type), cell_type := 'Unassigned']
-    ref_cells <- cells_filt[cell_type %in% rv$live_selected_config$cna_ref_cells[[s_name]]]
-
-    ward_refs <- rv$live_selected_config$cna_ward_ref_cluster[[s_name]]
-    for (i in seq_along(ward_refs)) {
-      compute_signal_cor_cna(s_name, i, ref_cells, rv$live_selected_config, rv$dataset_dir_path)
+    readiness <- pipeline_step_readiness(
+      rv$pipeline_state,
+      "cna_signal_correlation",
+      s_name
+    )
+    if (!readiness$ready) {
+      showNotification(
+        paste("Cannot compute signal/correlation:", paste(readiness$reasons, collapse = "; ")),
+        type = "error",
+        duration = 10
+      )
+      return()
     }
 
-    showNotification("Signal and Correlation computed!", type = "default")
-    shinyjs::enable("btn_cna_go_thresholds")
-    nav_select("cna_main_views", "cna_view_thresholds")
+    state_started <- tryCatch(
+      persist_cna_step(
+        "cna_signal_correlation",
+        s_name,
+        "in_progress",
+        invalidate_downstream = get_pipeline_step(
+          rv$pipeline_state,
+          "cna_signal_correlation",
+          s_name
+        )$status %in% c("completed", "skipped"),
+        invalidation_reason = "Signal/correlation is being recomputed."
+      ),
+      error = identity
+    )
+    if (inherits(state_started, "error")) {
+      showNotification(
+        paste("Signal/correlation could not start because workflow state failed:", conditionMessage(state_started)),
+        type = "error",
+        duration = 10
+      )
+      return()
+    }
+
+    id <- showNotification("Computing Signal and Correlation...", duration = NULL, type = "message")
+    on.exit(removeNotification(id), add = TRUE)
+    record_state_event(
+      rv,
+      stage = "cna",
+      event_type = "cna_signal_correlation",
+      outcome = "started",
+      sample = s_name
+    )
+
+    tryCatch({
+      cells_file <- paste0('cells_filt_clust_res_', rv$live_selected_config$resolutions[[s_name]], '_', s_name, '.qs2')
+      cells_filt <- cache_load_data(cells_file, rv$dataset_dir_path)
+      cells_filt[is.na(cell_type), cell_type := 'Unassigned']
+      ref_cells <- cells_filt[cell_type %in% rv$live_selected_config$cna_ref_cells[[s_name]]]
+
+      ward_refs <- rv$live_selected_config$cna_ward_ref_cluster[[s_name]]
+      for (i in seq_along(ward_refs)) {
+        compute_signal_cor_cna(s_name, i, ref_cells, rv$live_selected_config, rv$dataset_dir_path)
+      }
+
+      persist_cna_step(
+        "cna_signal_correlation",
+        s_name,
+        "completed",
+        details = list(subclone_count = length(ward_refs))
+      )
+
+      record_state_event(
+        rv,
+        stage = "cna",
+        event_type = "cna_signal_correlation",
+        outcome = "completed",
+        sample = s_name,
+        parameters = list(subclone_count = length(ward_refs))
+      )
+      showNotification("Signal and Correlation computed!", type = "default")
+      shinyjs::enable("btn_cna_go_thresholds")
+      nav_select("cna_main_views", "cna_view_thresholds")
+    }, error = function(error) {
+      try(
+        persist_cna_step(
+          "cna_signal_correlation",
+          s_name,
+          "failed",
+          reason = conditionMessage(error)
+        ),
+        silent = TRUE
+      )
+      record_state_event(
+        rv,
+        stage = "cna",
+        event_type = "cna_signal_correlation",
+        outcome = "failed",
+        sample = s_name,
+        reason = conditionMessage(error)
+      )
+      showNotification(
+        paste("Signal/correlation computation failed:", conditionMessage(error)),
+        type = "error",
+        duration = 10
+      )
+    })
   })
 }

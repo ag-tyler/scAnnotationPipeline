@@ -15,6 +15,8 @@ For installation and a concise project overview, see the repository **[README](.
   - [`selected_config.yaml`](#selected_configyaml)
 - [Standardization Pipeline](#standardization-pipeline)
 - [Running the Analysis Pipeline](#running-the-analysis-pipeline)
+- [Pipeline Event Logs](#pipeline-event-logs)
+- [Pipeline State](#pipeline-state)
 - [Testing](#testing)
   - [Running the tests](#running-the-tests)
   - [Test structure](#test-structure)
@@ -39,6 +41,9 @@ scAnnotationPipeline/
 ├── README.md
 │
 ├── docs/
+│   ├── PIPELINE_LOGGING.md
+│   ├── PIPELINE_STATE.md
+│   ├── CACHE_VALIDITY.md
 │   └── USER_GUIDE.md
 │
 ├── resources/
@@ -60,7 +65,8 @@ scAnnotationPipeline/
 │       ├── cache/
 │       ├── data/
 │       ├── processed_data/
-│       └── results/
+│       ├── results/
+│       └── logs/
 │
 ├── templates/
 │   ├── dataset_config_template.yaml
@@ -72,7 +78,9 @@ scAnnotationPipeline/
 │   ├── 02_utils_annotation.R
 │   ├── 03_utils_misc.R
 │   ├── 04_utils_caching.R
-│   └── 05_utils_workflow.R
+│   ├── 05_utils_workflow.R
+│   ├── 06_utils_logging.R
+│   └── 07_utils_state.R
 │
 └── tests/
     ├── testthat.R
@@ -88,6 +96,8 @@ scAnnotationPipeline/
         ├── test-05_utils_workflow.R
         ├── test-05_utils_workflow_clustering.R
         ├── test-05_utils_workflow_cna.R
+        ├── test-06_utils_logging.R
+        ├── test-07_utils_state.R
         ├── test-golden_outputs.R
         ├── test-regression_clustering.R
         ├── test-regression_cna_cache.R
@@ -119,6 +129,7 @@ datasets/<dataset_id>/
 ├── dataset_config.yaml
 ├── samples_config.yaml
 ├── selected_config.yaml
+├── pipeline_state.yaml
 ├── standardize.R
 ├── cache/
 ├── data/
@@ -127,11 +138,14 @@ datasets/<dataset_id>/
 │       ├── Exp_data_<matrix_state>.mtx
 │       ├── Genes.txt
 │       └── Cells.csv
-└── results/
-    └── <sample_name>/
-        ├── 1_cluster_plots/
-        ├── 2_de_plots/
-        └── 3_cna_plots/
+├── results/
+│   └── <sample_name>/
+│       ├── 1_cluster_plots/
+│       ├── 2_de_plots/
+│       └── 3_cna_plots/
+└── logs/
+    ├── pipeline_events.jsonl
+    └── pipeline.log
 ```
 
 The matrix filename depends on `std_names.expmat` in `dataset_config.yaml`.
@@ -159,7 +173,7 @@ The remaining configuration sections define expected filenames, standard dataset
 | `paths.resources_dir` | Resource directory relative to the application root |
 | `paths.datasets_dir` | Dataset directory relative to the application root |
 | `resource_files.*` | Expected filenames inside `resources/` |
-| `dataset_paths.*` | Standard subdirectories inside each dataset (`data`, `processed_data`, `results`) |
+| `dataset_paths.*` | Standard subdirectories inside each dataset (`data`, `processed_data`, `results`, `logs`) |
 | `config_files.*` | Standard configuration filenames |
 | `standardization_pipelines` | Templates offered for new datasets; currently only `general` |
 
@@ -518,6 +532,36 @@ because malignancy is supported but the subclone assignment is ambiguous.
 
 ---
 
+## Pipeline Event Logs
+
+Each dataset has an append-only event history under `logs/`. The structured
+`pipeline_events.jsonl` file records stage starts, completions, saved decisions,
+failures, skips, and cache reuse/invalidation. The companion `pipeline.log` is
+formatted for quick human inspection.
+
+Events include their UTC timestamp, dataset, optional sample, stage, event
+type, outcome, relevant parameters, and an actionable reason for failures or
+skips. They deliberately exclude expression matrices and cell-level data.
+
+See [Pipeline Event Logging](PIPELINE_LOGGING.md) for the schema, event catalog,
+and R reader API.
+
+---
+
+## Pipeline State
+
+Each dataset has a versioned `pipeline_state.yaml` containing the latest
+dataset- and sample-level workflow statuses. The UI uses it for badges,
+prerequisite guards, repeated-run attempts, and dependency-driven stale flags;
+the presence of one cache file is not treated as proof of completion.
+
+This current-state document is intentionally separate from
+`selected_config.yaml` and the append-only event logs. See
+[Pipeline State](PIPELINE_STATE.md) for status meanings, dependencies, legacy
+migration, and recovery behavior.
+
+---
+
 ## Testing
 
 The repository includes a `testthat` suite for utility functions and the main non-interactive workflow paths.
@@ -553,10 +597,12 @@ Some tests deliberately exercise validation/error/warning paths. Those condition
 | `test-02_utils_annotation_de.R` | DE ranking, `num_genes`, exact marker matching, `max_match_genes`, marker filtering, minimum-marker checks, signature-score alignment |
 | `test-02_utils_annotation_cna.R` | CNA-specific helpers including hierarchical clustering, CNA UMAP/HDBSCAN behavior, and plot construction |
 | `test-03_utils_misc.R` | Dataset-name sanitization, duplicate sparse rows, Ensembl-symbol mapping, configuration setup, sample/cell construction, pre/post-validation |
-| `test-04_utils_caching.R` | Cache creation, `.qs2` round trips, existence checks, missing-cache errors, and clearing |
+| `test-04_utils_caching.R` | Manifest persistence, dependency matching, structural validity, atomic replacement, recovery, invalidation, and clearing |
 | `test-05_utils_workflow.R` | DE workflow orchestration, cached DE outputs, multi-sample routing, annotation setup |
 | `test-05_utils_workflow_clustering.R` | End-to-end clustering orchestration, clustering caches, generated plots |
 | `test-05_utils_workflow_cna.R` | CNA thresholds, collision behavior, signal/correlation, batch branches, heatmap/clustering integration, preview behavior |
+| `test-06_utils_logging.R` | Structured/readable event persistence, append behavior, required failure/skip reasons, state-derived dataset IDs, malformed-log errors |
+| `test-07_utils_state.R` | State schema and transitions, prerequisites, staleness, revisions, atomic persistence, backup recovery, legacy migration, and sample reconciliation |
 | `test-golden_outputs.R` | Deterministic `compute_cna()` golden regression baseline |
 | `test-regression_clustering.R` | Preprocessing → PCA → UMAP → Louvain integration/regression behavior |
 | `test-regression_cna_cache.R` | CNA compute/cache/load round trip and missing-cache behavior |
@@ -648,29 +694,20 @@ datasets/<dataset_id>/cache/
 
 Cached objects include filtered/normalized expression matrices, clustered cells, CNA matrices, hierarchical clustering objects, and CNA signal/correlation tables.
 
-### Important limitation
-
-Cache filenames do not encode every analysis parameter.
-
-Changing parameters such as:
-
-```text
-params.min_genes
-params.target_sum
-params.pca_nv
-params.seed
-params.resolutions
-params.umap.*
-marker_filter_params.*
-```
-
-does not necessarily invalidate existing cached results automatically.
+Each cache is registered in `cache_manifest.yaml` with a checksum, structural
+validation summary, and dependency fingerprint. The app reuses an artifact only
+when the file and its relevant inputs, parameters, upstream cache versions, and
+saved decisions still match. See [Cache Validity and Invalidation](CACHE_VALIDITY.md)
+for the complete contract and legacy-cache migration behavior.
 
 ### Clustering or normalization parameters changed
 
-Delete the affected dataset cache and rerun **Run Clustering for all Resolutions**.
+Rerun **Run Clustering for all Resolutions**. New clustering artifacts replace
+their previous versions atomically and are registered with the current input and
+parameter fingerprints.
 
-Generated result plots should also be regenerated where appropriate.
+Changed saved resolutions, annotations, CNA configuration, and malignant-cluster
+selections automatically invalidate their dependent CNA cache families.
 
 ### Marker sets or marker filtering changed
 

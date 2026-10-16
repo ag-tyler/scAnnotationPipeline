@@ -21,6 +21,12 @@ test_that("general standardization template parses and is safe by default", {
   expect_true(is.function(template_env$load_sample_input))
   expect_true(is.function(template_env$prepare_standardized_sample))
   expect_true(is.function(template_env$run_general_standardization))
+
+  template_text <- paste(readLines(general_template_path), collapse = "\n")
+  expect_match(template_text, '"06_utils_logging.R"', fixed = TRUE)
+  expect_match(template_text, '"07_utils_state.R"', fixed = TRUE)
+  expect_match(template_text, 'event_type = "standardization_validated"', fixed = TRUE)
+  expect_match(template_text, 'step = "standardization"', fixed = TRUE)
 })
 
 

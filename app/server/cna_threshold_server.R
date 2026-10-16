@@ -3,6 +3,28 @@
 register_cna_threshold_server <- function(input, output, session, state, context) {
   rv <- state
 
+  persist_threshold_state <- function(
+    sample_name,
+    status,
+    reason = NULL,
+    details = NULL,
+    invalidate_downstream = FALSE,
+    invalidation_reason = NULL
+  ) {
+    rv$pipeline_state <- persist_pipeline_step_update(
+      rv$pipeline_state,
+      rv$pipeline_state_path,
+      step = "cna_thresholds",
+      status = status,
+      sample = sample_name,
+      reason = reason,
+      details = details,
+      invalidate_downstream = invalidate_downstream,
+      invalidation_reason = invalidation_reason
+    )
+    invisible(rv$pipeline_state)
+  }
+
   # --- STEP 4: Render Dynamic Threshold UI & Plots ---
 
   # 1. Dynamically generate the UI (Tabs + Sliders + Plot Output)
@@ -76,7 +98,7 @@ register_cna_threshold_server <- function(input, output, session, state, context
           req(!is.null(mx), !is.null(my), !is.null(nmx), !is.null(nmy), !is.null(ymax))
 
           sig_cor_file <- paste0('cna_sig_cor_', s_name, '_subclone_', i, '.qs2')
-          if (!cache_check_exists(sig_cor_file, rv$dataset_dir_path)) return(NULL)
+          if (!cache_check_valid(sig_cor_file, rv$dataset_dir_path)) return(NULL)
 
           cna_sig_cor <- cache_load_data(sig_cor_file, rv$dataset_dir_path)
 
@@ -150,6 +172,29 @@ register_cna_threshold_server <- function(input, output, session, state, context
     ward_refs <- rv$live_selected_config$cna_ward_ref_cluster[[s_name]]
     n_subclones <- length(ward_refs)
 
+    readiness <- pipeline_step_readiness(rv$pipeline_state, "cna_thresholds", s_name)
+    if (!readiness$ready) {
+      showNotification(
+        paste("Cannot save thresholds:", paste(readiness$reasons, collapse = "; ")),
+        type = "error",
+        duration = 10
+      )
+      return()
+    }
+
+    state_started <- tryCatch(
+      persist_threshold_state(s_name, "in_progress"),
+      error = identity
+    )
+    if (inherits(state_started, "error")) {
+      showNotification(
+        paste("Threshold save could not start because workflow state failed:", conditionMessage(state_started)),
+        type = "error",
+        duration = 10
+      )
+      return()
+    }
+
     thresh_list <- list()
     has_error <- FALSE
 
@@ -170,15 +215,73 @@ register_cna_threshold_server <- function(input, output, session, state, context
       thresh_list[[i]] <- list(m_x = m_x, m_y = m_y, nm_x = nm_x, nm_y = nm_y, y_max = y_max)
     }
 
-    if (has_error) return()
+    if (has_error) {
+      try(
+        persist_threshold_state(
+          s_name,
+          "failed",
+          reason = paste0(
+            "At least one subclone had malignant thresholds below its ",
+            "non-malignant thresholds."
+          )
+        ),
+        silent = TRUE
+      )
+      record_state_event(
+        rv,
+        stage = "cna",
+        event_type = "cna_thresholds_saved",
+        outcome = "failed",
+        sample = s_name,
+        reason = paste0(
+          "At least one subclone had malignant thresholds below its ",
+          "non-malignant thresholds."
+        )
+      )
+      return()
+    }
 
     id <- showNotification("Saving thresholds and plots to disk...", duration = NULL, type = "message")
     on.exit(removeNotification(id), add = TRUE)
 
     # --- 1. Save Config ---
+    previous_thresholds <- rv$live_selected_config$cna_thresholds[[s_name]]
+    thresholds_changed <- !identical(previous_thresholds, thresh_list)
     rv$live_selected_config$cna_thresholds[[s_name]] <- thresh_list
     rv$config$selected <- rv$live_selected_config
     yaml::write_yaml(rv$live_selected_config, rv$selected_config_path)
+
+    state_result <- tryCatch(
+      persist_threshold_state(
+        s_name,
+        "completed",
+        details = list(
+          subclone_count = n_subclones,
+          thresholds = thresh_list
+        ),
+        invalidate_downstream = thresholds_changed,
+        invalidation_reason = if (thresholds_changed) {
+          "The CNA assignment thresholds changed."
+        } else NULL
+      ),
+      error = identity
+    )
+    if (inherits(state_result, "error")) {
+      record_state_event(
+        rv,
+        stage = "state",
+        event_type = "cna_threshold_state",
+        outcome = "failed",
+        sample = s_name,
+        reason = conditionMessage(state_result)
+      )
+      showNotification(
+        paste("Thresholds were saved, but workflow state failed:", conditionMessage(state_result)),
+        type = "error",
+        duration = 10
+      )
+      return()
+    }
 
     # --- 2. Save Plots ---
     cna_plots_dir_path <- file.path(rv$results_dir_path, s_name, '3_cna_plots')
@@ -186,7 +289,7 @@ register_cna_threshold_server <- function(input, output, session, state, context
 
     for (i in seq_len(n_subclones)) {
       sig_cor_file <- paste0('cna_sig_cor_', s_name, '_subclone_', i, '.qs2')
-      if (cache_check_exists(sig_cor_file, rv$dataset_dir_path)) {
+      if (cache_check_valid(sig_cor_file, rv$dataset_dir_path)) {
         cna_sig_cor <- cache_load_data(sig_cor_file, rv$dataset_dir_path)
 
         malig_thresh <- list()
@@ -219,6 +322,18 @@ register_cna_threshold_server <- function(input, output, session, state, context
 
       }
     }
+
+    record_state_event(
+      rv,
+      stage = "cna",
+      event_type = "cna_thresholds_saved",
+      outcome = "saved",
+      sample = s_name,
+      parameters = list(
+        subclone_count = n_subclones,
+        thresholds = thresh_list
+      )
+    )
 
     showNotification("All thresholds and plots saved successfully!", type = "message")
 

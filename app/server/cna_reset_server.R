@@ -47,8 +47,10 @@ register_cna_reset_server <- function(input, output, session, state, context) {
     files_to_delete <- c(files_to_delete, sig_cor_files)
 
     existing <- files_to_delete[file.exists(files_to_delete)]
-    ok <- file.remove(existing)
-    if (!all(ok)) {
+    ok <- if (length(existing) > 0L) {
+      length(cache_invalidate_artifacts(basename(existing), rv$dataset_dir_path)) == length(existing)
+    } else TRUE
+    if (!ok) {
       warning('Could not delete: ', paste(existing[!ok], collapse = ', '),
               ' — file may be locked. Close any programs/previews touching the cache folder and retry.')
     }
@@ -61,7 +63,7 @@ register_cna_reset_server <- function(input, output, session, state, context) {
 
     # 4. Revert Cell Assignments (if Step 5 was saved previously)
     cells_file <- paste0('cells_filt_clust_res_', rv$live_selected_config$resolutions[[s_name]], '_', s_name, '.qs2')
-    if (cache_check_exists(cells_file, rv$dataset_dir_path)) {
+    if (cache_check_valid(cells_file, rv$dataset_dir_path)) {
       cells_filt <- cache_load_data(cells_file, rv$dataset_dir_path)
 
       # If cell_type_pre_cna exists, restore it so we don't lose manual annotations
@@ -82,6 +84,55 @@ register_cna_reset_server <- function(input, output, session, state, context) {
         data.table::fwrite(cells_raw, file = cells_raw_path)
       }
     }
+
+    state_result <- tryCatch({
+      reset_state <- reset_pipeline_steps(
+        rv$pipeline_state,
+        steps = c(
+          "cna_compute",
+          "cna_cluster_selection",
+          "cna_signal_correlation",
+          "cna_thresholds",
+          "cna_assignment"
+        ),
+        sample = s_name
+      )
+      save_pipeline_state_at_path(reset_state, rv$pipeline_state_path)
+    }, error = identity)
+    if (inherits(state_result, "error")) {
+      record_state_event(
+        rv,
+        stage = "state",
+        event_type = "cna_reset_state",
+        outcome = "failed",
+        sample = s_name,
+        reason = conditionMessage(state_result)
+      )
+      showNotification(
+        paste("CNA files were reset, but workflow state failed:", conditionMessage(state_result)),
+        type = "error",
+        duration = 10
+      )
+      return()
+    }
+    rv$pipeline_state <- state_result
+
+    record_state_event(
+      rv,
+      stage = "cache",
+      event_type = "cna_cache",
+      outcome = "invalidated",
+      sample = s_name,
+      parameters = list(file_count = length(existing)),
+      reason = "The user reset CNA analysis for this sample."
+    )
+    record_state_event(
+      rv,
+      stage = "cna",
+      event_type = "cna_reset",
+      outcome = "completed",
+      sample = s_name
+    )
 
     # 5. Refresh UI
     showNotification("Sample CNA reset successfully.", type = "default")

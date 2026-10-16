@@ -9,6 +9,182 @@
 
 library(docstring)
 
+
+# Cache dependency builders ---------------------------------------------------
+
+.cache_config_values <- function(config, parameter_names) {
+  params <- config$params
+  if (is.null(params) || !all(parameter_names %in% names(params))) return(NULL)
+  params[parameter_names]
+}
+
+
+filter_cache_dependencies <- function(paths_list, sample_idx, config) {
+  parameters <- .cache_config_values(
+    config,
+    c("min_genes", "target_sum", "log2_expr_threshold")
+  )
+  if (is.null(parameters)) return(NULL)
+  cell_input <- data.table::fread(
+    paths_list$cell_file_paths[[sample_idx]],
+    showProgress = FALSE
+  )
+  cell_input <- as.data.frame(cell_input[, intersect(
+    c("cell_name", "sample", "complexity"),
+    names(cell_input)
+  ), with = FALSE])
+  cache_dependency_spec(
+    files = c(
+      expression = paths_list$expmat_file_paths[[sample_idx]],
+      genes = paths_list$genes_file_paths[[sample_idx]]
+    ),
+    values = list(
+      cells_input = cell_input,
+      filter_parameters = parameters,
+      implementation = "filter-v1"
+    )
+  )
+}
+
+
+clustering_cache_dependencies <- function(paths_list, sample_idx, config, resolution) {
+  parameters <- .cache_config_values(
+    config,
+    c(
+      "min_genes", "target_sum", "log2_expr_threshold", "pca_nv",
+      "seed", "umap"
+    )
+  )
+  if (is.null(parameters)) return(NULL)
+  cell_input <- data.table::fread(
+    paths_list$cell_file_paths[[sample_idx]],
+    showProgress = FALSE
+  )
+  cell_input <- as.data.frame(cell_input[, intersect(
+    c("cell_name", "sample", "complexity"),
+    names(cell_input)
+  ), with = FALSE])
+  cache_dependency_spec(
+    files = c(
+      expression = paths_list$expmat_file_paths[[sample_idx]],
+      genes = paths_list$genes_file_paths[[sample_idx]]
+    ),
+    values = list(
+      cells_input = cell_input,
+      clustering_parameters = parameters,
+      resolution = as.numeric(resolution),
+      implementation = "pca-umap-louvain-v1"
+    )
+  )
+}
+
+
+.cache_artifacts_if_registered <- function(filenames, dataset_dir_path) {
+  manifest <- load_cache_manifest(dataset_dir_path)
+  filenames[filenames %in% names(manifest$artifacts)]
+}
+
+
+cna_matrix_cache_dependencies <- function(
+  sample_name,
+  dataset_dir_path,
+  gene_positions,
+  ref_cells,
+  resolution = NULL
+) {
+  upstream <- c(
+    paste0("expmat_filt_", sample_name, ".qs2"),
+    if (!is.null(resolution)) {
+      paste0("cells_filt_clust_res_", resolution, "_", sample_name, ".qs2")
+    } else character()
+  )
+  upstream <- .cache_artifacts_if_registered(upstream, dataset_dir_path)
+  ref_identity <- as.data.frame(ref_cells)[, intersect(
+    c("sample", "cell_name", "cell_type"),
+    names(ref_cells)
+  ), drop = FALSE]
+  if ("cell_name" %in% names(ref_identity)) {
+    ref_identity <- ref_identity[order(ref_identity$cell_name), , drop = FALSE]
+  }
+  cache_dependency_spec(
+    values = list(
+      gene_positions = gene_positions,
+      reference_cells = ref_identity,
+      implementation = "cna-matrix-v1"
+    ),
+    artifacts = upstream,
+    dataset_dir_path = dataset_dir_path
+  )
+}
+
+
+cna_hclust_cache_dependencies <- function(sample_name, dataset_dir_path, selected_config) {
+  cells_filename <- paste0(
+    "cells_filt_clust_res_", selected_config$resolutions[[sample_name]],
+    "_", sample_name, ".qs2"
+  )
+  cells_input <- tryCatch(
+    cache_load_data(cells_filename, dataset_dir_path, recover = FALSE),
+    error = function(error) NULL
+  )
+  if (!is.null(cells_input)) {
+    cells_input <- as.data.frame(cells_input)
+    annotation_column <- if ("cell_type_pre_cna" %in% names(cells_input)) {
+      "cell_type_pre_cna"
+    } else "cell_type"
+    cells_input <- cells_input[, intersect(
+      c("cell_name", "sample", annotation_column),
+      names(cells_input)
+    ), drop = FALSE]
+    names(cells_input)[names(cells_input) == annotation_column] <- "manual_cell_type"
+    if ("cell_name" %in% names(cells_input)) {
+      cells_input <- cells_input[order(cells_input$cell_name), , drop = FALSE]
+    }
+  }
+  upstream <- .cache_artifacts_if_registered(
+    paste0("cna_matrix_", sample_name, ".qs2"),
+    dataset_dir_path
+  )
+  cache_dependency_spec(
+    values = list(
+      manually_annotated_cells = cells_input,
+      potentially_malignant_cell_types = sort(as.character(
+        selected_config$cna_pot_mal_cells[[sample_name]]
+      )),
+      implementation = "ward-d2-v1"
+    ),
+    artifacts = upstream,
+    dataset_dir_path = dataset_dir_path
+  )
+}
+
+
+cna_signal_cache_dependencies <- function(
+  sample_name,
+  subclone_i,
+  ref_cells,
+  selected_config,
+  dataset_dir_path
+) {
+  upstream <- .cache_artifacts_if_registered(
+    c(
+      paste0("cna_matrix_", sample_name, ".qs2"),
+      paste0("hclust_", sample_name, ".qs2")
+    ),
+    dataset_dir_path
+  )
+  ref_names <- sort(as.character(ref_cells$cell_name))
+  cache_dependency_spec(
+    values = list(
+      cluster_selection = selected_config$cna_ward_ref_cluster[[sample_name]][[subclone_i]],
+      reference_cells = ref_names,
+      implementation = "cna-signal-correlation-v1"
+    ),
+    artifacts = upstream,
+    dataset_dir_path = dataset_dir_path
+  )
+}
+
 # --------------------------------------------------------------------------------------------------
 # 2. Sample loading, filtering & clustering
 # --------------------------------------------------------------------------------------------------
@@ -119,7 +295,13 @@ pca_umap_louvain <- function(expmat_filt, cells_filt, dataset_config, selected_c
 
 
 
-cluster_all_samples <- function(paths_list, config, results_dir_path, dataset_dir_path) {
+cluster_all_samples <- function(
+  paths_list,
+  config,
+  results_dir_path,
+  dataset_dir_path,
+  state_callback = NULL
+) {
   #' Batch Process and Cluster Multiple Single-Cell Samples
   #'
   #' A top-level orchestration function that iterates over a list of sample paths. 
@@ -158,51 +340,83 @@ cluster_all_samples <- function(paths_list, config, results_dir_path, dataset_di
     cells <- load_cells(cell_file_paths[i])
     sample_name <- unique(cells$sample)
     message('Working on sample: ', sample_name)
-    
-    results_list <- load_filter_cells_expmat(cell_file_paths[i], expmat_file_paths[i], 
-                                             genes_file_paths[i], config)
-    cells_filt <- results_list$cells_filt
-    expmat_filt <- results_list$expmat_filt
-    rm(results_list)
-    gc()
-    
-    # Set sample result dir
-    result_sample_dir_path <- file.path(results_dir_path, sample_name)
-    dir.create(result_sample_dir_path, showWarnings = FALSE)
-    
-    message('PCA + UMAP')
-    # Clustering
-    exp_pca <- run_expmat_pca(expmat_filt, config$params$pca_nv)
-    exp_umap <- run_expmat_umap(exp_pca, ncol(expmat_filt), config$params$umap$spread, 
-                                config$params$umap$min_dist, config$params$seed)
-    # Graph based clustering
-    # Try out several resolutions and save plots
-    clust_plots_sample_dir_path <- file.path(result_sample_dir_path, '1_cluster_plots')
-    dir.create(clust_plots_sample_dir_path, showWarnings = FALSE)
-    message('Clustering')
-    for (resolution in config$params$resolutions) {
-      cells_filt <- louvain_clustering(exp_pca, exp_umap, cells_filt, resolution, 
-                                       config$params$seed)
-      # Plotting
-      plot_title <- paste0('Cluster of sample: ', sample_name, '; res=', resolution)
-      clust_plot <- plot_clusters(cells_filt, plot_title, x_col = umap1, y_col = umap2, 
-                                  cluster_col = clust)
-      # Save plot
-      clust_plot_title <- paste0('clusters_plot_', sample_name, '_res_', resolution, '.png')
-      clust_plot_path <- file.path(clust_plots_sample_dir_path, clust_plot_title)
-      ggplot2::ggsave(filename = clust_plot_path, plot = clust_plot)
-      
-      # Caching processed data for later analysis
-      data_file_name <- paste0('cells_filt_clust_res_', resolution, '_', sample_name, '.qs2')
-      message('Caching: ', data_file_name)
-      cache_save_data(cells_filt, data_file_name, dataset_dir_path)
+
+    if (is.function(state_callback)) {
+      state_callback(sample_name, "in_progress")
     }
-    # Caching processed data for later analysis
-    data_file_name <- paste0('expmat_filt_', sample_name, '.qs2')
-    message('Caching: ', data_file_name)
-    cache_save_data(expmat_filt, data_file_name, dataset_dir_path)
-    
-    message('Finished ', sample_name)
+    tryCatch({
+      results_list <- load_filter_cells_expmat(cell_file_paths[i], expmat_file_paths[i],
+                                               genes_file_paths[i], config)
+      cells_filt <- results_list$cells_filt
+      expmat_filt <- results_list$expmat_filt
+      rm(results_list)
+      gc()
+
+      # Set sample result dir
+      result_sample_dir_path <- file.path(results_dir_path, sample_name)
+      dir.create(result_sample_dir_path, showWarnings = FALSE)
+
+      message('PCA + UMAP')
+      # Clustering
+      exp_pca <- run_expmat_pca(expmat_filt, config$params$pca_nv)
+      exp_umap <- run_expmat_umap(exp_pca, ncol(expmat_filt), config$params$umap$spread,
+                                  config$params$umap$min_dist, config$params$seed)
+
+      # Persist the filtered matrix before the resolution-specific artifacts.
+      # Each artifact is registered only after serialization and validation.
+      expmat_file_name <- paste0('expmat_filt_', sample_name, '.qs2')
+      message('Caching: ', expmat_file_name)
+      cache_save_data(
+        expmat_filt,
+        expmat_file_name,
+        dataset_dir_path,
+        dependencies = filter_cache_dependencies(paths_list, i, config),
+        producer = "cluster_all_samples/filter"
+      )
+
+      # Graph based clustering
+      # Try out several resolutions and save plots
+      clust_plots_sample_dir_path <- file.path(result_sample_dir_path, '1_cluster_plots')
+      dir.create(clust_plots_sample_dir_path, showWarnings = FALSE)
+      message('Clustering')
+      for (resolution in config$params$resolutions) {
+        cells_filt <- louvain_clustering(exp_pca, exp_umap, cells_filt, resolution,
+                                         config$params$seed)
+        # Plotting
+        plot_title <- paste0('Cluster of sample: ', sample_name, '; res=', resolution)
+        clust_plot <- plot_clusters(cells_filt, plot_title, x_col = umap1, y_col = umap2,
+                                    cluster_col = clust)
+        # Save plot
+        clust_plot_title <- paste0('clusters_plot_', sample_name, '_res_', resolution, '.png')
+        clust_plot_path <- file.path(clust_plots_sample_dir_path, clust_plot_title)
+        ggplot2::ggsave(filename = clust_plot_path, plot = clust_plot)
+
+        # Caching processed data for later analysis
+        data_file_name <- paste0('cells_filt_clust_res_', resolution, '_', sample_name, '.qs2')
+        message('Caching: ', data_file_name)
+        cache_save_data(
+          cells_filt,
+          data_file_name,
+          dataset_dir_path,
+          dependencies = clustering_cache_dependencies(paths_list, i, config, resolution),
+          producer = "cluster_all_samples/clustering"
+        )
+      }
+
+      if (is.function(state_callback)) {
+        state_callback(
+          sample_name,
+          "completed",
+          details = list(resolutions = config$params$resolutions)
+        )
+      }
+      message('Finished ', sample_name)
+    }, error = function(error) {
+      if (is.function(state_callback)) {
+        state_callback(sample_name, "failed", reason = conditionMessage(error))
+      }
+      stop(error)
+    })
   }
 }
 
@@ -238,12 +452,27 @@ single_de_analysis <- function(sample_idx, paths_list, dataset_config, selected_
   cells_filt_file_name <- paste0('cells_filt_clust_res_', selected_config$resolutions[[sample_name]], 
                                  '_', sample_name, '.qs2')
   expmat_filt_file_name <- paste0('expmat_filt_', sample_name, '.qs2')
+  filter_dependencies <- filter_cache_dependencies(paths_list, sample_idx, dataset_config)
+  cluster_dependencies <- clustering_cache_dependencies(
+    paths_list,
+    sample_idx,
+    dataset_config,
+    selected_config$resolutions[[sample_name]]
+  )
   
-  if (cache_check_exists(expmat_filt_file_name, dataset_dir_path) & 
-      cache_check_exists(cells_filt_file_name, dataset_dir_path)) {
+  if (cache_check_valid(expmat_filt_file_name, dataset_dir_path, filter_dependencies) &
+      cache_check_valid(cells_filt_file_name, dataset_dir_path, cluster_dependencies)) {
     message('Loading cached files.')
-    cells_filt <- cache_load_data(cells_filt_file_name, dataset_dir_path)
-    expmat_filt <- cache_load_data(expmat_filt_file_name, dataset_dir_path)
+    cells_filt <- cache_load_data(
+      cells_filt_file_name,
+      dataset_dir_path,
+      dependencies = cluster_dependencies
+    )
+    expmat_filt <- cache_load_data(
+      expmat_filt_file_name,
+      dataset_dir_path,
+      dependencies = filter_dependencies
+    )
   } else {
     message('No cached files.')
     
@@ -327,8 +556,15 @@ single_de_analysis <- function(sample_idx, paths_list, dataset_config, selected_
 }
 
 
-de_analysis <- function(paths_list, dataset_config, selected_config, complete_markers,
-                        results_dir_path, dataset_dir_path) {
+de_analysis <- function(
+  paths_list,
+  dataset_config,
+  selected_config,
+  complete_markers,
+  results_dir_path,
+  dataset_dir_path,
+  state_callback = NULL
+) {
   #' Perform Differential Expression Analysis and Marker Scoring
   #'
   #' A high-level workflow function that iterates over multiple single-cell samples to 
@@ -357,15 +593,31 @@ de_analysis <- function(paths_list, dataset_config, selected_config, complete_ma
   
   # Iterate over all samples and route them to the single analysis workflow
   for (i in seq_along(sample_dir_paths)) {
-    single_de_analysis(
-      sample_idx = i,
-      paths_list = paths_list,
-      dataset_config = dataset_config,
-      selected_config = selected_config,
-      complete_markers = complete_markers,
-      results_dir_path = results_dir_path,
-      dataset_dir_path = dataset_dir_path
-    )
+    sample_name <- basename(sample_dir_paths[[i]])
+    if (is.function(state_callback)) state_callback(sample_name, "in_progress")
+    tryCatch({
+      single_de_analysis(
+        sample_idx = i,
+        paths_list = paths_list,
+        dataset_config = dataset_config,
+        selected_config = selected_config,
+        complete_markers = complete_markers,
+        results_dir_path = results_dir_path,
+        dataset_dir_path = dataset_dir_path
+      )
+      if (is.function(state_callback)) {
+        state_callback(
+          sample_name,
+          "completed",
+          details = list(resolution = selected_config$resolutions[[sample_name]])
+        )
+      }
+    }, error = function(error) {
+      if (is.function(state_callback)) {
+        state_callback(sample_name, "failed", reason = conditionMessage(error))
+      }
+      stop(error)
+    })
   }
 }
 
@@ -413,11 +665,26 @@ cell_type_annotation_setup <- function(i, paths_list, results_dir_path, config, 
   cells_filt_file_name <- paste0('cells_filt_clust_res_', config$selected$resolutions[[sample_name]], 
                                  '_', sample_name, '.qs2')
   expmat_filt_file_name <- paste0('expmat_filt_', sample_name, '.qs2')
-  if (cache_check_exists(expmat_filt_file_name, dataset_dir_path) 
-      & cache_check_exists(cells_filt_file_name, dataset_dir_path)) {
+  filter_dependencies <- filter_cache_dependencies(paths_list, i, dataset_config)
+  cluster_dependencies <- clustering_cache_dependencies(
+    paths_list,
+    i,
+    dataset_config,
+    selected_config$resolutions[[sample_name]]
+  )
+  if (cache_check_valid(expmat_filt_file_name, dataset_dir_path, filter_dependencies)
+      & cache_check_valid(cells_filt_file_name, dataset_dir_path, cluster_dependencies)) {
     message('Loading cached files.')
-    cells_filt <- cache_load_data(cells_filt_file_name, dataset_dir_path)
-    expmat_filt <- cache_load_data(expmat_filt_file_name, dataset_dir_path)
+    cells_filt <- cache_load_data(
+      cells_filt_file_name,
+      dataset_dir_path,
+      dependencies = cluster_dependencies
+    )
+    expmat_filt <- cache_load_data(
+      expmat_filt_file_name,
+      dataset_dir_path,
+      dependencies = filter_dependencies
+    )
   } else {
     message('No cached files.')
     
@@ -489,7 +756,18 @@ compute_cna_and_cache <- function(expmat, gene_positions, ref_cells, sample_name
   )[order(chr, start_pos)]
   
   cna_mat_file_name <- paste0('cna_matrix_', sample_name, '.qs2')
-  cache_save_data(cna_mat, cna_mat_file_name, dataset_dir_path)
+  cache_save_data(
+    cna_mat,
+    cna_mat_file_name,
+    dataset_dir_path,
+    dependencies = cna_matrix_cache_dependencies(
+      sample_name,
+      dataset_dir_path,
+      gene_positions,
+      ref_cells
+    ),
+    producer = "compute_cna_and_cache"
+  )
 }
 
 
@@ -519,8 +797,17 @@ load_expdt_from_cna_matrix <- function(sample_name, dataset_dir_path) {
 }
 
 
-hclust_cluster_heatmap <- function(hdata, sample_name, ref_cells, chr_n, chr_lab, cells_filt,
-                                   cna_plots_dir_path, dataset_dir_path) {
+hclust_cluster_heatmap <- function(
+  hdata,
+  sample_name,
+  ref_cells,
+  chr_n,
+  chr_lab,
+  cells_filt,
+  cna_plots_dir_path,
+  dataset_dir_path,
+  dependencies = NULL
+) {
   #' Generate and Save Hierarchical Clustering CNA Heatmap
   #'
   #' @description
@@ -549,15 +836,27 @@ hclust_cluster_heatmap <- function(hdata, sample_name, ref_cells, chr_n, chr_lab
   hdata_cast <- data.table::dcast(hdata[, .(gene, cell_name, cna)], 
                                   gene ~ cell_name)[, magrittr::set_rownames(as.matrix(.SD), gene), 
                                                     .SDcols = -'gene']
-  
-  clust_hclust <- hierarchical_clustering_cna(hdata_cast, method = 'ward.D2')
+  hclust_file_name <- paste0('hclust_', sample_name, '.qs2')
+  if (cache_check_valid(hclust_file_name, dataset_dir_path, dependencies)) {
+    clust_hclust <- cache_load_data(
+      hclust_file_name,
+      dataset_dir_path,
+      dependencies = dependencies
+    )
+  } else {
+    clust_hclust <- hierarchical_clustering_cna(hdata_cast, method = 'ward.D2')
+    cache_save_data(
+      clust_hclust,
+      hclust_file_name,
+      dataset_dir_path,
+      dependencies = dependencies,
+      producer = "hclust_cluster_heatmap"
+    )
+  }
   
   # Extract levels safely outside of data.table to prevent NSE scoping crashes
   ordered_cells <- clust_hclust$labels[clust_hclust$order]
   hdata[, cell_num_hclust := as.numeric(factor(cell_name, levels = ordered_cells))]
-  
-  hclust_file_name <- paste0('hclust_', sample_name, '.qs2')
-  cache_save_data(clust_hclust, hclust_file_name, dataset_dir_path)
   
   hdata[, gene := factor(gene, levels = unique(gene))]
   
@@ -640,8 +939,21 @@ cna_clustering_and_heatmaps <- function(ref_cells, sample_name, selected_config,
                                   | cell_type %in% selected_config$cna_pot_mal_cells[[sample_name]]])
   
   message('Run ward clustering')
-  hclust_cluster_heatmap(hdata, sample_name, ref_cells, chr_n, chr_lab, cells_filt,
-                         cna_plots_dir_path, dataset_dir_path)
+  hclust_cluster_heatmap(
+    hdata,
+    sample_name,
+    ref_cells,
+    chr_n,
+    chr_lab,
+    cells_filt,
+    cna_plots_dir_path,
+    dataset_dir_path,
+    dependencies = cna_hclust_cache_dependencies(
+      sample_name,
+      dataset_dir_path,
+      selected_config
+    )
+  )
 }
 
 
@@ -710,7 +1022,19 @@ compute_signal_cor_cna <- function(sample_name, subclone_i, ref_cells, selected_
   data.table::setcolorder(dt, c('sample', 'subclone'))
   
   signal_cor_dt_name <- paste0('cna_sig_cor_', sample_name, '_subclone_', subclone_i, '.qs2')
-  cache_save_data(dt, signal_cor_dt_name, dataset_dir_path)
+  cache_save_data(
+    dt,
+    signal_cor_dt_name,
+    dataset_dir_path,
+    dependencies = cna_signal_cache_dependencies(
+      sample_name,
+      subclone_i,
+      ref_cells,
+      selected_config,
+      dataset_dir_path
+    ),
+    producer = "compute_signal_cor_cna"
+  )
 }
 
 
@@ -783,7 +1107,7 @@ apply_cna_thresholds <- function(sample_name, dataset_dir_path, selected_config,
   
   for (i in seq_along(thresh_list)) {
     sig_cor_file <- paste0('cna_sig_cor_', sample_name, '_subclone_', i, '.qs2')
-    if (cache_check_exists(sig_cor_file, dataset_dir_path)) {
+    if (cache_check_valid(sig_cor_file, dataset_dir_path)) {
       cna_sig_cor <- cache_load_data(sig_cor_file, dataset_dir_path)
       tested_cells <- unique(c(tested_cells, cna_sig_cor$cell_name))
       
@@ -912,7 +1236,7 @@ preview_cna_summary <- function(sample_name, dataset_dir_path, selected_config) 
   
   for (i in seq_along(thresh_list)) {
     sig_cor_file <- paste0('cna_sig_cor_', sample_name, '_subclone_', i, '.qs2')
-    if (cache_check_exists(sig_cor_file, dataset_dir_path)) {
+    if (cache_check_valid(sig_cor_file, dataset_dir_path)) {
       cna_sig_cor <- cache_load_data(sig_cor_file, dataset_dir_path)
       
       # Format threshold for plotting function
@@ -946,8 +1270,14 @@ preview_cna_summary <- function(sample_name, dataset_dir_path, selected_config) 
   ))
 }
 
-batch_compute_cna_and_heatmaps <- function(paths_list, dataset_dir_path, results_dir_path, 
-                                           selected_config, gene_positions) {
+batch_compute_cna_and_heatmaps <- function(
+  paths_list,
+  dataset_dir_path,
+  results_dir_path,
+  selected_config,
+  gene_positions,
+  state_callback = NULL
+) {
   #' Batch Compute CNA and Heatmaps for All Valid Samples
   #'
   #' @description Iterates over all samples in the dataset. Checks if both 
@@ -977,6 +1307,13 @@ batch_compute_cna_and_heatmaps <- function(paths_list, dataset_dir_path, results
     # 1. Check if required configurations are present
     if (is.null(ref_cfg) || length(ref_cfg) == 0 || is.null(mal_cfg) || length(mal_cfg) == 0) {
       skipped_samples <- c(skipped_samples, s_name)
+      if (is.function(state_callback)) {
+        state_callback(
+          s_name,
+          "incomplete",
+          reason = "Reference or potentially malignant cell types are not configured."
+        )
+      }
       next
     }
     
@@ -986,31 +1323,64 @@ batch_compute_cna_and_heatmaps <- function(paths_list, dataset_dir_path, results
     cells_file <- paste0('cells_filt_clust_res_', selected_config$resolutions[[s_name]], '_', s_name, '.qs2')
     expmat_file <- paste0('expmat_filt_', s_name, '.qs2')
     
-    if (!cache_check_exists(cells_file, dataset_dir_path) || !cache_check_exists(expmat_file, dataset_dir_path)) {
+    if (!cache_check_valid(cells_file, dataset_dir_path) || !cache_check_valid(expmat_file, dataset_dir_path)) {
       message("Skipping ", s_name, ": missing cached filtering/clustering files.")
       skipped_samples <- c(skipped_samples, paste0(s_name, " (Missing Cache)"))
+      if (is.function(state_callback)) {
+        state_callback(
+          s_name,
+          "incomplete",
+          reason = "Required filtering or clustering caches are missing."
+        )
+      }
       next
     }
-    
-    cells_filt <- cache_load_data(cells_file, dataset_dir_path)
-    expmat_filt <- cache_load_data(expmat_file, dataset_dir_path)
-    
-    cells_filt[is.na(cell_type), cell_type := 'Unassigned']
-    ref_cells <- cells_filt[cell_type %in% ref_cfg]
-    
-    # 3. Compute CNA if missing
-    cna_mat_file_name <- paste0('cna_matrix_', s_name, '.qs2')
-    if (!cache_check_exists(cna_mat_file_name, dataset_dir_path)) {
-      compute_cna_and_cache(expmat_filt, gene_positions, ref_cells, s_name, dataset_dir_path)
-    }
-    
-    # 4. Generate Heatmaps
-    cna_plots_dir_path <- file.path(results_dir_path, s_name, '3_cna_plots')
-    dir.create(cna_plots_dir_path, showWarnings = FALSE, recursive = TRUE)
-    
-    cna_clustering_and_heatmaps(ref_cells, s_name, selected_config, cna_plots_dir_path, dataset_dir_path)
-    
-    processed_samples <- c(processed_samples, s_name)
+
+    if (is.function(state_callback)) state_callback(s_name, "in_progress")
+    tryCatch({
+      cells_filt <- cache_load_data(cells_file, dataset_dir_path)
+      expmat_filt <- cache_load_data(expmat_file, dataset_dir_path)
+
+      cells_filt[is.na(cell_type), cell_type := 'Unassigned']
+      ref_cells <- cells_filt[cell_type %in% ref_cfg]
+
+      # 3. Compute CNA if missing
+      cna_mat_file_name <- paste0('cna_matrix_', s_name, '.qs2')
+      cna_dependencies <- cna_matrix_cache_dependencies(
+        s_name,
+        dataset_dir_path,
+        gene_positions,
+        ref_cells
+      )
+      if (!cache_check_valid(cna_mat_file_name, dataset_dir_path, cna_dependencies)) {
+        cache_invalidate_sample(
+          s_name,
+          dataset_dir_path,
+          artifact_types = c("cna_matrix", "cna_hclust", "cna_signal_correlation")
+        )
+        compute_cna_and_cache(expmat_filt, gene_positions, ref_cells, s_name, dataset_dir_path)
+      }
+
+      # 4. Generate Heatmaps
+      cna_plots_dir_path <- file.path(results_dir_path, s_name, '3_cna_plots')
+      dir.create(cna_plots_dir_path, showWarnings = FALSE, recursive = TRUE)
+
+      cna_clustering_and_heatmaps(ref_cells, s_name, selected_config, cna_plots_dir_path, dataset_dir_path)
+
+      processed_samples <- c(processed_samples, s_name)
+      if (is.function(state_callback)) {
+        state_callback(
+          s_name,
+          "completed",
+          details = list(reference_cell_count = nrow(ref_cells), batch = TRUE)
+        )
+      }
+    }, error = function(error) {
+      if (is.function(state_callback)) {
+        state_callback(s_name, "failed", reason = conditionMessage(error))
+      }
+      stop(error)
+    })
   }
   
   return(list(processed = processed_samples, skipped = skipped_samples))

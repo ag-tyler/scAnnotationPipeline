@@ -28,6 +28,14 @@ register_dataset_server <- function(input, output, session, state, context) {
     selected_config_path <- file.path(dataset_dir_path, config$config_files$selected)
 
     if (!file.exists(dataset_config_path)) {
+      record_pipeline_event(
+        dataset_dir_path = dataset_dir_path,
+        dataset = dataset_name,
+        stage = "dataset",
+        event_type = "dataset_load",
+        outcome = "failed",
+        reason = "dataset_config.yaml is missing."
+      )
       showNotification("Configuration file missing for this dataset. Aborting load.", type = "error", duration = 8)
       return()
     }
@@ -39,6 +47,14 @@ register_dataset_server <- function(input, output, session, state, context) {
       error = identity
     )
     if (inherits(samples_config, "error")) {
+      record_pipeline_event(
+        dataset_dir_path = dataset_dir_path,
+        dataset = dataset_name,
+        stage = "dataset",
+        event_type = "dataset_load",
+        outcome = "failed",
+        reason = conditionMessage(samples_config)
+      )
       showNotification(
         paste("Sample configuration could not be loaded:", conditionMessage(samples_config)),
         type = "error",
@@ -58,6 +74,14 @@ register_dataset_server <- function(input, output, session, state, context) {
     processed_dir_path <- file.path(dataset_dir_path, config$dataset_paths$processed_dir)
 
     if (!dir.exists(processed_dir_path)) {
+      record_pipeline_event(
+        dataset_dir_path = dataset_dir_path,
+        dataset = dataset_name,
+        stage = "dataset",
+        event_type = "dataset_load",
+        outcome = "failed",
+        reason = "The processed_data directory is missing; run standardization first."
+      )
       showNotification(
         paste0("Processed data folder not found: ", processed_dir_path,
                ". Run the standardization pipeline (standardize.R) for this dataset first."),
@@ -69,6 +93,14 @@ register_dataset_server <- function(input, output, session, state, context) {
     sample_dir_paths <- list.dirs(processed_dir_path, recursive = FALSE)
 
     if (length(sample_dir_paths) == 0) {
+      record_pipeline_event(
+        dataset_dir_path = dataset_dir_path,
+        dataset = dataset_name,
+        stage = "dataset",
+        event_type = "dataset_load",
+        outcome = "failed",
+        reason = "No sample directories exist under processed_data; run standardization first."
+      )
       showNotification(
         "No sample folders found in processed_data/. Run standardize.R before loading this dataset.",
         type = "error", duration = 10
@@ -92,6 +124,62 @@ register_dataset_server <- function(input, output, session, state, context) {
       expmat_file_paths = expmat_file_paths,
       genes_file_paths = genes_file_paths
     )
+
+    # Load or conservatively initialize persistent workflow state. Existing
+    # datasets without a state file are migrated once from decisions/artifacts.
+    state_filename <- .pipeline_value_or(
+      config$config_files$state,
+      "pipeline_state.yaml"
+    )
+    pipeline_state <- tryCatch(
+      load_or_initialize_pipeline_state(
+        dataset_dir_path = dataset_dir_path,
+        dataset_id = dataset_name,
+        sample_names = basename(sample_dir_paths),
+        dataset_config = dataset_config,
+        selected_config = selected_config,
+        config = config,
+        state_filename = state_filename,
+        infer_legacy = TRUE
+      ),
+      error = identity
+    )
+    if (inherits(pipeline_state, "error")) {
+      record_pipeline_event(
+        dataset_dir_path = dataset_dir_path,
+        dataset = dataset_name,
+        stage = "state",
+        event_type = "pipeline_state_load",
+        outcome = "failed",
+        reason = conditionMessage(pipeline_state)
+      )
+      showNotification(
+        paste("Pipeline state could not be loaded:", conditionMessage(pipeline_state)),
+        type = "error",
+        duration = 10
+      )
+      return()
+    }
+    state_initialized <- isTRUE(attr(pipeline_state, "initialized"))
+    state_sample_changes <- attr(pipeline_state, "sample_changes")
+    state_dependency_changes <- attr(pipeline_state, "dependency_changes")
+    pipeline_state <- reconcile_pipeline_state_cache(
+      pipeline_state,
+      paths_list = paths_list,
+      dataset_config = dataset_config,
+      selected_config = selected_config,
+      dataset_dir_path = dataset_dir_path,
+      gene_positions = context$resources$gene_positions
+    )
+    state_cache_changes <- attr(pipeline_state, "cache_changes")
+    attr(pipeline_state, "cache_changes") <- NULL
+    if (length(state_cache_changes) > 0L) {
+      pipeline_state <- save_pipeline_state_atomic(
+        pipeline_state,
+        dataset_dir_path,
+        state_filename = state_filename
+      )
+    }
 
     # 4. Generate Dataset-Specific Marker Filters
     complete_markers <- marker_genes[, {
@@ -164,6 +252,8 @@ register_dataset_server <- function(input, output, session, state, context) {
     rv$live_selected_config <- selected_config
     rv$results_dir_path <- results_dir_path
     rv$selected_config_path <- selected_config_path
+    rv$pipeline_state <- pipeline_state
+    rv$pipeline_state_path <- file.path(dataset_dir_path, state_filename)
     rv$complete_markers <- complete_markers
     rv$dataset_dir_path <- dataset_dir_path
 
@@ -171,6 +261,36 @@ register_dataset_server <- function(input, output, session, state, context) {
     local_config <- config
     local_config$selected <- selected_config
     rv$config <- local_config
+
+    record_state_event(
+      rv,
+      stage = "dataset",
+      event_type = "dataset_load",
+      outcome = "completed",
+      parameters = list(sample_count = length(sample_dir_paths))
+    )
+    record_state_event(
+      rv,
+      stage = "state",
+      event_type = "pipeline_state_load",
+      outcome = "completed",
+      parameters = list(
+        initialized = state_initialized,
+        revision = pipeline_state$revision,
+        samples_added = if (is.null(state_sample_changes$added)) {
+          character()
+        } else state_sample_changes$added,
+        samples_removed = if (is.null(state_sample_changes$removed)) {
+          character()
+        } else state_sample_changes$removed,
+        dependencies_reconciled = if (is.null(state_dependency_changes)) {
+          character()
+        } else state_dependency_changes,
+        caches_reconciled = if (is.null(state_cache_changes)) {
+          character()
+        } else state_cache_changes
+      )
+    )
 
     # 6. Update UI Dropdowns
     s_choices <- setNames(
@@ -284,7 +404,7 @@ register_dataset_server <- function(input, output, session, state, context) {
 
     # 2. Create Directory Structure
     dir.create(new_ds_path, recursive = TRUE, showWarnings = FALSE)
-    subfolders <- c("cache", "data", "processed_data", "results")
+    subfolders <- c("cache", "data", "processed_data", "results", "logs")
     lapply(subfolders, function(f) dir.create(file.path(new_ds_path, f), showWarnings = FALSE))
 
     # 3. Handle dataset_config.yaml
@@ -321,12 +441,51 @@ register_dataset_server <- function(input, output, session, state, context) {
     )
     yaml::write_yaml(selected_config, file.path(new_ds_path, config$config_files$selected))
 
+    # Initialize current workflow state separately from user selections and
+    # append-only event history. Samples are added after samples_config is filled.
+    state_filename <- .pipeline_value_or(
+      config$config_files$state,
+      "pipeline_state.yaml"
+    )
+    initial_state <- tryCatch(
+      save_pipeline_state_atomic(
+        new_pipeline_state(ds_name, character()),
+        dataset_dir_path = new_ds_path,
+        state_filename = state_filename
+      ),
+      error = identity
+    )
+    if (inherits(initial_state, "error")) {
+      record_pipeline_event(
+        dataset_dir_path = new_ds_path,
+        dataset = ds_name,
+        stage = "state",
+        event_type = "pipeline_state_initialized",
+        outcome = "failed",
+        reason = conditionMessage(initial_state)
+      )
+      showNotification(
+        paste("The pipeline state could not be initialized:", conditionMessage(initial_state)),
+        type = "error",
+        duration = 10
+      )
+      return()
+    }
+
     # 6. Copy the sole supported standardization template.
     template_copied <- file.copy(
       from = standardization_template_path,
       to = file.path(new_ds_path, "standardize.R")
     )
     if (!isTRUE(template_copied)) {
+      record_pipeline_event(
+        dataset_dir_path = new_ds_path,
+        dataset = ds_name,
+        stage = "dataset",
+        event_type = "workspace_created",
+        outcome = "failed",
+        reason = "The general standardization template could not be copied."
+      )
       showNotification(
         "The general standardization template could not be copied.",
         type = "error",
@@ -334,6 +493,23 @@ register_dataset_server <- function(input, output, session, state, context) {
       )
       return()
     }
+
+    record_pipeline_event(
+      dataset_dir_path = new_ds_path,
+      dataset = ds_name,
+      stage = "dataset",
+      event_type = "workspace_created",
+      outcome = "completed",
+      parameters = list(template = "general")
+    )
+    record_pipeline_event(
+      dataset_dir_path = new_ds_path,
+      dataset = ds_name,
+      stage = "state",
+      event_type = "pipeline_state_initialized",
+      outcome = "completed",
+      parameters = list(schema_version = PIPELINE_STATE_SCHEMA_VERSION)
+    )
 
     # 7. Update UI and Close
     all_dataset_dirs <- list.dirs(parent_dir, recursive = FALSE)

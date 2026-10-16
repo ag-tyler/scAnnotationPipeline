@@ -3,10 +3,32 @@
 register_cna_summary_server <- function(input, output, session, state, context) {
   rv <- state
 
+  persist_assignment_state <- function(sample_name, details) {
+    rv$pipeline_state <- persist_pipeline_step_update(
+      rv$pipeline_state,
+      rv$pipeline_state_path,
+      step = "cna_assignment",
+      status = "completed",
+      sample = sample_name,
+      details = details
+    )
+    invisible(rv$pipeline_state)
+  }
+
   # --- STEP 5: PREVIEW ASSIGNMENTS & SUMMARY ---
   observeEvent(input$btn_cna_preview_summary, {
     req(input$cna_sample_idx)
     s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
+
+    readiness <- pipeline_step_readiness(rv$pipeline_state, "cna_assignment", s_name)
+    if (!readiness$ready) {
+      showNotification(
+        paste("Cannot preview final assignments:", paste(readiness$reasons, collapse = "; ")),
+        type = "error",
+        duration = 10
+      )
+      return()
+    }
 
     id <- showNotification("Generating previews. Please wait...", duration = NULL, type = "message")
     on.exit(removeNotification(id), add = TRUE)
@@ -69,6 +91,16 @@ register_cna_summary_server <- function(input, output, session, state, context) 
     req(input$cna_sample_idx, rv$cna_preview_res)
     s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
 
+    readiness <- pipeline_step_readiness(rv$pipeline_state, "cna_assignment", s_name)
+    if (!readiness$ready) {
+      showNotification(
+        paste("Cannot save final assignments:", paste(readiness$reasons, collapse = "; ")),
+        type = "error",
+        duration = 10
+      )
+      return()
+    }
+
     id <- showNotification("Saving cell assignments and plots to disk...", duration = NULL, type = "message")
     on.exit(removeNotification(id), add = TRUE)
 
@@ -113,6 +145,47 @@ register_cna_summary_server <- function(input, output, session, state, context) 
       ggplot2::ggsave(file.path(cna_plots_dir_path, paste0('cna_assignments_subclone_', i, '_final_', s_name, '.png')),
                       plot = rv$cna_preview_res$post_scatter_plots[[i]], width = 7, height = 5, bg = "white")
     }
+
+    state_result <- tryCatch(
+      persist_assignment_state(
+        s_name,
+        details = list(
+          cell_count = nrow(cells_to_save),
+          malignant_count = sum(cells_to_save$cell_type == "Malignant", na.rm = TRUE),
+          subclone_count = length(unique(stats::na.omit(cells_to_save$subclone)))
+        )
+      ),
+      error = identity
+    )
+    if (inherits(state_result, "error")) {
+      record_state_event(
+        rv,
+        stage = "state",
+        event_type = "cna_assignment_state",
+        outcome = "failed",
+        sample = s_name,
+        reason = conditionMessage(state_result)
+      )
+      showNotification(
+        paste("Assignments were saved, but workflow state failed:", conditionMessage(state_result)),
+        type = "error",
+        duration = 10
+      )
+      return()
+    }
+
+    record_state_event(
+      rv,
+      stage = "cna",
+      event_type = "cna_assignments_saved",
+      outcome = "completed",
+      sample = s_name,
+      parameters = list(
+        cell_count = nrow(cells_to_save),
+        malignant_count = sum(cells_to_save$cell_type == "Malignant", na.rm = TRUE),
+        subclone_count = length(unique(stats::na.omit(cells_to_save$subclone)))
+      )
+    )
 
     showNotification("CNA Analysis Complete! Results saved successfully.", type = "default")
 

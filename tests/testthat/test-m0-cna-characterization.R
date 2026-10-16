@@ -1,6 +1,6 @@
 test_that("M0 characterization: CNA computation exposes empty reference input", {
   inputs <- make_cna_golden_inputs()
-  empty_ref_cells <- inputs$ref_cells[0]
+  empty_ref_cells <- inputs$ref_cells[0, ]
 
   warning_messages <- character()
   cna <- withCallingHandlers(
