@@ -2,6 +2,7 @@
 
 register_cna_status_server <- function(input, output, session, state, context) {
   rv <- state
+  last_cna_sample <- reactiveVal(NULL)
 
   preflight_value <- function(value) {
     if (is.null(value) || length(value) == 0L || is.na(value)) "—" else value
@@ -106,6 +107,26 @@ register_cna_status_server <- function(input, output, session, state, context) {
     updateSelectInput(session, "cna_sample_idx", choices = s_choices)
   })
 
+  observeEvent(input$cna_sample_idx, {
+    req(rv$paths_list, input$cna_sample_idx)
+    idx <- as.numeric(input$cna_sample_idx)
+    sample_name <- basename(rv$paths_list$sample_dir_paths)[idx]
+    previous_sample <- last_cna_sample()
+    if (identical(previous_sample, sample_name)) return()
+
+    parameters <- list(sample_index = idx)
+    if (!is.null(previous_sample)) parameters$previous_sample <- previous_sample
+    record_state_event(
+      rv,
+      stage = "cna",
+      event_type = "cna_sample_selected",
+      outcome = "selected",
+      sample = sample_name,
+      parameters = parameters
+    )
+    last_cna_sample(sample_name)
+  })
+
   # Basic Navigation between main views
   observeEvent(input$btn_cna_back_menu, { updateNavbarPage(session, "main_nav", selected = "menu_tab") })
   observeEvent(input$btn_cna_go_malig_clust, { nav_select("cna_main_views", "cna_view_select_malignant") })
@@ -139,7 +160,10 @@ register_cna_status_server <- function(input, output, session, state, context) {
 
     shinyjs::disable("btn_cna_save_summary")
     rv$cna_preview_res <- NULL
+    rv$cna_preview_sample <- NULL
+    rv$cna_preview_fingerprint <- NULL
     output$cna_preview_scatter_ui <- renderUI({ NULL })
+    output$cna_preview_umap_pre <- renderPlot({ NULL })
     output$cna_preview_umap <- renderPlot({ NULL })
     output$cna_preview_heatmap <- renderPlot({ NULL })
 
@@ -208,7 +232,7 @@ register_cna_status_server <- function(input, output, session, state, context) {
 
       updateSliderInput(session, "cna_k_clusters", value = saved_k)
       updateSelectizeInput(session, "cna_selected_clusters",
-                           choices = as.character(1:saved_k),
+                           choices = cna_cluster_choices(saved_k),
                            selected = saved_clusters)
 
     } else {

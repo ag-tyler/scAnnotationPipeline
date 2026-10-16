@@ -108,13 +108,13 @@ cna_panel <- function(sample_choices) {
                     step = 1
                   ),
                   hr(),
-                  helpText("Use the dropdown menu below to select one or more clusters that exhibit clear malignant copy number alterations (amplifications/deletions)."),
+                  helpText("Cluster IDs are identical in the heatmap legend, selector, saved configuration, and later threshold views. Select one or more clusters with clear malignant copy-number alterations."),
                   selectizeInput(
                     "cna_selected_clusters",
                     label = "Select Malignant Subclones:",
                     choices = NULL,
                     multiple = TRUE,
-                    options = list(placeholder = "e.g., 2, 4")
+                    options = list(placeholder = "e.g., Cluster 02, Cluster 04")
                   ),
                   hr(),
                   actionButton(
@@ -141,13 +141,13 @@ cna_panel <- function(sample_choices) {
         nav_panel(
           "cna_view_summary",
           h3("CNA Summary & Final Assignment"),
-          p("Click 'Preview' to generate the plots. Use the tabs below to switch between the visualisations. Once satisfied, click 'Finalize & Save'."),
+          p("The preview is generated automatically when this step opens and reused while its inputs remain current. Use Refresh Preview to re-check it, then finalize when satisfied."),
           fluidRow(
             column(
               6,
               actionButton(
                 "btn_cna_preview_summary",
-                "1. Preview Assignments & Plots",
+                "Refresh Preview",
                 icon = icon("eye"),
                 class = "btn-info w-100 mb-3"
               )
@@ -168,16 +168,30 @@ cna_panel <- function(sample_choices) {
             id = "cna_preview_tabs",
             nav_panel(
               "Scatter Plots",
+              value = "cna_preview_scatter",
               br(),
               uiOutput("cna_preview_scatter_ui")
             ),
             nav_panel(
-              "UMAP Projection",
+              "Before / After UMAP",
+              value = "cna_preview_umap_comparison",
               br(),
-              plotOutput("cna_preview_umap", height = "600px")
+              fluidRow(
+                column(
+                  6,
+                  h4("Before CNA", class = "text-center"),
+                  plotOutput("cna_preview_umap_pre", height = "600px")
+                ),
+                column(
+                  6,
+                  h4("Preview after CNA", class = "text-center"),
+                  plotOutput("cna_preview_umap", height = "600px")
+                )
+              )
             ),
             nav_panel(
               "Summary Heatmap",
+              value = "cna_preview_heatmap_tab",
               br(),
               plotOutput("cna_preview_heatmap", height = "700px")
             )

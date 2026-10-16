@@ -27,6 +27,8 @@ create_app_state <- function(context) {
     annotation_pending_navigation = NULL,
 
     # Active CNA preview state.
-    cna_preview_res = NULL
+    cna_preview_res = NULL,
+    cna_preview_sample = NULL,
+    cna_preview_fingerprint = NULL
   )
 }

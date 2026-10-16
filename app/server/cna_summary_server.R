@@ -16,7 +16,7 @@ register_cna_summary_server <- function(input, output, session, state, context) 
   }
 
   # --- STEP 5: PREVIEW ASSIGNMENTS & SUMMARY ---
-  observeEvent(input$btn_cna_preview_summary, {
+  prepare_cna_preview <- function(notify_reuse = FALSE) {
     req(input$cna_sample_idx)
     s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
 
@@ -27,27 +27,79 @@ register_cna_summary_server <- function(input, output, session, state, context) 
         type = "error",
         duration = 10
       )
-      return()
+      return(invisible(FALSE))
     }
 
-    id <- showNotification("Generating previews. Please wait...", duration = NULL, type = "message")
-    on.exit(removeNotification(id), add = TRUE)
-
-    # Store preview results in rv so we can save them later without recomputing
-    rv$cna_preview_res <- preview_cna_summary(
-      sample_name = s_name,
-      dataset_dir_path = rv$dataset_dir_path,
-      selected_config = rv$live_selected_config
+    fingerprint <- tryCatch(
+      cna_preview_fingerprint(s_name, rv$dataset_dir_path, rv$live_selected_config),
+      error = identity
     )
+    if (inherits(fingerprint, "error")) {
+      record_state_event(
+        rv,
+        stage = "cna",
+        event_type = "cna_preview",
+        outcome = "failed",
+        sample = s_name,
+        reason = conditionMessage(fingerprint)
+      )
+      showNotification(
+        paste("Cannot prepare CNA preview:", conditionMessage(fingerprint)),
+        type = "error",
+        duration = 10
+      )
+      return(invisible(FALSE))
+    }
+
+    reusable <- !is.null(rv$cna_preview_res) &&
+      identical(rv$cna_preview_sample, s_name) &&
+      identical(rv$cna_preview_fingerprint, fingerprint)
+
+    if (!reusable) {
+      result <- tryCatch(
+        withProgress(message = paste("CNA preview:", s_name), value = 0, {
+          setProgress(value = 0, detail = "Applying thresholds in memory")
+          preview <- preview_cna_summary(
+            sample_name = s_name,
+            dataset_dir_path = rv$dataset_dir_path,
+            selected_config = rv$live_selected_config
+          )
+          setProgress(value = 1, detail = "Scatter, UMAP, and heatmap previews ready")
+          preview
+        }),
+        error = identity
+      )
+      if (inherits(result, "error")) {
+        record_state_event(
+          rv,
+          stage = "cna",
+          event_type = "cna_preview",
+          outcome = "failed",
+          sample = s_name,
+          reason = conditionMessage(result)
+        )
+        showNotification(
+          paste("CNA preview generation failed:", conditionMessage(result)),
+          type = "error",
+          duration = 10
+        )
+        return(invisible(FALSE))
+      }
+      rv$cna_preview_res <- result
+      rv$cna_preview_sample <- s_name
+      rv$cna_preview_fingerprint <- fingerprint
+    }
 
     # 1. Render Scatter Plots dynamically (Side-by-side: Original vs New)
     output$cna_preview_scatter_ui <- renderUI({
+      ward_refs <- rv$live_selected_config$cna_ward_ref_cluster[[s_name]]
       plot_output_list <- lapply(seq_along(rv$cna_preview_res$pre_scatter_plots), function(i) {
         pre_name <- paste0("cna_preview_scatter_pre_", i)
         post_name <- paste0("cna_preview_scatter_post_", i)
+        cluster_label <- cna_cluster_labels(ward_refs[[i]]$cluster, ward_refs[[i]]$k)
 
         fluidRow(
-          column(12, h4(paste("Subclone", i, "Comparisons"), class = "mt-3 text-center fw-bold")),
+          column(12, h4(paste("Subclone", i, "—", cluster_label), class = "mt-3 text-center fw-bold")),
           column(6, plotOutput(pre_name, height = "450px")),
           column(6, plotOutput(post_name, height = "450px")),
           column(12, hr())
@@ -75,7 +127,8 @@ register_cna_summary_server <- function(input, output, session, state, context) 
       })
     })
 
-    # 2. Render UMAP Plot
+    # 2. Render before/after UMAP plots
+    output$cna_preview_umap_pre <- renderPlot({ rv$cna_preview_res$pre_umap_plot })
     output$cna_preview_umap <- renderPlot({ rv$cna_preview_res$umap_plot })
 
     # 3. Render Summary Heatmap
@@ -83,6 +136,29 @@ register_cna_summary_server <- function(input, output, session, state, context) 
 
     # Enable the finalization button
     shinyjs::enable("btn_cna_save_summary")
+    nav_select("cna_preview_tabs", "cna_preview_scatter")
+    record_state_event(
+      rv,
+      stage = "cna",
+      event_type = "cna_preview",
+      outcome = if (reusable) "reused" else "generated",
+      sample = s_name,
+      parameters = list(fingerprint = fingerprint)
+    )
+    if (isTRUE(notify_reuse) && reusable) {
+      showNotification("The current CNA preview is already up to date.", type = "message")
+    }
+    invisible(TRUE)
+  }
+
+  observeEvent(input$cna_main_views, {
+    if (identical(input$cna_main_views, "cna_view_summary")) {
+      prepare_cna_preview(notify_reuse = FALSE)
+    }
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$btn_cna_preview_summary, {
+    prepare_cna_preview(notify_reuse = TRUE)
   })
 
 
@@ -90,6 +166,24 @@ register_cna_summary_server <- function(input, output, session, state, context) 
   observeEvent(input$btn_cna_save_summary, {
     req(input$cna_sample_idx, rv$cna_preview_res)
     s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
+
+    current_fingerprint <- tryCatch(
+      cna_preview_fingerprint(s_name, rv$dataset_dir_path, rv$live_selected_config),
+      error = identity
+    )
+    if (
+      inherits(current_fingerprint, "error") ||
+        !identical(rv$cna_preview_sample, s_name) ||
+        !identical(rv$cna_preview_fingerprint, current_fingerprint)
+    ) {
+      showNotification(
+        "The CNA preview is stale. Reopen Assign & Summary to regenerate it before saving.",
+        type = "error",
+        duration = 10
+      )
+      shinyjs::disable("btn_cna_save_summary")
+      return()
+    }
 
     readiness <- pipeline_step_readiness(rv$pipeline_state, "cna_assignment", s_name)
     if (!readiness$ready) {
@@ -134,6 +228,8 @@ register_cna_summary_server <- function(input, output, session, state, context) 
                     dpi = 300, bg = "white")
 
     # Save UMAP
+    ggplot2::ggsave(file.path(cna_plots_dir_path, paste0('cna_umap_pre_cna_', s_name, '.png')),
+                    plot = rv$cna_preview_res$pre_umap_plot, width = 300, height = 400, units = 'mm', bg = "white")
     ggplot2::ggsave(file.path(cna_plots_dir_path, paste0('cna_umap_assigned_', s_name, '.png')),
                     plot = rv$cna_preview_res$umap_plot, width = 300, height = 400, units = 'mm', bg = "white")
 

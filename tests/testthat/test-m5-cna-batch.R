@@ -137,6 +137,54 @@ test_that("batch CNA runs only the selected sample subset", {
 })
 
 
+test_that("batch CNA reports actual sample and stage progress", {
+  dataset_dir <- withr::local_tempdir()
+  sample_names <- c("sample1", "sample2")
+  sample_dirs <- file.path(dataset_dir, "processed_data", sample_names)
+  invisible(lapply(sample_dirs, dir.create, recursive = TRUE))
+  calls <- new.env(parent = emptyenv())
+  calls$preflight <- character()
+  calls$compute <- character()
+  calls$heatmap <- character()
+  calls$progress <- list()
+  batch_test <- make_batch_test_function(calls)
+
+  batch_test(
+    paths_list = list(sample_dir_paths = sample_dirs),
+    dataset_dir_path = dataset_dir,
+    results_dir_path = file.path(dataset_dir, "results"),
+    selected_config = setup_selected_config(sample_names),
+    gene_positions = data.table::data.table(),
+    progress_callback = function(
+      sample_name,
+      sample_index,
+      sample_total,
+      stage,
+      detail = NULL
+    ) {
+      calls$progress[[length(calls$progress) + 1L]] <- list(
+        sample = sample_name,
+        index = sample_index,
+        total = sample_total,
+        stage = stage,
+        detail = detail
+      )
+    }
+  )
+
+  expect_identical(
+    vapply(calls$progress, `[[`, character(1), "stage"),
+    rep(c("preflight", "cna_matrix", "heatmaps", "completed"), 2L)
+  )
+  expect_identical(
+    vapply(calls$progress, `[[`, integer(1), "index"),
+    rep(1:2, each = 4L)
+  )
+  expect_true(all(vapply(calls$progress, `[[`, integer(1), "total") == 2L))
+  expect_true(all(nzchar(vapply(calls$progress, `[[`, character(1), "detail"))))
+})
+
+
 test_that("a failed batch sample can be retried by itself", {
   dataset_dir <- withr::local_tempdir()
   sample_names <- c("sample1", "sample2")

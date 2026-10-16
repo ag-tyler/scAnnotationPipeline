@@ -203,6 +203,10 @@ make_cna_visualization_fixture <- function(dataset_dir) {
     cna_pot_mal_cells = list(
       sample1 = "TumorLike"
     ),
+
+    cna_ward_ref_cluster = list(
+      sample1 = list(list(method = "cutree", k = 3, cluster = 2))
+    ),
     
     cna_thresholds = list(
       sample1 = list(
@@ -210,7 +214,8 @@ make_cna_visualization_fixture <- function(dataset_dir) {
           m_x = 0.7,
           m_y = 0.7,
           nm_x = 0.3,
-          nm_y = 0.3
+          nm_y = 0.3,
+          y_max = 1.2
         )
       )
     )
@@ -484,6 +489,53 @@ test_that("apply_cna_thresholds with save TRUE persists assignments", {
     cached$subclone,
     res$subclone
   )
+})
+
+
+test_that("shared plot scaling does not change CNA assignments", {
+  skip_if_not_installed("qs2")
+
+  dataset_dir <- withr::local_tempdir()
+  fx <- make_cna_threshold_fixture(dataset_dir)
+  unscaled <- apply_cna_thresholds(
+    sample_name = "sample1",
+    dataset_dir_path = dataset_dir,
+    selected_config = fx$selected_config,
+    save = FALSE
+  )
+
+  scaled_config <- fx$selected_config
+  scaled_config$cna_thresholds$sample1[[1]]$y_max <- 0.4
+  scaled_config$cna_thresholds$sample1[[2]]$y_max <- 2.5
+  scaled <- apply_cna_thresholds(
+    sample_name = "sample1",
+    dataset_dir_path = dataset_dir,
+    selected_config = scaled_config,
+    save = FALSE
+  )
+
+  expect_identical(scaled$cell_name, unscaled$cell_name)
+  expect_identical(scaled$cell_type, unscaled$cell_type)
+  expect_identical(scaled$subclone, unscaled$subclone)
+})
+
+
+test_that("CNA signal-axis summary is shared, data-informed, and stable", {
+  tables <- list(
+    data.frame(cna_signal = c(0.1, 0.82, NA_real_)),
+    data.frame(cna_signal = c(1.01, Inf))
+  )
+  saved <- list(
+    list(m_y = 0.5, nm_y = 0.2, y_max = 1.4),
+    list(m_y = 0.8, nm_y = 0.3, y_max = 1.4)
+  )
+
+  result <- cna_signal_axis_summary(tables, saved)
+
+  expect_equal(result$data_max, 1.01)
+  expect_equal(result$recommended, 1.1)
+  expect_equal(result$selected, 1.4)
+  expect_gte(result$control_max, result$selected)
 })
 
 
@@ -1131,7 +1183,7 @@ test_that("preview_cna_summary returns complete previews without modifying cache
     selected_config = fx$selected_config
   )
   
-  # The function actually returns five objects.
+  # The preview returns analytical data plus before/after visualizations.
   expect_named(
     res,
     c(
@@ -1139,6 +1191,7 @@ test_that("preview_cna_summary returns complete previews without modifying cache
       "summary_heatmap",
       "pre_scatter_plots",
       "post_scatter_plots",
+      "pre_umap_plot",
       "umap_plot"
     )
   )
@@ -1200,6 +1253,11 @@ test_that("preview_cna_summary returns complete previews without modifying cache
   )
   
   expect_s3_class(
+    res$pre_umap_plot,
+    "ggplot"
+  )
+
+  expect_s3_class(
     res$umap_plot,
     "ggplot"
   )
@@ -1210,6 +1268,12 @@ test_that("preview_cna_summary returns complete previews without modifying cache
     )
   )
   
+  expect_no_error(
+    ggplot2::ggplot_build(
+      res$pre_umap_plot
+    )
+  )
+
   expect_no_error(
     ggplot2::ggplot_build(
       res$umap_plot
@@ -1269,6 +1333,43 @@ test_that("preview_cna_summary returns complete previews without modifying cache
     after$cell_type,
     before$cell_type
   )
+
+  expect_identical(
+    res$pre_scatter_plots[[1]]$coordinates$limits$y,
+    c(0, 1.2)
+  )
+  expect_identical(
+    res$post_scatter_plots[[1]]$coordinates$limits$y,
+    c(0, 1.2)
+  )
+  expect_match(
+    res$pre_scatter_plots[[1]]$labels$caption,
+    "Shared y-axis 0",
+    fixed = TRUE
+  )
+})
+
+
+test_that("CNA preview fingerprint changes when assignment inputs change", {
+  skip_if_not_installed("qs2")
+  dataset_dir <- withr::local_tempdir()
+  fx <- make_cna_visualization_fixture(dataset_dir)
+
+  before <- cna_preview_fingerprint(
+    fx$sample_name,
+    dataset_dir,
+    fx$selected_config
+  )
+  changed_config <- fx$selected_config
+  changed_config$cna_thresholds$sample1[[1]]$m_x <- 0.8
+  after <- cna_preview_fingerprint(
+    fx$sample_name,
+    dataset_dir,
+    changed_config
+  )
+
+  expect_match(before, "^[0-9a-f]{32}$")
+  expect_false(identical(before, after))
 })
 
 
@@ -1280,6 +1381,7 @@ test_that("hclust heatmap classifies empty and single-cell inputs as ineligible"
     cell_name = "ref_1",
     cell_type = "Reference"
   )
+
   chr_n <- data.table::data.table(chr = "01", n = 21L)
   cells <- data.table::data.table(
     cell_name = "candidate_1",

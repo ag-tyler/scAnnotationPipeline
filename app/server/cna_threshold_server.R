@@ -25,6 +25,40 @@ register_cna_threshold_server <- function(input, output, session, state, context
     invisible(rv$pipeline_state)
   }
 
+  cna_signal_axis <- reactive({
+    req(input$cna_sample_idx, rv$paths_list, rv$live_selected_config)
+    s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
+    ward_refs <- rv$live_selected_config$cna_ward_ref_cluster[[s_name]]
+    signal_tables <- lapply(seq_along(ward_refs), function(i) {
+      cache_name <- paste0('cna_sig_cor_', s_name, '_subclone_', i, '.qs2')
+      if (!cache_check_valid(cache_name, rv$dataset_dir_path)) return(NULL)
+      cache_load_data(cache_name, rv$dataset_dir_path)
+    })
+    cna_signal_axis_summary(
+      signal_tables,
+      saved_thresholds = rv$live_selected_config$cna_thresholds[[s_name]]
+    )
+  })
+
+  output$cna_y_clip_notice <- renderUI({
+    req(input$cna_shared_ymax)
+    axis <- cna_signal_axis()
+    if (input$cna_shared_ymax < axis$data_max) {
+      tags$div(
+        class = "alert alert-warning py-2 mb-3",
+        paste0(
+          "The shared view clips CNA signals above ", input$cna_shared_ymax,
+          "; threshold assignments still use the original, unclipped values."
+        )
+      )
+    } else {
+      tags$p(
+        paste0("All threshold and preview scatter plots use y = 0–", input$cna_shared_ymax, "."),
+        class = "text-muted small"
+      )
+    }
+  })
+
   # --- STEP 4: Render Dynamic Threshold UI & Plots ---
 
   # 1. Dynamically generate the UI (Tabs + Sliders + Plot Output)
@@ -37,9 +71,11 @@ register_cna_threshold_server <- function(input, output, session, state, context
 
     # Check if thresholds already exist in config to pre-fill sliders
     existing_thresh <- rv$live_selected_config$cna_thresholds[[s_name]]
+    axis <- cna_signal_axis()
 
     # Generate a UI tab for each subclone
     tabs <- lapply(seq_along(ward_refs), function(i) {
+      cluster_label <- cna_cluster_labels(ward_refs[[i]]$cluster, ward_refs[[i]]$k)
 
       # Determine default slider values (prefill if saved, otherwise default)
       def_mx <- if(length(existing_thresh) >= i && !is.null(existing_thresh[[i]]$m_x)) existing_thresh[[i]]$m_x else 0.5
@@ -48,21 +84,18 @@ register_cna_threshold_server <- function(input, output, session, state, context
       def_nmy <- if(length(existing_thresh) >= i && !is.null(existing_thresh[[i]]$nm_y)) existing_thresh[[i]]$nm_y else 0.15
 
       nav_panel(
-        title = paste("Subclone", i),
+        title = paste("Subclone", i, "—", cluster_label),
         fluidRow(
           column(8, plotOutput(paste0("cna_sig_cor_plot_", i), height = "500px")),
           column(4,
                  card(
-                   card_header(paste("Set Thresholds - Subclone", i)),
+                   card_header(paste("Set Thresholds - Subclone", i, "—", cluster_label)),
                    card_body(
-                     selectInput(paste0("cna_step_size_", i), "Y-Axis Precision:",
-                                 choices = c("0.05" = 0.05, "0.01" = 0.01, "0.005" = 0.005, "0.001" = 0.001), selected = "0.01"),
-                     sliderInput(paste0("cna_ymax_", i), "Y-Axis Max Limit:", min = 0.1, max = 3.0, value = def_ymax, step = 0.1),
-                     hr(),
-                     sliderInput(paste0("cna_thresh_mx_", i), "Malignant X (m_x):", min = -1, max = 1, value = 0.5, step = 0.05),
-                     sliderInput(paste0("cna_thresh_my_", i), "Malignant Y (m_y):", min = 0, max = 1, value = def_my, step = 0.01),
+                     helpText("Y thresholds use fixed 0.01 precision. The shared axis above changes only the visible range."),
+                     sliderInput(paste0("cna_thresh_mx_", i), "Malignant X (m_x):", min = -1, max = 1, value = def_mx, step = 0.05),
+                     sliderInput(paste0("cna_thresh_my_", i), "Malignant Y (m_y):", min = 0, max = axis$control_max, value = def_my, step = 0.01),
                      sliderInput(paste0("cna_thresh_nmx_", i), "Non-Malignant X (nm_x):", min = -1, max = 1, value = def_nmx, step = 0.05),
-                     sliderInput(paste0("cna_thresh_nmy_", i), "Non-Malignant Y (nm_y):", min = 0, max = 1, value = def_nmy, step = 0.01)
+                     sliderInput(paste0("cna_thresh_nmy_", i), "Non-Malignant Y (nm_y):", min = 0, max = axis$control_max, value = def_nmy, step = 0.01)
                    )
                  )
           )
@@ -72,6 +105,20 @@ register_cna_threshold_server <- function(input, output, session, state, context
 
     # Wrap tabs and add the unified save button at the bottom
     tagList(
+      card(
+        card_header("Shared scatter-plot scale"),
+        card_body(
+          sliderInput(
+            "cna_shared_ymax",
+            "Y-axis maximum:",
+            min = 0.1,
+            max = axis$control_max,
+            value = axis$selected,
+            step = 0.1
+          ),
+          uiOutput("cna_y_clip_notice")
+        )
+      ),
       do.call(navset_card_underline, tabs),
       br(),
       actionButton("btn_cna_save_thresholds", "Save All Thresholds", class = "btn-success btn-lg w-100")
@@ -92,7 +139,7 @@ register_cna_threshold_server <- function(input, output, session, state, context
           my <- input[[paste0("cna_thresh_my_", i)]]
           nmx <- input[[paste0("cna_thresh_nmx_", i)]]
           nmy <- input[[paste0("cna_thresh_nmy_", i)]]
-          ymax <- input[[paste0("cna_ymax_", i)]] # --- NEW: Capture y_max input ---
+          ymax <- input$cna_shared_ymax
 
           # Only render if sliders have initialized (added ymax check)
           req(!is.null(mx), !is.null(my), !is.null(nmx), !is.null(nmy), !is.null(ymax))
@@ -110,25 +157,18 @@ register_cna_threshold_server <- function(input, output, session, state, context
 
           k_val <- ward_refs[[i]]$k
           c_id <- ward_refs[[i]]$cluster
+          cluster_label <- cna_cluster_labels(c_id, k_val)
 
           p + ggplot2::labs(
             title = paste0(s_name, " - Subclone ", i),
-            subtitle = paste0("Source: k-clusters (k=", k_val, "), Cluster ID: ", c_id)
+            subtitle = paste0("Source: k=", k_val, ", ", cluster_label)
           )
         })
       })
     }
   })
 
-  lapply(1:15, function(i) {
-
-    # Update slider precision when dropdown changes
-    observeEvent(input[[paste0("cna_step_size_", i)]], {
-      req(input[[paste0("cna_step_size_", i)]])
-      step_val <- as.numeric(input[[paste0("cna_step_size_", i)]])
-      updateSliderInput(session, paste0("cna_thresh_my_", i), step = step_val)
-      updateSliderInput(session, paste0("cna_thresh_nmy_", i), step = step_val)
-    })
+  lapply(1:20, function(i) {
 
     # --- X-Axis Thresholds (Step size: 0.05) ---
 
@@ -150,16 +190,16 @@ register_cna_threshold_server <- function(input, output, session, state, context
 
     # As Non-Malignant Y moves, push the floor of Malignant Y up
     observeEvent(input[[paste0("cna_thresh_nmy_", i)]], {
-      req(input[[paste0("cna_thresh_nmy_", i)]], input[[paste0("cna_step_size_", i)]])
-      step_val <- as.numeric(input[[paste0("cna_step_size_", i)]])
+      req(input[[paste0("cna_thresh_nmy_", i)]])
+      step_val <- 0.01
       updateSliderInput(session, paste0("cna_thresh_my_", i),
                         min = input[[paste0("cna_thresh_nmy_", i)]] + step_val)
     })
 
     # As Malignant Y moves, push the ceiling of Non-Malignant Y down
     observeEvent(input[[paste0("cna_thresh_my_", i)]], {
-      req(input[[paste0("cna_thresh_my_", i)]], input[[paste0("cna_step_size_", i)]])
-      step_val <- as.numeric(input[[paste0("cna_step_size_", i)]])
+      req(input[[paste0("cna_thresh_my_", i)]])
+      step_val <- 0.01
       updateSliderInput(session, paste0("cna_thresh_nmy_", i),
                         max = input[[paste0("cna_thresh_my_", i)]] - step_val)
     })
@@ -171,6 +211,8 @@ register_cna_threshold_server <- function(input, output, session, state, context
     s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
     ward_refs <- rv$live_selected_config$cna_ward_ref_cluster[[s_name]]
     n_subclones <- length(ward_refs)
+    shared_y_max <- input$cna_shared_ymax
+    req(!is.null(shared_y_max), is.finite(shared_y_max), shared_y_max > 0)
 
     readiness <- pipeline_step_readiness(rv$pipeline_state, "cna_thresholds", s_name)
     if (!readiness$ready) {
@@ -211,8 +253,13 @@ register_cna_threshold_server <- function(input, output, session, state, context
         has_error <- TRUE
       }
 
-      y_max <- input[[paste0("cna_ymax_", i)]]
-      thresh_list[[i]] <- list(m_x = m_x, m_y = m_y, nm_x = nm_x, nm_y = nm_y, y_max = y_max)
+      thresh_list[[i]] <- list(
+        m_x = m_x,
+        m_y = m_y,
+        nm_x = nm_x,
+        nm_y = nm_y,
+        y_max = shared_y_max
+      )
     }
 
     if (has_error) {
@@ -297,19 +344,20 @@ register_cna_threshold_server <- function(input, output, session, state, context
 
         # Generate the plot exactly as it looks in the UI
         p_unscaled <- cna_sig_cor_plot(cna_sig_cor, s_name, malig_thresh, y_max = NULL)
-        p_scaled <- cna_sig_cor_plot(cna_sig_cor, s_name, malig_thresh, y_max = y_max)
+        p_scaled <- cna_sig_cor_plot(cna_sig_cor, s_name, malig_thresh, y_max = shared_y_max)
 
         k_val <- ward_refs[[i]]$k
         c_id <- ward_refs[[i]]$cluster
+        cluster_label <- cna_cluster_labels(c_id, k_val)
 
         p_unscaled <- p_unscaled + ggplot2::labs(
           title = paste0(s_name, " - Subclone ", i),
-          subtitle = paste0("Source: k-clusters (k=", k_val, "), Cluster ID: ", c_id, " | Threshold Selection | Unscaled")
+          subtitle = paste0("Source: k=", k_val, ", ", cluster_label, " | Threshold Selection | Unscaled")
         )
 
         p_scaled <- p_scaled + ggplot2::labs(
           title = paste0(s_name, " - Subclone ", i),
-          subtitle = paste0("Source: k-clusters (k=", k_val, "), Cluster ID: ", c_id, " | Threshold Selection | Scaled to ", y_max)
+          subtitle = paste0("Source: k=", k_val, ", ", cluster_label, " | Threshold Selection | Shared y-axis 0–", shared_y_max)
         )
 
         plot_unscaled_title <- paste0('cna_threshold_unscaled_selection_subclone_', i, '_', s_name, '.png')

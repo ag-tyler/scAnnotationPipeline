@@ -107,8 +107,6 @@ register_cna_compute_server <- function(input, output, session, state, context) 
       return()
     }
 
-    id <- showNotification("Computing CNA and Heatmaps. Check R console...", duration = NULL, type = "message")
-    on.exit(removeNotification(id), add = TRUE)
     record_state_event(
       rv,
       stage = "cna",
@@ -118,62 +116,68 @@ register_cna_compute_server <- function(input, output, session, state, context) 
     )
 
     tryCatch({
-      cells_filt <- preflight$cells
-      expmat_filt <- preflight$expmat
-      ref_cells <- preflight$ref_cells
+      withProgress(message = paste("CNA:", s_name), value = 0, {
+        setProgress(value = 0, detail = "Stage 1 of 3: preparing validated inputs")
+        cells_filt <- preflight$cells
+        expmat_filt <- preflight$expmat
+        ref_cells <- preflight$ref_cells
 
-      # Compute CNA
-      cna_mat_file_name <- paste0('cna_matrix_', s_name, '.qs2')
-      cna_dependencies <- cna_matrix_cache_dependencies(
-        s_name,
-        rv$dataset_dir_path,
-        context$resources$gene_positions,
-        ref_cells
-      )
-      if (!cache_check_valid(cna_mat_file_name, rv$dataset_dir_path, cna_dependencies)) {
-        cache_invalidate_sample(
+        # Compute CNA
+        setProgress(value = 1 / 3, detail = "Stage 2 of 3: computing or validating CNA matrix")
+        cna_mat_file_name <- paste0('cna_matrix_', s_name, '.qs2')
+        cna_dependencies <- cna_matrix_cache_dependencies(
           s_name,
           rv$dataset_dir_path,
-          artifact_types = c("cna_matrix", "cna_hclust", "cna_signal_correlation")
+          context$resources$gene_positions,
+          ref_cells
         )
-        compute_cna_and_cache(expmat_filt, context$resources$gene_positions, ref_cells, s_name, rv$dataset_dir_path)
-      } else {
+        if (!cache_check_valid(cna_mat_file_name, rv$dataset_dir_path, cna_dependencies)) {
+          cache_invalidate_sample(
+            s_name,
+            rv$dataset_dir_path,
+            artifact_types = c("cna_matrix", "cna_hclust", "cna_signal_correlation")
+          )
+          compute_cna_and_cache(expmat_filt, context$resources$gene_positions, ref_cells, s_name, rv$dataset_dir_path)
+        } else {
+          record_state_event(
+            rv,
+            stage = "cache",
+            event_type = "cna_matrix_cache",
+            outcome = "reused",
+            sample = s_name,
+            parameters = list(cache_file = cna_mat_file_name)
+          )
+        }
+
+        # Compute Heatmaps
+        setProgress(value = 2 / 3, detail = "Stage 3 of 3: generating clustering and heatmaps")
+        cna_plots_dir_path <- file.path(rv$results_dir_path, s_name, '3_cna_plots')
+        dir.create(cna_plots_dir_path, showWarnings = FALSE)
+
+        cna_clustering_and_heatmaps(ref_cells, s_name, rv$live_selected_config, cna_plots_dir_path,
+                                    rv$dataset_dir_path)
+
+        persist_cna_compute(
+          s_name,
+          "completed",
+          details = list(reference_cell_count = nrow(ref_cells))
+        )
+
         record_state_event(
           rv,
-          stage = "cache",
-          event_type = "cna_matrix_cache",
-          outcome = "reused",
+          stage = "cna",
+          event_type = "cna_compute",
+          outcome = "completed",
           sample = s_name,
-          parameters = list(cache_file = cna_mat_file_name)
+          parameters = list(reference_cell_count = nrow(ref_cells))
         )
-      }
+        setProgress(value = 1, detail = "CNA and heatmaps complete")
+        showNotification("CNA and Heatmaps computed successfully!", type = "default")
+        shinyjs::enable("btn_cna_go_malig_clust")
 
-      # Compute Heatmaps
-      cna_plots_dir_path <- file.path(rv$results_dir_path, s_name, '3_cna_plots')
-      dir.create(cna_plots_dir_path, showWarnings = FALSE)
-
-      cna_clustering_and_heatmaps(ref_cells, s_name, rv$live_selected_config, cna_plots_dir_path,
-                                  rv$dataset_dir_path)
-
-      persist_cna_compute(
-        s_name,
-        "completed",
-        details = list(reference_cell_count = nrow(ref_cells))
-      )
-
-      record_state_event(
-        rv,
-        stage = "cna",
-        event_type = "cna_compute",
-        outcome = "completed",
-        sample = s_name,
-        parameters = list(reference_cell_count = nrow(ref_cells))
-      )
-      showNotification("CNA and Heatmaps computed successfully!", type = "default")
-      shinyjs::enable("btn_cna_go_malig_clust")
-
-      # Trigger UI update by moving to the next tab
-      nav_select("cna_main_views", "cna_view_select_malignant")
+        # Trigger UI update by moving to the next tab
+        nav_select("cna_main_views", "cna_view_select_malignant")
+      })
     }, error = function(error) {
       ineligible <- inherits(error, "cna_ineligible_error")
       outcome <- if (ineligible) "skipped" else "failed"
@@ -239,8 +243,6 @@ register_cna_compute_server <- function(input, output, session, state, context) 
       return()
     }
     removeModal()
-    id <- showNotification("Running Batch CNA Computation. Check R console...", duration = NULL, type = "warning")
-    on.exit(removeNotification(id), add = TRUE)
     record_state_event(
       rv,
       stage = "cna",
@@ -254,16 +256,39 @@ register_cna_compute_server <- function(input, output, session, state, context) 
 
     tryCatch({
       # Run backend logic
-      res <- batch_compute_cna_and_heatmaps(
-        paths_list = rv$paths_list,
-        dataset_dir_path = rv$dataset_dir_path,
-        results_dir_path = rv$results_dir_path,
-        selected_config = rv$live_selected_config,
-        gene_positions = context$resources$gene_positions,
-        sample_names = selected_samples,
-        pipeline_state = rv$pipeline_state,
-        state_callback = function(sample_name, status, reason = NULL, details = NULL) {
-          persist_cna_compute(sample_name, status, reason, details)
+      res <- withProgress(
+        message = "Batch CNA computation",
+        value = 0,
+        {
+          batch_compute_cna_and_heatmaps(
+            paths_list = rv$paths_list,
+            dataset_dir_path = rv$dataset_dir_path,
+            results_dir_path = rv$results_dir_path,
+            selected_config = rv$live_selected_config,
+            gene_positions = context$resources$gene_positions,
+            sample_names = selected_samples,
+            pipeline_state = rv$pipeline_state,
+            state_callback = function(sample_name, status, reason = NULL, details = NULL) {
+              persist_cna_compute(sample_name, status, reason, details)
+            },
+            progress_callback = function(
+              sample_name,
+              sample_index,
+              sample_total,
+              stage,
+              detail = NULL
+            ) {
+              terminal <- stage %in% c("completed", "skipped", "failed")
+              completed_count <- sample_index - if (terminal) 0 else 1
+              setProgress(
+                value = completed_count / sample_total,
+                detail = paste0(
+                  "Sample ", sample_index, " of ", sample_total, ": ",
+                  sample_name, " — ", if (is.null(detail)) stage else detail
+                )
+              )
+            }
+          )
         }
       )
 

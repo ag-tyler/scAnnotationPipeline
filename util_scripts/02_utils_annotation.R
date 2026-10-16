@@ -811,6 +811,34 @@ cna_heatmap <- function(hdata, ref_cells, chr_n, chr_lab, cell_num) {
 }
 
 
+cna_cluster_labels <- function(cluster_ids, k = NULL) {
+  cluster_ids <- suppressWarnings(as.integer(cluster_ids))
+  if (
+    length(cluster_ids) == 0L || anyNA(cluster_ids) ||
+      any(cluster_ids < 1L)
+  ) {
+    stop("CNA cluster IDs must be positive integers.", call. = FALSE)
+  }
+  if (is.null(k)) k <- max(cluster_ids)
+  k <- suppressWarnings(as.integer(k))
+  if (length(k) != 1L || is.na(k) || k < max(cluster_ids)) {
+    stop("CNA cluster count must include every cluster ID.", call. = FALSE)
+  }
+  width <- max(2L, nchar(as.character(k)))
+  paste("Cluster", sprintf(paste0("%0", width, "d"), cluster_ids))
+}
+
+
+cna_cluster_choices <- function(k) {
+  k <- suppressWarnings(as.integer(k))
+  if (length(k) != 1L || is.na(k) || k < 2L) {
+    stop("CNA cluster count must be an integer of at least two.", call. = FALSE)
+  }
+  ids <- seq_len(k)
+  stats::setNames(as.character(ids), cna_cluster_labels(ids, k))
+}
+
+
 cluster_or_cell_type_bar_plot <- function(hdata_cells, fill_col_name, legend_title, 
                                           custom_colors = NULL) {
   #' Create a Vertical Annotation Bar Plot for Cells
@@ -840,13 +868,16 @@ cluster_or_cell_type_bar_plot <- function(hdata_cells, fill_col_name, legend_tit
   if (is.null(custom_colors)) {
     custom_colors <- randomcoloR::distinctColorPalette(n_colors)
   }
+  if (is.null(names(custom_colors))) {
+    names(custom_colors) <- as.character(unique_vals)
+  }
   
   ggplot2::ggplot(hdata_cells) +
     # Use .data[[ ]] to map the string, and wrap in as.character() for both cases
     ggplot2::geom_tile(ggplot2::aes(x = 0, y = cell_num, fill = as.character(.data[[fill_col_name]]))) +
     ggplot2::scale_x_discrete(expand = c(0, 0)) +
     ggplot2::scale_y_continuous(expand = c(0, 0)) +
-    ggplot2::scale_fill_manual(values = custom_colors) +
+    ggplot2::scale_fill_manual(values = custom_colors, breaks = names(custom_colors)) +
     ggplot2::theme(
       axis.text = ggplot2::element_blank(), 
       axis.ticks = ggplot2::element_blank(), 

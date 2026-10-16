@@ -55,7 +55,7 @@ test_that("shared state remains flat and contains only mutable session data", {
       "dataset_dir_path", "config", "cells_filt",
       "all_matches", "cells_raw", "sample_name", "res", "final_plot",
       "annotation_dirty", "annotation_loaded_index", "annotation_pending_navigation",
-      "cna_preview_res"
+      "cna_preview_res", "cna_preview_sample", "cna_preview_fingerprint"
     )
   )
   expect_false(any(c(
@@ -376,4 +376,69 @@ test_that("batch CNA supports subset selection, resume, and partial-failure summ
   expect_match(server_text, '"completed_with_failures"', fixed = TRUE)
   expect_match(workflow_text, "sample_names = NULL", fixed = TRUE)
   expect_match(workflow_text, "failed_samples[[s_name]]", fixed = TRUE)
+})
+
+test_that("CNA computation exposes stage progress and logs sample switches", {
+  app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
+  compute_text <- paste(
+    readLines(file.path(app_dir, "app/server/cna_compute_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  cluster_text <- paste(
+    readLines(file.path(app_dir, "app/server/cna_cluster_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  status_text <- paste(
+    readLines(file.path(app_dir, "app/server/cna_status_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(compute_text, 'withProgress(message = paste("CNA:"', fixed = TRUE)
+  expect_match(compute_text, 'message = "Batch CNA computation"', fixed = TRUE)
+  expect_match(compute_text, '"Sample ", sample_index, " of ", sample_total', fixed = TRUE)
+  expect_match(cluster_text, 'withProgress(message = paste("Signal/correlation:"', fixed = TRUE)
+  expect_match(cluster_text, 'paste("Computing subclone", i, "of", n_subclones)', fixed = TRUE)
+  expect_match(status_text, 'event_type = "cna_sample_selected"', fixed = TRUE)
+  expect_match(status_text, "last_cna_sample", fixed = TRUE)
+  expect_match(compute_text, 'nav_select("cna_main_views", "cna_view_select_malignant")', fixed = TRUE)
+  expect_match(cluster_text, 'nav_select("cna_main_views", "cna_view_thresholds")', fixed = TRUE)
+})
+
+test_that("CNA thresholds use one shared scale and fixed precision", {
+  app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
+  threshold_text <- paste(
+    readLines(file.path(app_dir, "app/server/cna_threshold_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(threshold_text, '"cna_shared_ymax"', fixed = TRUE)
+  expect_match(threshold_text, "cna_signal_axis_summary", fixed = TRUE)
+  expect_match(threshold_text, "threshold assignments still use the original, unclipped values", fixed = TRUE)
+  expect_match(threshold_text, "value = def_mx", fixed = TRUE)
+  expect_false(grepl("cna_step_size_", threshold_text, fixed = TRUE))
+  expect_false(grepl("cna_ymax_", threshold_text, fixed = TRUE))
+})
+
+test_that("Assign and Summary auto-previews current inputs with before/after views", {
+  app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
+  summary_text <- paste(
+    readLines(file.path(app_dir, "app/server/cna_summary_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  ui_text <- paste(
+    readLines(file.path(app_dir, "app/ui/cna_ui.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(summary_text, "observeEvent(input$cna_main_views", fixed = TRUE)
+  expect_match(summary_text, '"cna_view_summary"', fixed = TRUE)
+  expect_match(summary_text, "cna_preview_fingerprint", fixed = TRUE)
+  expect_match(summary_text, "reusable <-", fixed = TRUE)
+  expect_match(summary_text, 'nav_select("cna_preview_tabs", "cna_preview_scatter")', fixed = TRUE)
+  expect_match(summary_text, "cna_preview_umap_pre", fixed = TRUE)
+  expect_match(summary_text, "The CNA preview is stale", fixed = TRUE)
+  expect_match(ui_text, 'value = "cna_preview_scatter"', fixed = TRUE)
+  expect_match(ui_text, 'value = "cna_preview_umap_comparison"', fixed = TRUE)
+  expect_match(ui_text, "Before CNA", fixed = TRUE)
+  expect_match(ui_text, "Preview after CNA", fixed = TRUE)
 })

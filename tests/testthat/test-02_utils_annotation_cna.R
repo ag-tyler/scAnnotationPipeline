@@ -150,3 +150,37 @@ test_that("hierarchical_clustering_cna reports zero-variance profiles", {
     class = "cna_input_error"
   )
 })
+
+
+test_that("CNA cluster labels remain numerically ordered above ten clusters", {
+  choices <- cna_cluster_choices(12)
+
+  expect_identical(unname(choices), as.character(1:12))
+  expect_identical(
+    names(choices),
+    sprintf("Cluster %02d", 1:12)
+  )
+  expect_identical(cna_cluster_labels(c(2, 10), 12), c("Cluster 02", "Cluster 10"))
+})
+
+
+test_that("CNA cluster plot legend uses the canonical cluster order", {
+  cluster_levels <- cna_cluster_labels(1:12, 12)
+  cells <- data.frame(
+    cell_num = 1:12,
+    k_cluster = factor(rev(cluster_levels), levels = cluster_levels)
+  )
+  colors <- stats::setNames(viridis::viridis(12), cluster_levels)
+
+  plot <- cluster_or_cell_type_bar_plot(
+    cells,
+    "k_cluster",
+    "Cluster ID (k=12)",
+    custom_colors = colors
+  )
+  built_plot <- ggplot2::ggplot_build(plot)
+  fill_scale <- built_plot$plot$scales$get_scales("fill")
+
+  expect_identical(as.character(fill_scale$get_breaks()), cluster_levels)
+  expect_identical(plot$labels$fill, "Cluster ID (k=12)")
+})

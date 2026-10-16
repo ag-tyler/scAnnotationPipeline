@@ -30,7 +30,11 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
 
   # 1. Update the dropdown choices automatically based on the k-slider
   observeEvent(input$cna_k_clusters, {
-    updateSelectizeInput(session, "cna_selected_clusters", choices = as.character(1:input$cna_k_clusters))
+    updateSelectizeInput(
+      session,
+      "cna_selected_clusters",
+      choices = cna_cluster_choices(input$cna_k_clusters)
+    )
   })
 
   # 2. Debounce the slider so it only triggers 800ms AFTER the user stops dragging
@@ -137,13 +141,22 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
     # 2. Update the cluster assignments
     # We MUST use copy() here so we don't permanently modify the cached reactive data
     hdata_cells_k <- data.table::copy(static$hdata_cells)
-    hdata_cells_k[, k_cluster := as.character(cell_clusters[cell_name])]
+    cluster_levels <- cna_cluster_labels(seq_len(k_val), k_val)
+    hdata_cells_k[, k_cluster := factor(
+      cna_cluster_labels(cell_clusters[cell_name], k_val),
+      levels = cluster_levels
+    )]
 
     # 3. Build only the NEW k-cluster bar (takes < 0.1 seconds)
     k_colors <- viridis::viridis(k_val, option = "turbo")
-    names(k_colors) <- as.character(1:k_val)
+    names(k_colors) <- cluster_levels
 
-    clust_p <- cluster_or_cell_type_bar_plot(hdata_cells_k, "k_cluster", "Cluster (k)", custom_colors = k_colors)
+    clust_p <- cluster_or_cell_type_bar_plot(
+      hdata_cells_k,
+      "k_cluster",
+      paste0("Cluster ID (k=", k_val, ")"),
+      custom_colors = k_colors
+    )
 
     # 4. Extract its legend and convert to grob
     clust_leg <- cowplot::get_legend(clust_p)
@@ -211,7 +224,13 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
 
     # 3. Save as a structured, named list for the backend
     subclones <- lapply(input$cna_selected_clusters, function(cl) {
-      list(method = 'cutree', k = as.numeric(input$cna_k_clusters), cluster = as.numeric(cl))
+      cluster_id <- as.numeric(cl)
+      list(
+        method = 'cutree',
+        k = as.numeric(input$cna_k_clusters),
+        cluster = cluster_id,
+        label = cna_cluster_labels(cluster_id, input$cna_k_clusters)
+      )
     })
 
     previous_subclones <- rv$live_selected_config$cna_ward_ref_cluster[[s_name]]
@@ -234,7 +253,11 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
         "completed",
         details = list(
           k = as.numeric(input$cna_k_clusters),
-          clusters = as.numeric(input$cna_selected_clusters)
+          clusters = as.numeric(input$cna_selected_clusters),
+          cluster_labels = cna_cluster_labels(
+            input$cna_selected_clusters,
+            input$cna_k_clusters
+          )
         ),
         invalidate_downstream = selection_changed,
         invalidation_reason = if (selection_changed) {
@@ -289,7 +312,11 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
       sample = s_name,
       parameters = list(
         k = as.numeric(input$cna_k_clusters),
-        clusters = as.numeric(input$cna_selected_clusters)
+        clusters = as.numeric(input$cna_selected_clusters),
+        cluster_labels = cna_cluster_labels(
+          input$cna_selected_clusters,
+          input$cna_k_clusters
+        )
       )
     )
     if (length(old_cache) > 0L) {
@@ -314,12 +341,21 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
     if (!is.null(static)) {
       cell_clusters <- cutree(static$hc, k = k_val)
       hdata_cells_k <- data.table::copy(static$hdata_cells)
-      hdata_cells_k[, k_cluster := as.character(cell_clusters[cell_name])]
+      cluster_levels <- cna_cluster_labels(seq_len(k_val), k_val)
+      hdata_cells_k[, k_cluster := factor(
+        cna_cluster_labels(cell_clusters[cell_name], k_val),
+        levels = cluster_levels
+      )]
 
       k_colors <- viridis::viridis(k_val, option = "turbo")
-      names(k_colors) <- as.character(1:k_val)
+      names(k_colors) <- cluster_levels
 
-      clust_p <- cluster_or_cell_type_bar_plot(hdata_cells_k, "k_cluster", "Cluster (k)", custom_colors = k_colors)
+      clust_p <- cluster_or_cell_type_bar_plot(
+        hdata_cells_k,
+        "k_cluster",
+        paste0("Cluster ID (k=", k_val, ")"),
+        custom_colors = k_colors
+      )
       clust_leg <- cowplot::get_legend(clust_p)
       remove_leg <- ggplot2::theme(legend.position = "none")
       clust_grob <- ggplot2::ggplotGrob(clust_p + remove_leg)
@@ -397,8 +433,6 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
       return()
     }
 
-    id <- showNotification("Computing Signal and Correlation...", duration = NULL, type = "message")
-    on.exit(removeNotification(id), add = TRUE)
     record_state_event(
       rv,
       stage = "cna",
@@ -408,34 +442,43 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
     )
 
     tryCatch({
-      cells_file <- paste0('cells_filt_clust_res_', rv$live_selected_config$resolutions[[s_name]], '_', s_name, '.qs2')
-      cells_filt <- cache_load_data(cells_file, rv$dataset_dir_path)
-      cells_filt[is.na(cell_type), cell_type := 'Unassigned']
-      ref_cells <- cells_filt[cell_type %in% rv$live_selected_config$cna_ref_cells[[s_name]]]
+      withProgress(message = paste("Signal/correlation:", s_name), value = 0, {
+        setProgress(value = 0, detail = "Loading CNA inputs")
+        cells_file <- paste0('cells_filt_clust_res_', rv$live_selected_config$resolutions[[s_name]], '_', s_name, '.qs2')
+        cells_filt <- cache_load_data(cells_file, rv$dataset_dir_path)
+        cells_filt[is.na(cell_type), cell_type := 'Unassigned']
+        ref_cells <- cells_filt[cell_type %in% rv$live_selected_config$cna_ref_cells[[s_name]]]
 
-      ward_refs <- rv$live_selected_config$cna_ward_ref_cluster[[s_name]]
-      for (i in seq_along(ward_refs)) {
-        compute_signal_cor_cna(s_name, i, ref_cells, rv$live_selected_config, rv$dataset_dir_path)
-      }
+        ward_refs <- rv$live_selected_config$cna_ward_ref_cluster[[s_name]]
+        n_subclones <- length(ward_refs)
+        for (i in seq_along(ward_refs)) {
+          setProgress(
+            value = (i - 1) / n_subclones,
+            detail = paste("Computing subclone", i, "of", n_subclones)
+          )
+          compute_signal_cor_cna(s_name, i, ref_cells, rv$live_selected_config, rv$dataset_dir_path)
+        }
 
-      persist_cna_step(
-        "cna_signal_correlation",
-        s_name,
-        "completed",
-        details = list(subclone_count = length(ward_refs))
-      )
+        persist_cna_step(
+          "cna_signal_correlation",
+          s_name,
+          "completed",
+          details = list(subclone_count = n_subclones)
+        )
 
-      record_state_event(
-        rv,
-        stage = "cna",
-        event_type = "cna_signal_correlation",
-        outcome = "completed",
-        sample = s_name,
-        parameters = list(subclone_count = length(ward_refs))
-      )
-      showNotification("Signal and Correlation computed!", type = "default")
-      shinyjs::enable("btn_cna_go_thresholds")
-      nav_select("cna_main_views", "cna_view_thresholds")
+        record_state_event(
+          rv,
+          stage = "cna",
+          event_type = "cna_signal_correlation",
+          outcome = "completed",
+          sample = s_name,
+          parameters = list(subclone_count = n_subclones)
+        )
+        setProgress(value = 1, detail = paste(n_subclones, "subclone(s) complete"))
+        showNotification("Signal and Correlation computed!", type = "default")
+        shinyjs::enable("btn_cna_go_thresholds")
+        nav_select("cna_main_views", "cna_view_thresholds")
+      })
     }, error = function(error) {
       ineligible <- inherits(error, "cna_ineligible_error")
       outcome <- if (ineligible) "skipped" else "failed"

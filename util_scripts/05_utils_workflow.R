@@ -1173,6 +1173,52 @@ compute_signal_cor_cna <- function(sample_name, subclone_i, ref_cells, selected_
 }
 
 
+cna_signal_axis_summary <- function(
+  signal_tables,
+  saved_thresholds = NULL,
+  minimum_limit = 1,
+  increment = 0.1
+) {
+  if (!is.list(signal_tables)) signal_tables <- list(signal_tables)
+  signal_values <- unlist(lapply(signal_tables, function(x) {
+    if (is.null(x) || !"cna_signal" %in% names(x)) return(numeric())
+    as.numeric(x$cna_signal)
+  }), use.names = FALSE)
+  signal_values <- signal_values[is.finite(signal_values)]
+  data_max <- if (length(signal_values) == 0L) 0 else max(signal_values)
+
+  saved_limits <- unlist(lapply(saved_thresholds, function(x) x$y_max), use.names = FALSE)
+  saved_limits <- suppressWarnings(as.numeric(saved_limits))
+  saved_limits <- saved_limits[is.finite(saved_limits) & saved_limits > 0]
+  saved_y_thresholds <- unlist(lapply(saved_thresholds, function(x) {
+    c(x$m_y, x$nm_y)
+  }), use.names = FALSE)
+  saved_y_thresholds <- suppressWarnings(as.numeric(saved_y_thresholds))
+  saved_y_thresholds <- saved_y_thresholds[
+    is.finite(saved_y_thresholds) & saved_y_thresholds >= 0
+  ]
+
+  minimum_limit <- as.numeric(minimum_limit)
+  increment <- as.numeric(increment)
+  if (
+    length(minimum_limit) != 1L || !is.finite(minimum_limit) || minimum_limit <= 0 ||
+      length(increment) != 1L || !is.finite(increment) || increment <= 0
+  ) {
+    stop("CNA y-axis limits and increments must be positive finite numbers.", call. = FALSE)
+  }
+
+  recommended <- max(minimum_limit, ceiling(data_max / increment) * increment)
+  selected <- if (length(saved_limits) == 0L) recommended else max(saved_limits)
+  control_max <- max(3, recommended, selected, saved_y_thresholds, na.rm = TRUE)
+  list(
+    data_max = data_max,
+    recommended = recommended,
+    selected = selected,
+    control_max = ceiling(control_max / increment) * increment
+  )
+}
+
+
 apply_cna_thresholds <- function(sample_name, dataset_dir_path, selected_config, save = FALSE) {
   #' Apply Malignancy Thresholds and Assign Subclones
   #'
@@ -1301,6 +1347,29 @@ apply_cna_thresholds <- function(sample_name, dataset_dir_path, selected_config,
 }
 
 
+cna_preview_fingerprint <- function(sample_name, dataset_dir_path, selected_config) {
+  resolution <- selected_config$resolutions[[sample_name]]
+  thresholds <- selected_config$cna_thresholds[[sample_name]]
+  artifacts <- c(
+    paste0('cells_filt_clust_res_', resolution, '_', sample_name, '.qs2'),
+    paste0('cna_matrix_', sample_name, '.qs2'),
+    paste0('cna_sig_cor_', sample_name, '_subclone_', seq_along(thresholds), '.qs2')
+  )
+  dependencies <- cache_dependency_spec(
+    values = list(
+      resolution = resolution,
+      thresholds = thresholds,
+      reference_types = selected_config$cna_ref_cells[[sample_name]],
+      candidate_types = selected_config$cna_pot_mal_cells[[sample_name]],
+      cluster_selection = selected_config$cna_ward_ref_cluster[[sample_name]]
+    ),
+    artifacts = artifacts,
+    dataset_dir_path = dataset_dir_path
+  )
+  cache_dependency_fingerprint(dependencies)
+}
+
+
 preview_cna_summary <- function(sample_name, dataset_dir_path, selected_config) {
   #' Generate CNA Summary Previews (In-Memory)
   #'
@@ -1330,12 +1399,13 @@ preview_cna_summary <- function(sample_name, dataset_dir_path, selected_config) 
   #'   parameters such as clustering resolutions, CNA reference cells, potentially malignant 
   #'   cells, and the malignancy thresholds.
   #'
-  #' @return A named list containing five elements:
+  #' @return A named list containing six elements:
   #' \itemize{
   #'   \item \code{cells_filt}: Preview cell annotations.
   #'   \item \code{summary_heatmap}: Faceted CNA summary heatmap.
   #'   \item \code{pre_scatter_plots}: Signal/correlation plots using original annotations.
   #'   \item \code{post_scatter_plots}: Signal/correlation plots using preview CNA assignments.
+  #'   \item \code{pre_umap_plot}: UMAP colored by saved pre-CNA annotations.
   #'   \item \code{umap_plot}: UMAP colored by preview CNA assignments.
   #' }
   #' 
@@ -1355,9 +1425,23 @@ preview_cna_summary <- function(sample_name, dataset_dir_path, selected_config) 
   # 1. Update Cell Assignments (In memory, no save)
   cells_filt_new <- apply_cna_thresholds(sample_name, dataset_dir_path, selected_config, save = FALSE)
   
-  # Generate UMAP Plot with new cell_type assignments
-  umap_title <- paste0('Cell types of sample: ', sample_name, ' (CNA assigned)')
-  umap_plot <- plot_clusters(cells_filt_new, umap_title, x_col = umap1, y_col = umap2, cluster_col = cell_type)
+  # Generate before/after UMAP plots from the same saved embedding.
+  pre_umap_plot <- plot_clusters(
+    cells_filt_orig,
+    paste0('Cell types of sample: ', sample_name),
+    subtitle = 'Saved annotation before CNA assignment',
+    x_col = umap1,
+    y_col = umap2,
+    cluster_col = cell_type
+  )
+  umap_plot <- plot_clusters(
+    cells_filt_new,
+    paste0('Cell types of sample: ', sample_name),
+    subtitle = 'Preview after CNA assignment',
+    x_col = umap1,
+    y_col = umap2,
+    cluster_col = cell_type
+  )
   
   # 2. Load basic data and pass to the heatmap plot function
   expdt <- load_expdt_from_cna_matrix(sample_name, dataset_dir_path)
@@ -1368,11 +1452,26 @@ preview_cna_summary <- function(sample_name, dataset_dir_path, selected_config) 
   thresh_list <- selected_config$cna_thresholds[[sample_name]]
   pre_scatter_plots <- list()
   post_scatter_plots <- list()
+  signal_tables <- lapply(seq_along(thresh_list), function(i) {
+    sig_cor_file <- paste0('cna_sig_cor_', sample_name, '_subclone_', i, '.qs2')
+    if (!cache_check_valid(sig_cor_file, dataset_dir_path)) return(NULL)
+    cache_load_data(sig_cor_file, dataset_dir_path)
+  })
+  axis <- cna_signal_axis_summary(signal_tables, saved_thresholds = thresh_list)
+  shared_y_max <- axis$selected
+  clip_caption <- if (shared_y_max < axis$data_max) {
+    paste0(
+      'Shared y-axis 0–', shared_y_max,
+      '; values above the limit are visually clipped but remain in assignment calculations.'
+    )
+  } else {
+    paste0('Shared y-axis 0–', shared_y_max, '.')
+  }
+  ward_refs <- selected_config$cna_ward_ref_cluster[[sample_name]]
   
   for (i in seq_along(thresh_list)) {
-    sig_cor_file <- paste0('cna_sig_cor_', sample_name, '_subclone_', i, '.qs2')
-    if (cache_check_valid(sig_cor_file, dataset_dir_path)) {
-      cna_sig_cor <- cache_load_data(sig_cor_file, dataset_dir_path)
+    if (!is.null(signal_tables[[i]])) {
+      cna_sig_cor <- signal_tables[[i]]
       
       # Format threshold for plotting function
       malig_thresh <- list()
@@ -1382,16 +1481,33 @@ preview_cna_summary <- function(sample_name, dataset_dir_path, selected_config) 
       cna_sig_cor_pre <- data.table::copy(cna_sig_cor)
       cna_sig_cor_pre[cells_filt_orig, on = 'cell_name', ct := i.cell_type]
       
-      p_pre <- cna_sig_cor_plot(cna_sig_cor_pre, sample_name, malig_thresh)
-      p_pre <- p_pre + ggplot2::labs(subtitle = paste("Subclone", i, "(Original Annotations)"))
+      cluster_label <- cna_cluster_labels(ward_refs[[i]]$cluster, ward_refs[[i]]$k)
+      p_pre <- cna_sig_cor_plot(
+        cna_sig_cor_pre,
+        sample_name,
+        malig_thresh,
+        y_max = shared_y_max
+      )
+      p_pre <- p_pre + ggplot2::labs(
+        subtitle = paste("Subclone", i, "—", cluster_label, "(Original Annotations)"),
+        caption = clip_caption
+      )
       pre_scatter_plots[[i]] <- p_pre
       
       # --- POST-ASSIGNMENT SCATTER PLOT ---
       cna_sig_cor_post <- data.table::copy(cna_sig_cor)
       cna_sig_cor_post[cells_filt_new, on = 'cell_name', ct := i.cell_type]
       
-      p_post <- cna_sig_cor_plot(cna_sig_cor_post, sample_name, malig_thresh)
-      p_post <- p_post + ggplot2::labs(subtitle = paste("Subclone", i, "(Final Assignment)"))
+      p_post <- cna_sig_cor_plot(
+        cna_sig_cor_post,
+        sample_name,
+        malig_thresh,
+        y_max = shared_y_max
+      )
+      p_post <- p_post + ggplot2::labs(
+        subtitle = paste("Subclone", i, "—", cluster_label, "(Preview Assignment)"),
+        caption = clip_caption
+      )
       post_scatter_plots[[i]] <- p_post
     }
   }
@@ -1401,6 +1517,7 @@ preview_cna_summary <- function(sample_name, dataset_dir_path, selected_config) 
     summary_heatmap = summary_plot,
     pre_scatter_plots = pre_scatter_plots,
     post_scatter_plots = post_scatter_plots,
+    pre_umap_plot = pre_umap_plot,
     umap_plot = umap_plot
   ))
 }
@@ -1672,6 +1789,7 @@ batch_compute_cna_and_heatmaps <- function(
   selected_config,
   gene_positions,
   state_callback = NULL,
+  progress_callback = NULL,
   sample_names = NULL,
   pipeline_state = NULL
 ) {
@@ -1707,9 +1825,23 @@ batch_compute_cna_and_heatmaps <- function(
     )
   }
   sample_dirs <- sample_dirs[available_samples %in% sample_names]
+  sample_total <- length(sample_dirs)
+
+  report_progress <- function(sample_name, sample_index, stage, detail = NULL) {
+    if (!is.function(progress_callback)) return(invisible(NULL))
+    progress_callback(
+      sample_name = sample_name,
+      sample_index = sample_index,
+      sample_total = sample_total,
+      stage = stage,
+      detail = detail
+    )
+    invisible(NULL)
+  }
   
   for (i in seq_along(sample_dirs)) {
     s_name <- basename(sample_dirs[i])
+    report_progress(s_name, i, "preflight", "Checking CNA eligibility")
     
     preflight <- cna_sample_preflight(
       s_name,
@@ -1738,6 +1870,7 @@ batch_compute_cna_and_heatmaps <- function(
           details = list(preflight_status = preflight$status, counts = preflight$counts)
         )
       }
+      report_progress(s_name, i, "skipped", preflight$reason)
       next
     }
     
@@ -1758,21 +1891,26 @@ batch_compute_cna_and_heatmaps <- function(
         ref_cells
       )
       if (!cache_check_valid(cna_mat_file_name, dataset_dir_path, cna_dependencies)) {
+        report_progress(s_name, i, "cna_matrix", "Computing CNA matrix")
         cache_invalidate_sample(
           s_name,
           dataset_dir_path,
           artifact_types = c("cna_matrix", "cna_hclust", "cna_signal_correlation")
         )
         compute_cna_and_cache(expmat_filt, gene_positions, ref_cells, s_name, dataset_dir_path)
+      } else {
+        report_progress(s_name, i, "cna_matrix", "Reusing validated CNA matrix")
       }
 
       # 4. Generate Heatmaps
+      report_progress(s_name, i, "heatmaps", "Generating CNA clustering and heatmaps")
       cna_plots_dir_path <- file.path(results_dir_path, s_name, '3_cna_plots')
       dir.create(cna_plots_dir_path, showWarnings = FALSE, recursive = TRUE)
 
       cna_clustering_and_heatmaps(ref_cells, s_name, selected_config, cna_plots_dir_path, dataset_dir_path)
 
       processed_samples <- c(processed_samples, s_name)
+      report_progress(s_name, i, "completed", "CNA and heatmaps complete")
       if (is.function(state_callback)) {
         state_callback(
           s_name,
@@ -1782,6 +1920,7 @@ batch_compute_cna_and_heatmaps <- function(
       }
     }, error = function(error) {
       failed_samples[[s_name]] <<- conditionMessage(error)
+      report_progress(s_name, i, "failed", conditionMessage(error))
       if (is.function(state_callback)) {
         state_callback(s_name, "failed", reason = conditionMessage(error))
       }
