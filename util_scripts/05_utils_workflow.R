@@ -208,6 +208,20 @@ load_filter_cells_expmat <- function(cells_path, expmat_path, genes_path, config
   #'     \item \code{cells_filt}: The filtered cell metadata dataframe.
   #'     \item \code{expmat_filt}: The filtered and log-normalized sparse expression matrix.
   #'   }
+  required_params <- c("min_genes", "target_sum", "log2_expr_threshold")
+  missing_params <- required_params[vapply(required_params, function(param) {
+    value <- config$params[[param]]
+    is.null(value) || length(value) != 1L || is.na(value) || !is.numeric(value) || !is.finite(value)
+  }, logical(1))]
+  if (length(missing_params) > 0L) {
+    stop(
+      "Dataset configuration requires finite numeric params: ",
+      paste(missing_params, collapse = ", "), ". ",
+      "Pass dataset_config.yaml settings to load_filter_cells_expmat().",
+      call. = FALSE
+    )
+  }
+
   # Load files
   cells <- load_cells(cells_path)
   expmat <- load_expmat(expmat_path)
@@ -622,7 +636,7 @@ de_analysis <- function(
 }
 
 
-cell_type_annotation_setup <- function(i, paths_list, results_dir_path, config, dataset_dir_path,
+cell_type_annotation_setup <- function(i, paths_list, results_dir_path, dataset_dir_path,
                                        complete_markers, dataset_config, selected_config) {
   #' Setup Data for Manual Cell Type Annotation
   #'
@@ -637,8 +651,6 @@ cell_type_annotation_setup <- function(i, paths_list, results_dir_path, config, 
   #'   and `genes_file_paths`.
   #' @param results_dir_path Character. The base directory path where the pipeline's sample-specific 
   #'   result folders are stored.
-  #' @param config List. The general configuration object containing global application settings 
-  #'   and generic parameter defaults (typically loaded from `general_config.yaml`).
   #' @param dataset_dir_path Character. The absolute path to the root directory of the current 
   #'   dataset, used primarily for locating and managing the `cache` subdirectory.
   #' @param complete_markers data.table. A reference table containing filtered marker genes and 
@@ -662,7 +674,18 @@ cell_type_annotation_setup <- function(i, paths_list, results_dir_path, config, 
   cells <- load_cells(cell_file_paths[i])
   sample_name <- unique(cells$sample)
   message('Working on sample: ', sample_name)
-  cells_filt_file_name <- paste0('cells_filt_clust_res_', config$selected$resolutions[[sample_name]], 
+  selected_resolution <- selected_config$resolutions[[sample_name]]
+  if (
+    is.null(selected_resolution) || length(selected_resolution) != 1L ||
+      is.na(selected_resolution) || !is.numeric(selected_resolution) ||
+      !is.finite(selected_resolution) || selected_resolution == 0
+  ) {
+    stop(
+      "No valid clustering resolution is configured for sample '", sample_name, "'.",
+      call. = FALSE
+    )
+  }
+  cells_filt_file_name <- paste0('cells_filt_clust_res_', selected_resolution,
                                  '_', sample_name, '.qs2')
   expmat_filt_file_name <- paste0('expmat_filt_', sample_name, '.qs2')
   filter_dependencies <- filter_cache_dependencies(paths_list, i, dataset_config)
@@ -688,8 +711,8 @@ cell_type_annotation_setup <- function(i, paths_list, results_dir_path, config, 
   } else {
     message('No cached files.')
     
-    results_list <- load_filter_cells_expmat(cell_file_paths[i], expmat_file_paths[i], 
-                                             genes_file_paths[i], config)
+    results_list <- load_filter_cells_expmat(cell_file_paths[i], expmat_file_paths[i],
+                                             genes_file_paths[i], dataset_config)
     cells_filt <- results_list$cells_filt
     expmat_filt <- results_list$expmat_filt
     rm(results_list)
@@ -833,9 +856,37 @@ hclust_cluster_heatmap <- function(
   #'
   #' @return None. Saves the clustering object to cache and the plot to disk.
   
-  hdata_cast <- data.table::dcast(hdata[, .(gene, cell_name, cna)], 
+  required_hdata_columns <- c("gene", "cell_name", "cna")
+  missing_hdata_columns <- setdiff(required_hdata_columns, names(hdata))
+  if (length(missing_hdata_columns) > 0L) {
+    cna_abort(paste(
+      "CNA heatmap data are missing required columns:",
+      paste(missing_hdata_columns, collapse = ", ")
+    ))
+  }
+  if (nrow(hdata) == 0L || length(unique(hdata$gene)) == 0L) {
+    cna_abort(
+      "No candidate CNA values are available for the heatmap.",
+      class = "cna_ineligible_error"
+    )
+  }
+  candidate_cells <- unique(as.character(hdata$cell_name))
+  if (length(candidate_cells) < 2L) {
+    cna_abort(
+      "CNA heatmap clustering requires at least two candidate cells.",
+      class = "cna_ineligible_error"
+    )
+  }
+  if (any(!is.finite(hdata$cna))) {
+    cna_abort("CNA heatmap data contain non-finite values.")
+  }
+
+  hdata_cast <- data.table::dcast(hdata[, .(gene, cell_name, cna)],
                                   gene ~ cell_name)[, magrittr::set_rownames(as.matrix(.SD), gene), 
                                                     .SDcols = -'gene']
+  if (any(!is.finite(hdata_cast))) {
+    cna_abort("CNA heatmap casting produced missing or non-finite values.")
+  }
   hclust_file_name <- paste0('hclust_', sample_name, '.qs2')
   if (cache_check_valid(hclust_file_name, dataset_dir_path, dependencies)) {
     clust_hclust <- cache_load_data(
@@ -843,6 +894,17 @@ hclust_cluster_heatmap <- function(
       dataset_dir_path,
       dependencies = dependencies
     )
+    if (!setequal(clust_hclust$labels, colnames(hdata_cast))) {
+      cache_invalidate_artifacts(hclust_file_name, dataset_dir_path)
+      clust_hclust <- hierarchical_clustering_cna(hdata_cast, method = 'ward.D2')
+      cache_save_data(
+        clust_hclust,
+        hclust_file_name,
+        dataset_dir_path,
+        dependencies = dependencies,
+        producer = "hclust_cluster_heatmap"
+      )
+    }
   } else {
     clust_hclust <- hierarchical_clustering_cna(hdata_cast, method = 'ward.D2')
     cache_save_data(
@@ -916,6 +978,14 @@ cna_clustering_and_heatmaps <- function(ref_cells, sample_name, selected_config,
   cells_filt[is.na(cell_type), cell_type := 'Unassigned']
   
   expdt <- load_expdt_from_cna_matrix(sample_name, dataset_dir_path)
+  required_expdt_columns <- c("gene", "chr", "start_pos", "cell_name", "cna")
+  missing_expdt_columns <- setdiff(required_expdt_columns, names(expdt))
+  if (length(missing_expdt_columns) > 0L || nrow(expdt) == 0L) {
+    cna_abort("The cached CNA matrix is empty or missing required columns.")
+  }
+  if (any(!is.finite(expdt$cna))) {
+    cna_abort("The cached CNA matrix contains non-finite values.")
+  }
   
   # Add cell types bypassing data.table NSE using explicit Base R syntax:
   expdt$cell_type <- cells_filt$cell_type[match(expdt$cell_name, cells_filt$cell_name)]
@@ -923,6 +993,12 @@ cna_clustering_and_heatmaps <- function(ref_cells, sample_name, selected_config,
   
   # Exclude chromosomes with too few genes:
   chr_n <- expdt[, .(n = length(unique(gene))), keyby = chr][n > 20]
+  if (nrow(chr_n) == 0L) {
+    cna_abort(
+      "No chromosome has more than 20 positioned genes; CNA heatmaps are not applicable.",
+      class = "cna_ineligible_error"
+    )
+  }
   expdt <- expdt[chr %in% chr_n$chr]
   
   # Get x coordinates for axis labels:
@@ -937,6 +1013,12 @@ cna_clustering_and_heatmaps <- function(ref_cells, sample_name, selected_config,
   # Heatmap data:
   hdata <- data.table::copy(expdt[cell_type == 'Unassigned' 
                                   | cell_type %in% selected_config$cna_pot_mal_cells[[sample_name]]])
+  if (length(unique(hdata$cell_name)) < 2L) {
+    cna_abort(
+      "Fewer than two potentially malignant or unassigned cells remain for CNA heatmap clustering.",
+      class = "cna_ineligible_error"
+    )
+  }
   
   message('Run ward clustering')
   hclust_cluster_heatmap(
@@ -987,6 +1069,9 @@ compute_signal_cor_cna <- function(sample_name, subclone_i, ref_cells, selected_
   
   cna_mat_file_name <- paste0('cna_matrix_', sample_name, '.qs2')
   cna_mat <- cache_load_data(cna_mat_file_name, dataset_dir_path)
+  if (!all(c("gene", "chr", "start_pos") %in% names(cna_mat)) || nrow(cna_mat) == 0L) {
+    cna_abort("The cached CNA matrix is empty or has an invalid schema.")
+  }
   
   expdt <- data.table::melt(cna_mat, id.vars = c('gene', 'chr', 'start_pos'), variable.name = 'cell_name', 
                             value.name = 'cna', variable.factor = FALSE)
@@ -995,24 +1080,74 @@ compute_signal_cor_cna <- function(sample_name, subclone_i, ref_cells, selected_
   
   # Get the cluster definition for this specific subclone from the config
   clust_id <- selected_config$cna_ward_ref_cluster[[sample_name]][[subclone_i]]
+  if (is.null(clust_id$k) || is.null(clust_id$cluster)) {
+    cna_abort("The selected CNA subclone is missing k or cluster settings.")
+  }
   
   # Extract cells using the dynamic cutree method saved from the UI
   k_val <- clust_id$k
   clust_num <- clust_id$cluster
+  if (
+    length(k_val) != 1L || !is.numeric(k_val) || !is.finite(k_val) ||
+      k_val < 2L || k_val > length(clust_hclust$labels)
+  ) {
+    cna_abort("The selected CNA cluster count k is outside the valid range.")
+  }
+  if (
+    length(clust_num) != 1L || !is.numeric(clust_num) || !is.finite(clust_num) ||
+      clust_num < 1L || clust_num > k_val
+  ) {
+    cna_abort("The selected malignant cluster identifier is outside the valid range.")
+  }
   cell_names <- names(which(stats::cutree(clust_hclust, k = k_val) == clust_num))
+  if (length(cell_names) == 0L) {
+    cna_abort(
+      "The selected malignant subclone contains no cells.",
+      class = "cna_ineligible_error"
+    )
+  }
   
   # Genes with highest CNA values in candidate malignant cells:
   hotspot_genes <- expdt[cell_name %in% cell_names, .(m2 = mean(cna^2)), by = gene]
-  hotspot_genes <- hotspot_genes[, .SD[m2 > stats::quantile(m2, 0.9), gene]]
+  if (nrow(hotspot_genes) == 0L || any(!is.finite(hotspot_genes$m2))) {
+    cna_abort("The selected malignant subclone has no finite CNA signal values.")
+  }
+  hotspot_cutoff <- stats::quantile(hotspot_genes$m2, 0.9, na.rm = TRUE)
+  hotspot_genes <- hotspot_genes[m2 > hotspot_cutoff, gene]
+  if (length(hotspot_genes) == 0L) {
+    cna_abort(
+      "No hotspot genes exceed the CNA signal cutoff for the selected subclone.",
+      class = "cna_ineligible_error"
+    )
+  }
   
   # Mean CNA profile of candidate malignant cells:
   cna_mat <- cna_mat[, magrittr::set_rownames(as.matrix(.SD), gene), 
                      .SDcols = -c('gene', 'chr', 'start_pos')]
-  mal_mean <- rowMeans(cna_mat[, cell_names])
+  mal_mean <- rowMeans(cna_mat[, cell_names, drop = FALSE])
+  mal_sd <- stats::sd(mal_mean)
+  if (
+    length(mal_mean) < 2L || any(!is.finite(mal_mean)) ||
+      !is.finite(mal_sd) || mal_sd == 0
+  ) {
+    cna_abort("The malignant mean CNA profile is non-finite or has zero variance.")
+  }
   
   # CNA signal and correlation:
   dt <- expdt[gene %in% hotspot_genes, .(cna_signal = mean(cna^2)), by = cell_name]
-  dt[, cna_cor := stats::cor(cna_mat, mal_mean)[cell_name, 1]]
+  correlations <- suppressWarnings(stats::cor(cna_mat, mal_mean))
+  correlations <- correlations[, 1]
+  if (any(!is.finite(correlations))) {
+    bad_cells <- names(correlations)[!is.finite(correlations)]
+    cna_abort(paste0(
+      "CNA correlation is undefined for ", length(bad_cells),
+      " cell(s), usually because their CNA profiles have zero variance."
+    ))
+  }
+  dt[, cna_cor := correlations[cell_name]]
+  if (nrow(dt) == 0L || any(!is.finite(dt$cna_signal)) || any(!is.finite(dt$cna_cor))) {
+    cna_abort("CNA signal/correlation output is empty or non-finite.")
+  }
   
   # Assign cells as candidate malignant, reference or NA. The NA cells could include candidate malignant cells that were excluded in the above downsampling step.
   dt[, ct := ifelse(cell_name %in% cell_names, 'Candidate malignant', 
@@ -1270,13 +1405,275 @@ preview_cna_summary <- function(sample_name, dataset_dir_path, selected_config) 
   ))
 }
 
+cna_sample_preflight <- function(
+  sample_name,
+  selected_config,
+  dataset_dir_path,
+  gene_positions = NULL,
+  pipeline_state = NULL,
+  validate_expression = TRUE,
+  minimum_reference_cells = 2L,
+  minimum_candidate_cells = 2L,
+  minimum_positioned_genes = 21L
+) {
+  #' Check whether one sample is ready and suitable for CNA analysis
+  #'
+  #' @return A structured list with `eligible`, `status`, `reasons`, `counts`,
+  #'   and (when requested and valid) the loaded `cells`, `expmat`, and
+  #'   `ref_cells`. Status is one of `eligible`, `incomplete`, `ineligible`,
+  #'   `invalid`, or `omitted`.
+  reasons <- character()
+  categories <- character()
+  add_reason <- function(category, reason) {
+    categories <<- c(categories, category)
+    reasons <<- c(reasons, reason)
+  }
+  counts <- list(
+    total = NA_integer_,
+    annotated = NA_integer_,
+    unassigned = NA_integer_,
+    configured_candidate = NA_integer_,
+    candidate_total = NA_integer_,
+    reference = NA_integer_,
+    matrix_cells = NA_integer_,
+    positioned_genes = NA_integer_
+  )
+
+  if (!is.null(pipeline_state)) {
+    annotation_record <- get_pipeline_step(pipeline_state, "annotation", sample_name)
+    configuration_record <- get_pipeline_step(
+      pipeline_state,
+      "cna_configuration",
+      sample_name
+    )
+    if (!identical(annotation_record$status, "completed")) {
+      add_reason(
+        "incomplete",
+        paste0("Annotation is ", annotation_record$status, "; save annotations first.")
+      )
+    }
+    if (identical(configuration_record$status, "skipped")) {
+      add_reason(
+        "omitted",
+        paste0(
+          "CNA was explicitly omitted",
+          if (!is.null(configuration_record$reason)) {
+            paste0(": ", configuration_record$reason)
+          } else "."
+        )
+      )
+    } else if (!identical(configuration_record$status, "completed")) {
+      add_reason(
+        "incomplete",
+        paste0(
+          "CNA configuration is ", configuration_record$status,
+          "; save reference and potentially malignant cell types first."
+        )
+      )
+    }
+  }
+
+  resolution <- selected_config$resolutions[[sample_name]]
+  if (
+    is.null(resolution) || length(resolution) != 1L ||
+      is.na(resolution) || !is.numeric(resolution) ||
+      !is.finite(resolution) || resolution == 0
+  ) {
+    add_reason("incomplete", "No valid clustering resolution is saved.")
+  }
+  reference_types <- unique(as.character(
+    selected_config$cna_ref_cells[[sample_name]]
+  ))
+  reference_types <- reference_types[
+    !is.na(reference_types) & nzchar(trimws(reference_types))
+  ]
+  candidate_types <- unique(as.character(
+    selected_config$cna_pot_mal_cells[[sample_name]]
+  ))
+  candidate_types <- candidate_types[
+    !is.na(candidate_types) & nzchar(trimws(candidate_types))
+  ]
+  if (length(reference_types) == 0L) {
+    add_reason("incomplete", "Reference cell types are not configured.")
+  }
+  if (length(candidate_types) == 0L) {
+    add_reason("incomplete", "Potentially malignant cell types are not configured.")
+  }
+
+  cells_file <- if (
+    length(resolution) == 1L && is.numeric(resolution) &&
+      !is.na(resolution) && is.finite(resolution)
+  ) {
+    paste0("cells_filt_clust_res_", resolution, "_", sample_name, ".qs2")
+  } else {
+    NULL
+  }
+  expmat_file <- paste0("expmat_filt_", sample_name, ".qs2")
+  cells_valid <- !is.null(cells_file) && isTRUE(tryCatch(
+    cache_check_valid(cells_file, dataset_dir_path),
+    error = function(error) FALSE
+  ))
+  expmat_valid <- isTRUE(tryCatch(
+    cache_check_valid(expmat_file, dataset_dir_path),
+    error = function(error) FALSE
+  ))
+  if (!cells_valid) {
+    add_reason("incomplete", "The filtered clustering cell cache is missing or invalid.")
+  }
+  if (!expmat_valid) {
+    add_reason("incomplete", "The filtered expression cache is missing or invalid.")
+  }
+
+  cells <- NULL
+  expmat <- NULL
+  ref_cells <- NULL
+  if (cells_valid) {
+    cells <- tryCatch(
+      data.table::as.data.table(cache_load_data(cells_file, dataset_dir_path)),
+      error = identity
+    )
+    if (inherits(cells, "error")) {
+      add_reason("invalid", paste("Cell cache could not be loaded:", conditionMessage(cells)))
+      cells <- NULL
+    } else {
+      required_cell_columns <- c("cell_name", "cell_type")
+      missing_cell_columns <- setdiff(required_cell_columns, names(cells))
+      if (length(missing_cell_columns) > 0L) {
+        add_reason(
+          "invalid",
+          paste(
+            "Cell cache is missing required columns:",
+            paste(missing_cell_columns, collapse = ", ")
+          )
+        )
+      } else {
+        cell_types <- if ("cell_type_pre_cna" %in% names(cells)) {
+          as.character(cells$cell_type_pre_cna)
+        } else {
+          as.character(cells$cell_type)
+        }
+        unassigned <- is.na(cell_types) | trimws(cell_types) %in% c("", "NA", "Unassigned")
+        normalized_types <- cell_types
+        normalized_types[unassigned] <- "Unassigned"
+        cells[, cell_type := normalized_types]
+
+        reference_mask <- normalized_types %in% reference_types
+        configured_candidate_mask <- normalized_types %in% candidate_types
+        candidate_mask <- (configured_candidate_mask | unassigned) & !reference_mask
+        counts$total <- nrow(cells)
+        counts$unassigned <- sum(unassigned)
+        counts$annotated <- counts$total - counts$unassigned
+        counts$reference <- sum(reference_mask)
+        counts$configured_candidate <- sum(configured_candidate_mask & !reference_mask)
+        counts$candidate_total <- sum(candidate_mask)
+        ref_cells <- cells[reference_mask]
+
+        if (length(reference_types) > 0L && counts$reference < minimum_reference_cells) {
+          add_reason(
+            "ineligible",
+            paste0(
+              "Only ", counts$reference, " reference cells match the configured types; at least ",
+              minimum_reference_cells, " are required."
+            )
+          )
+        }
+        if (length(candidate_types) > 0L && counts$candidate_total < minimum_candidate_cells) {
+          add_reason(
+            "ineligible",
+            paste0(
+              "Only ", counts$candidate_total,
+              " potentially malignant or unassigned cells are available; at least ",
+              minimum_candidate_cells, " are required for clustering."
+            )
+          )
+        }
+      }
+    }
+  }
+
+  if (validate_expression && expmat_valid) {
+    expmat <- tryCatch(cache_load_data(expmat_file, dataset_dir_path), error = identity)
+    if (inherits(expmat, "error")) {
+      add_reason("invalid", paste("Expression cache could not be loaded:", conditionMessage(expmat)))
+      expmat <- NULL
+    } else {
+      matrix_values <- if (inherits(expmat, "sparseMatrix")) expmat@x else as.vector(expmat)
+      counts$matrix_cells <- ncol(expmat)
+      if (!is.numeric(matrix_values) || any(!is.finite(matrix_values))) {
+        add_reason("invalid", "The filtered expression matrix contains non-finite or non-numeric values.")
+      }
+      if (is.null(rownames(expmat)) || is.null(colnames(expmat))) {
+        add_reason("invalid", "The filtered expression matrix must have gene and cell names.")
+      } else if (!is.null(cells) && "cell_name" %in% names(cells)) {
+        missing_matrix_cells <- setdiff(cells$cell_name, colnames(expmat))
+        if (length(missing_matrix_cells) > 0L) {
+          add_reason(
+            "invalid",
+            paste0(
+              length(missing_matrix_cells),
+              " annotated cells are absent from the filtered expression matrix."
+            )
+          )
+        }
+      }
+      if (!is.null(gene_positions) && !is.null(rownames(expmat))) {
+        position_symbols <- as.character(gene_positions$symbol)
+        counts$positioned_genes <- sum(rownames(expmat) %in% position_symbols)
+        if (counts$positioned_genes < minimum_positioned_genes) {
+          add_reason(
+            "ineligible",
+            paste0(
+              "Only ", counts$positioned_genes,
+              " expression genes have genomic positions; at least ",
+              minimum_positioned_genes, " are required."
+            )
+          )
+        }
+      }
+    }
+  }
+
+  status <- if (length(reasons) == 0L) {
+    "eligible"
+  } else if ("omitted" %in% categories) {
+    "omitted"
+  } else if ("incomplete" %in% categories) {
+    "incomplete"
+  } else if ("invalid" %in% categories) {
+    "invalid"
+  } else {
+    "ineligible"
+  }
+
+  structure(
+    list(
+      eligible = identical(status, "eligible"),
+      status = status,
+      reasons = unique(reasons),
+      reason = if (length(reasons) == 0L) NULL else paste(unique(reasons), collapse = " "),
+      counts = counts,
+      reference_types = reference_types,
+      candidate_types = candidate_types,
+      cells_file = cells_file,
+      expmat_file = expmat_file,
+      cells = cells,
+      expmat = expmat,
+      ref_cells = ref_cells
+    ),
+    class = c("cna_preflight", "list")
+  )
+}
+
+
 batch_compute_cna_and_heatmaps <- function(
   paths_list,
   dataset_dir_path,
   results_dir_path,
   selected_config,
   gene_positions,
-  state_callback = NULL
+  state_callback = NULL,
+  sample_names = NULL,
+  pipeline_state = NULL
 ) {
   #' Batch Compute CNA and Heatmaps for All Valid Samples
   #'
@@ -1295,23 +1692,50 @@ batch_compute_cna_and_heatmaps <- function(
   
   processed_samples <- character()
   skipped_samples <- character()
+  failed_samples <- character()
+  preflight_results <- list()
   
   sample_dirs <- paths_list$sample_dir_paths
+  available_samples <- basename(sample_dirs)
+  if (is.null(sample_names)) sample_names <- available_samples
+  sample_names <- unique(as.character(sample_names))
+  unknown_samples <- setdiff(sample_names, available_samples)
+  if (length(unknown_samples) > 0L) {
+    stop(
+      "Unknown batch CNA samples: ", paste(unknown_samples, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  sample_dirs <- sample_dirs[available_samples %in% sample_names]
   
   for (i in seq_along(sample_dirs)) {
     s_name <- basename(sample_dirs[i])
     
-    ref_cfg <- selected_config$cna_ref_cells[[s_name]]
-    mal_cfg <- selected_config$cna_pot_mal_cells[[s_name]]
-    
-    # 1. Check if required configurations are present
-    if (is.null(ref_cfg) || length(ref_cfg) == 0 || is.null(mal_cfg) || length(mal_cfg) == 0) {
-      skipped_samples <- c(skipped_samples, s_name)
+    preflight <- cna_sample_preflight(
+      s_name,
+      selected_config,
+      dataset_dir_path,
+      gene_positions = gene_positions,
+      pipeline_state = pipeline_state,
+      validate_expression = TRUE
+    )
+    preflight_results[[s_name]] <- preflight
+
+    # 1. Skip samples that are unfinished, invalid, or analytically ineligible.
+    if (!isTRUE(preflight$eligible)) {
+      configuration_missing <- any(grepl("not configured", preflight$reasons))
+      missing_cache <- !configuration_missing && any(grepl(
+        "cache is missing or invalid",
+        preflight$reasons
+      ))
+      skip_label <- if (missing_cache) paste0(s_name, " (Missing Cache)") else s_name
+      skipped_samples <- c(skipped_samples, skip_label)
       if (is.function(state_callback)) {
         state_callback(
           s_name,
-          "incomplete",
-          reason = "Reference or potentially malignant cell types are not configured."
+          if (preflight$status %in% c("ineligible", "omitted")) "skipped" else "incomplete",
+          reason = preflight$reason,
+          details = list(preflight_status = preflight$status, counts = preflight$counts)
         )
       }
       next
@@ -1319,30 +1743,11 @@ batch_compute_cna_and_heatmaps <- function(
     
     message("Batch processing CNA & Heatmaps for sample: ", s_name)
     
-    # 2. Check if clustering cache exists
-    cells_file <- paste0('cells_filt_clust_res_', selected_config$resolutions[[s_name]], '_', s_name, '.qs2')
-    expmat_file <- paste0('expmat_filt_', s_name, '.qs2')
-    
-    if (!cache_check_valid(cells_file, dataset_dir_path) || !cache_check_valid(expmat_file, dataset_dir_path)) {
-      message("Skipping ", s_name, ": missing cached filtering/clustering files.")
-      skipped_samples <- c(skipped_samples, paste0(s_name, " (Missing Cache)"))
-      if (is.function(state_callback)) {
-        state_callback(
-          s_name,
-          "incomplete",
-          reason = "Required filtering or clustering caches are missing."
-        )
-      }
-      next
-    }
-
     if (is.function(state_callback)) state_callback(s_name, "in_progress")
     tryCatch({
-      cells_filt <- cache_load_data(cells_file, dataset_dir_path)
-      expmat_filt <- cache_load_data(expmat_file, dataset_dir_path)
-
-      cells_filt[is.na(cell_type), cell_type := 'Unassigned']
-      ref_cells <- cells_filt[cell_type %in% ref_cfg]
+      cells_filt <- preflight$cells
+      expmat_filt <- preflight$expmat
+      ref_cells <- preflight$ref_cells
 
       # 3. Compute CNA if missing
       cna_mat_file_name <- paste0('cna_matrix_', s_name, '.qs2')
@@ -1376,12 +1781,18 @@ batch_compute_cna_and_heatmaps <- function(
         )
       }
     }, error = function(error) {
+      failed_samples[[s_name]] <<- conditionMessage(error)
       if (is.function(state_callback)) {
         state_callback(s_name, "failed", reason = conditionMessage(error))
       }
-      stop(error)
+      message("CNA batch failed for ", s_name, ": ", conditionMessage(error))
     })
   }
   
-  return(list(processed = processed_samples, skipped = skipped_samples))
+  return(list(
+    processed = processed_samples,
+    skipped = skipped_samples,
+    failed = failed_samples,
+    preflight = preflight_results
+  ))
 }

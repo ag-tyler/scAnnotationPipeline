@@ -54,6 +54,7 @@ test_that("shared state remains flat and contains only mutable session data", {
       "selected_config_path", "pipeline_state", "pipeline_state_path",
       "dataset_dir_path", "config", "cells_filt",
       "all_matches", "cells_raw", "sample_name", "res", "final_plot",
+      "annotation_dirty", "annotation_loaded_index", "annotation_pending_navigation",
       "cna_preview_res"
     )
   )
@@ -232,4 +233,147 @@ test_that("workflow servers use persisted state for guards, badges, and mutation
     collapse = "\n"
   )
   expect_false(grepl("cache_check_exists", cna_status_text, fixed = TRUE))
+})
+
+test_that("long-running dashboard tasks provide next-step completion actions", {
+  app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
+  dashboard_text <- paste(
+    readLines(file.path(app_dir, "app/server/dashboard_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(dashboard_text, "Clustering complete", fixed = TRUE)
+  expect_match(dashboard_text, "Go to Resolution Selection", fixed = TRUE)
+  expect_match(dashboard_text, 'selected = "res_tab"', fixed = TRUE)
+  expect_match(dashboard_text, "Differential expression complete", fixed = TRUE)
+  expect_match(dashboard_text, "Go to Manual Annotation", fixed = TRUE)
+  expect_match(dashboard_text, 'selected = "anno_tab"', fixed = TRUE)
+})
+
+test_that("manual annotation views have deterministic navigation", {
+  app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
+  ui_text <- paste(
+    readLines(file.path(app_dir, "app/ui/annotation_ui.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  server_text <- paste(
+    readLines(file.path(app_dir, "app/server/annotation_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  dataset_text <- paste(
+    readLines(file.path(app_dir, "app/server/dataset_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(ui_text, 'id = "annotation_view"', fixed = TRUE)
+  expect_match(ui_text, 'value = "annotation_cluster"', fixed = TRUE)
+  expect_match(ui_text, 'value = "annotation_preview"', fixed = TRUE)
+  expect_match(
+    server_text,
+    'nav_select("annotation_view", "annotation_cluster")',
+    fixed = TRUE
+  )
+  expect_match(
+    server_text,
+    'nav_select("annotation_view", "annotation_preview")',
+    fixed = TRUE
+  )
+  expect_match(server_text, "plot_subtitle", fixed = TRUE)
+  expect_match(dataset_text, 'choices = s_choices, selected = 1', fixed = TRUE)
+})
+
+test_that("manual annotation protects unsaved edits and records CNA omission", {
+  app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
+  server_text <- paste(
+    readLines(file.path(app_dir, "app/server/annotation_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(server_text, "Unsaved annotation changes", fixed = TRUE)
+  expect_match(server_text, "Discard and continue", fixed = TRUE)
+  expect_match(server_text, "Save and continue", fixed = TRUE)
+  expect_match(server_text, "annotation_dirty <- isTRUE", fixed = TRUE)
+  expect_match(server_text, 'observeEvent(input$main_nav', fixed = TRUE)
+  expect_match(server_text, 'type = "navbar"', fixed = TRUE)
+  expect_match(server_text, "CNA configuration is incomplete", fixed = TRUE)
+  expect_match(server_text, "Save; configure CNA next", fixed = TRUE)
+  expect_match(server_text, "Save and omit CNA", fixed = TRUE)
+  expect_match(server_text, '"cna_configuration",\n        "skipped"')
+  expect_match(server_text, "cna_configuration_skipped", fixed = TRUE)
+})
+
+test_that("sample notes are available and persisted across workflow stages", {
+  app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
+  stage_files <- list(
+    res = c("app/ui/resolution_ui.R", "app/server/resolution_server.R"),
+    anno = c("app/ui/annotation_ui.R", "app/server/annotation_server.R"),
+    cna = c("app/ui/cna_ui.R", "app/server/cna_status_server.R")
+  )
+
+  for (stage in names(stage_files)) {
+    stage_text <- paste(
+      unlist(lapply(file.path(app_dir, stage_files[[stage]]), readLines, warn = FALSE)),
+      collapse = "\n"
+    )
+    expect_match(stage_text, paste0(stage, "_sample_notes"), fixed = TRUE)
+    expect_match(stage_text, "save_sample_note", fixed = TRUE)
+    expect_match(stage_text, "sample_note_saved", fixed = TRUE)
+  }
+})
+
+test_that("CNA eligibility is shared by status, single-run, and batch paths", {
+  app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
+  relevant_files <- c(
+    "app/ui/cna_ui.R",
+    "app/server/cna_status_server.R",
+    "app/server/cna_compute_server.R",
+    "util_scripts/05_utils_workflow.R"
+  )
+  relevant_text <- lapply(
+    file.path(app_dir, relevant_files),
+    function(path) paste(readLines(path, warn = FALSE), collapse = "\n")
+  )
+  names(relevant_text) <- relevant_files
+
+  expect_match(relevant_text[["app/ui/cna_ui.R"]], "cna_eligibility_ui", fixed = TRUE)
+  expect_match(
+    relevant_text[["app/server/cna_status_server.R"]],
+    "cna_sample_preflight",
+    fixed = TRUE
+  )
+  expect_match(
+    relevant_text[["app/server/cna_compute_server.R"]],
+    "cna_sample_preflight",
+    fixed = TRUE
+  )
+  expect_gte(
+    lengths(regmatches(
+      relevant_text[["util_scripts/05_utils_workflow.R"]],
+      gregexpr("cna_sample_preflight", relevant_text[["util_scripts/05_utils_workflow.R"]], fixed = TRUE)
+    )),
+    2L
+  )
+})
+
+test_that("batch CNA supports subset selection, resume, and partial-failure summaries", {
+  app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
+  server_text <- paste(
+    readLines(file.path(app_dir, "app/server/cna_compute_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  workflow_text <- paste(
+    readLines(file.path(app_dir, "util_scripts/05_utils_workflow.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(
+    server_text,
+    'checkboxGroupInput(\n        "cna_batch_samples"',
+    fixed = TRUE
+  )
+  expect_match(server_text, "resume_samples <-", fixed = TRUE)
+  expect_match(server_text, "res$failed", fixed = TRUE)
+  expect_match(server_text, '"completed_with_failures"', fixed = TRUE)
+  expect_match(workflow_text, "sample_names = NULL", fixed = TRUE)
+  expect_match(workflow_text, "failed_samples[[s_name]]", fixed = TRUE)
 })

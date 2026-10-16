@@ -893,6 +893,27 @@ test_that("batch_compute_cna_and_heatmaps forwards dataset_dir_path to CNA helpe
       file_name
     )
   }
+
+  test_env$cna_sample_preflight <- function(
+    sample_name,
+    selected_config,
+    dataset_dir_path,
+    gene_positions = NULL,
+    pipeline_state = NULL,
+    validate_expression = TRUE,
+    ...
+  ) {
+    list(
+      eligible = TRUE,
+      status = "eligible",
+      reason = NULL,
+      reasons = character(),
+      counts = list(reference = 1L, candidate_total = 1L),
+      cells = data.table::copy(cells),
+      expmat = expmat,
+      ref_cells = data.table::copy(cells[cell_type == "Reference"])
+    )
+  }
   
   test_env$compute_cna_and_cache <- function(
     expmat,
@@ -1247,5 +1268,55 @@ test_that("preview_cna_summary returns complete previews without modifying cache
   expect_equal(
     after$cell_type,
     before$cell_type
+  )
+})
+
+
+test_that("hclust heatmap classifies empty and single-cell inputs as ineligible", {
+  dataset_dir <- withr::local_tempdir()
+  plot_dir <- file.path(dataset_dir, "plots")
+  dir.create(plot_dir)
+  ref_cells <- data.table::data.table(
+    cell_name = "ref_1",
+    cell_type = "Reference"
+  )
+  chr_n <- data.table::data.table(chr = "01", n = 21L)
+  cells <- data.table::data.table(
+    cell_name = "candidate_1",
+    cell_type = "TumorLike"
+  )
+
+  expect_error(
+    hclust_cluster_heatmap(
+      data.table::data.table(gene = character(), cell_name = character(), cna = numeric()),
+      "sample1",
+      ref_cells,
+      chr_n,
+      c(GENE1 = "1"),
+      cells,
+      plot_dir,
+      dataset_dir
+    ),
+    "No candidate CNA values",
+    class = "cna_ineligible_error"
+  )
+
+  expect_error(
+    hclust_cluster_heatmap(
+      data.table::data.table(
+        gene = c("GENE1", "GENE2"),
+        cell_name = "candidate_1",
+        cna = c(0.1, 0.2)
+      ),
+      "sample1",
+      ref_cells,
+      chr_n,
+      c(GENE1 = "1"),
+      cells,
+      plot_dir,
+      dataset_dir
+    ),
+    "at least two candidate cells",
+    class = "cna_ineligible_error"
   )
 })

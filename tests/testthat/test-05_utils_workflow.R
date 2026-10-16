@@ -252,15 +252,7 @@ test_that("cell_type_annotation_setup loads cached cells and marker matches", {
     genes_file_paths = fixture$genes_path
   )
   
-  # cell_type_annotation_setup() currently obtains the resolution through
-  # config$selected$resolutions.
-  config <- list(
-    selected = list(
-      resolutions = list(
-        sample1 = 0.5
-      )
-    )
-  )
+  selected_config <- list(resolutions = list(sample1 = 0.5))
   
   complete_markers <- data.table::data.table(
     cell_type = c("TypeA", "TypeB"),
@@ -271,11 +263,10 @@ test_that("cell_type_annotation_setup loads cached cells and marker matches", {
     i = 1,
     paths_list = paths_list,
     results_dir_path = results_dir,
-    config = config,
     dataset_dir_path = dataset_dir,
     complete_markers = complete_markers,
     dataset_config = list(),
-    selected_config = list()
+    selected_config = selected_config
   )
   
   expect_named(
@@ -301,5 +292,82 @@ test_that("cell_type_annotation_setup loads cached cells and marker matches", {
   expect_equal(
     res$all_matches$TypeA,
     expected_matches$TypeA
+  )
+})
+
+test_that("cell_type_annotation_setup uses dataset parameters on a cache miss", {
+  dataset_dir <- withr::local_tempdir()
+  processed_dir <- file.path(dataset_dir, "processed_data")
+  results_dir <- file.path(dataset_dir, "results")
+  dir.create(processed_dir, recursive = TRUE)
+  dir.create(results_dir, recursive = TRUE)
+
+  fixture <- write_mini_sample(
+    processed_dir,
+    sample_name = "sample1",
+    n_genes = 10,
+    n_cells = 4,
+    seed = 44
+  )
+  paths_list <- list(
+    sample_dir_paths = fixture$sample_dir,
+    cell_file_paths = fixture$cells_path,
+    expmat_file_paths = fixture$expmat_path,
+    genes_file_paths = fixture$genes_path
+  )
+  dataset_config <- list(params = list(
+    min_genes = 3,
+    target_sum = 1e5,
+    log2_expr_threshold = 0.1,
+    pca_nv = 2,
+    seed = 1,
+    umap = list(spread = 1, min_dist = 0.1)
+  ))
+  selected_config <- list(resolutions = list(sample1 = 0.5))
+
+  workflow_env <- environment(cell_type_annotation_setup)
+  original_loader <- get("load_filter_cells_expmat", envir = workflow_env)
+  withr::defer(assign(
+    "load_filter_cells_expmat",
+    original_loader,
+    envir = workflow_env
+  ))
+  received_config <- NULL
+  assign(
+    "load_filter_cells_expmat",
+    function(cells_path, expmat_path, genes_path, config) {
+      received_config <<- config
+      stop("cache-miss boundary reached", call. = FALSE)
+    },
+    envir = workflow_env
+  )
+
+  expect_error(
+    cell_type_annotation_setup(
+      i = 1,
+      paths_list = paths_list,
+      results_dir_path = results_dir,
+      dataset_dir_path = dataset_dir,
+      complete_markers = data.table::data.table(
+        cell_type = "TypeA",
+        symbol = "GENE01"
+      ),
+      dataset_config = dataset_config,
+      selected_config = selected_config
+    ),
+    "cache-miss boundary reached"
+  )
+  expect_identical(received_config, dataset_config)
+})
+
+test_that("load_filter_cells_expmat rejects incomplete dataset parameters early", {
+  expect_error(
+    load_filter_cells_expmat(
+      cells_path = "unused-cells.csv",
+      expmat_path = "unused-expression.mtx",
+      genes_path = "unused-genes.txt",
+      config = list(params = list(target_sum = 1e5))
+    ),
+    "Dataset configuration requires finite numeric params:.*min_genes.*log2_expr_threshold"
   )
 })

@@ -77,11 +77,19 @@ create_app_context <- function(config_path = "general_config.yaml") {
     )
   }
 
-  marker_genes <- data.table::fread(resource_paths$marker_genes)
+  marker_genes <- normalize_marker_table(
+    data.table::fread(resource_paths$marker_genes),
+    group_column = "cell_type",
+    table_label = "Global cell-type marker resource"
+  )
   marker_genes <- marker_genes[cell_type != "Malignant"]
   marker_genes[, cell_type := gsub(" ", "_", cell_type)]
 
-  malignant_markers <- data.table::fread(resource_paths$malignant_markers)
+  malignant_markers <- normalize_marker_table(
+    data.table::fread(resource_paths$malignant_markers),
+    group_column = "cancer_type",
+    table_label = "Malignant marker resource"
+  )
   housekeeping_genes <- data.table::fread(
     resource_paths$housekeeping_genes,
     header = FALSE

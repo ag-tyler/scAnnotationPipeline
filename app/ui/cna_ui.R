@@ -12,6 +12,17 @@ cna_panel <- function(sample_choices) {
           "1. Select Sample:",
           choices = sample_choices
         ),
+        textAreaInput(
+          "cna_sample_notes",
+          "Sample Notes:",
+          rows = 4,
+          placeholder = "Record observations for this sample..."
+        ),
+        actionButton(
+          "btn_save_cna_notes",
+          "Save Notes",
+          class = "btn-outline-secondary btn-sm w-100"
+        ),
         actionButton(
           "btn_cna_next",
           "Next Sample",
@@ -74,6 +85,7 @@ cna_panel <- function(sample_choices) {
               "Select a sample from the sidebar to check its persisted workflow status.",
               class = "text-muted"
             ),
+            uiOutput("cna_eligibility_ui"),
             uiOutput("cna_status_ui")
           )
         ),

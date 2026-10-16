@@ -160,6 +160,15 @@ register_dataset_server <- function(input, output, session, state, context) {
       )
       return()
     }
+
+    selected_config_before_reconcile <- selected_config
+    selected_config <- reconcile_selected_config(
+      selected_config,
+      basename(sample_dir_paths)
+    )
+    if (!identical(selected_config, selected_config_before_reconcile)) {
+      yaml::write_yaml(selected_config, selected_config_path)
+    }
     state_initialized <- isTRUE(attr(pipeline_state, "initialized"))
     state_sample_changes <- attr(pipeline_state, "sample_changes")
     state_dependency_changes <- attr(pipeline_state, "dependency_changes")
@@ -188,8 +197,6 @@ register_dataset_server <- function(input, output, session, state, context) {
                     min(n_passing, dataset_config$marker_filter_params$cell_type$max_genes))
       head(.SD, n_keep)
     }, by = cell_type]
-
-    setnames(complete_markers, old = 'gene', new = 'symbol', skip_absent = TRUE)
 
     complete_markers <- complete_markers[, .(cell_type, symbol)]
     housekeeping_genes_dt <- data.table(cell_type = 'Housekeeping_artifact', symbol = housekeeping_genes)
@@ -256,6 +263,15 @@ register_dataset_server <- function(input, output, session, state, context) {
     rv$pipeline_state_path <- file.path(dataset_dir_path, state_filename)
     rv$complete_markers <- complete_markers
     rv$dataset_dir_path <- dataset_dir_path
+    rv$cells_filt <- NULL
+    rv$all_matches <- NULL
+    rv$cells_raw <- NULL
+    rv$sample_name <- NULL
+    rv$res <- NULL
+    rv$final_plot <- NULL
+    rv$annotation_dirty <- FALSE
+    rv$annotation_loaded_index <- NULL
+    rv$annotation_pending_navigation <- NULL
 
     # Update config with the selected configs and store it
     local_config <- config
@@ -297,8 +313,8 @@ register_dataset_server <- function(input, output, session, state, context) {
       seq_along(paths_list$sample_dir_paths),
       basename(paths_list$sample_dir_paths)
     )
-    updateSelectInput(session, "res_sample_idx", choices = s_choices)
-    updateSelectInput(session, "sample_idx", choices = s_choices)
+    updateSelectInput(session, "res_sample_idx", choices = s_choices, selected = 1)
+    updateSelectInput(session, "sample_idx", choices = s_choices, selected = 1)
 
     # 7. Reveal App Tabs & Jump to Dashboard
     nav_show("main_nav", target = "menu_tab")
@@ -435,10 +451,7 @@ register_dataset_server <- function(input, output, session, state, context) {
     yaml::write_yaml(samples_config, file.path(new_ds_path, config$config_files$samples))
 
     # 5. Handle selected_config.yaml
-    selected_config <- list(
-      resolutions = list(), cna_ref_cells = list(), cna_pot_mal_cells = list(),
-      cna_ward_ref_cluster = list(), cna_thresholds = list()
-    )
+    selected_config <- setup_selected_config(character())
     yaml::write_yaml(selected_config, file.path(new_ds_path, config$config_files$selected))
 
     # Initialize current workflow state separately from user selections and

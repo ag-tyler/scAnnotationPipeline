@@ -131,7 +131,8 @@ louvain_clustering <- function(exp_pca, exp_umap, cells, resolution = 1.0, seed 
 # 3.1 Clustering plotting
 # --------------------------------------------------------------------------------------------------
 
-plot_clusters <- function(cells, title, x_col = umap1, y_col = umap2, cluster_col = clust) {
+plot_clusters <- function(cells, title, x_col = umap1, y_col = umap2, cluster_col = clust,
+                          subtitle = NULL) {
   #' Plot UMAP embedding coloured by clusters
   #' 
   #' @param cells Cells data table
@@ -139,6 +140,7 @@ plot_clusters <- function(cells, title, x_col = umap1, y_col = umap2, cluster_co
   #' @param x_col Unquoted column name for the x-axis (default: umap1)
   #' @param y_col Unquoted column name for the y-axis (default: umap2)
   #' @param cluster_col Unquoted column name for the clusters (default: clust)
+  #' @param subtitle Optional plot subtitle
   #' 
   #' @return A ggplot2 object
   
@@ -153,7 +155,7 @@ plot_clusters <- function(cells, title, x_col = umap1, y_col = umap2, cluster_co
     ggplot2::scale_colour_manual(values = randomcoloR::distinctColorPalette(n_clusters)) +
     cowplot::theme_half_open() +
     ggplot2::guides(colour = ggplot2::guide_legend(override.aes = list(size = 3.5))) +
-    ggplot2::labs(title = title) +
+    ggplot2::labs(title = title, subtitle = subtitle) +
     ggplot2::theme(
       plot.title = ggplot2::element_text(hjust = 0.5),
       plot.background = ggplot2::element_rect(fill = 'white', color = NA)
@@ -482,6 +484,15 @@ sig_scores_cluster_boxplot <- function(cells, marker_cell_types, marker_genes_fo
 # 5. copy Number Alteration (cna) analysis
 # --------------------------------------------------------------------------------------------------
 
+
+cna_abort <- function(message, class = "cna_input_error") {
+  stop(structure(
+    list(message = message, call = NULL),
+    class = c(class, "error", "condition")
+  ))
+}
+
+
 compute_cna <- function(expmat, gene_positions, ref_cells) {
   #' Compute Copy Number Alterations (CNA) from Gene Expression Data
   #'
@@ -501,6 +512,42 @@ compute_cna <- function(expmat, gene_positions, ref_cells) {
   #' @return A long-format data table (`expdt`) containing the corrected CNA values (`cna`) 
   #'   for each `cell_name` and `gene`, ordered by chromosome (`chr`) and starting position (`start_pos`).
   
+  matrix_like <- is.matrix(expmat) || methods::is(expmat, "Matrix")
+  matrix_values <- if (methods::is(expmat, "Matrix")) expmat@x else as.vector(expmat)
+  if (!matrix_like || any(dim(expmat) < 1L) || !is.numeric(matrix_values)) {
+    cna_abort("CNA computation requires a non-empty numeric expression matrix.")
+  }
+  if (any(!is.finite(matrix_values))) {
+    cna_abort("CNA computation cannot use non-finite expression values.")
+  }
+  if (is.null(rownames(expmat)) || is.null(colnames(expmat))) {
+    cna_abort("CNA expression matrix must have gene and cell names.")
+  }
+  required_position_columns <- c("symbol", "chromosome_name", "start_position")
+  missing_position_columns <- setdiff(required_position_columns, names(gene_positions))
+  if (length(missing_position_columns) > 0L) {
+    cna_abort(paste(
+      "Gene positions are missing required columns:",
+      paste(missing_position_columns, collapse = ", ")
+    ))
+  }
+  if (!is.data.frame(ref_cells) || !all(c("cell_name", "cell_type") %in% names(ref_cells))) {
+    cna_abort("CNA reference cells must contain cell_name and cell_type columns.")
+  }
+  if (nrow(ref_cells) == 0L) {
+    cna_abort(
+      "CNA computation requires at least one reference cell; the reference set is empty.",
+      class = "cna_ineligible_error"
+    )
+  }
+  missing_reference_cells <- setdiff(unique(ref_cells$cell_name), colnames(expmat))
+  if (length(missing_reference_cells) > 0L) {
+    cna_abort(paste0(
+      length(missing_reference_cells),
+      " configured reference cells are absent from the expression matrix."
+    ))
+  }
+
   # Center expression matrix
   r <- Matrix::rowMeans(expmat)
   expmat_cent <- expmat - r
@@ -508,6 +555,12 @@ compute_cna <- function(expmat, gene_positions, ref_cells) {
   # Compute CNA values:
   rms <- r[names(r) %in% gene_positions$symbol]
   genes_top <- utils::head(names(rms)[order(-rms)], 5000)
+  if (length(genes_top) == 0L) {
+    cna_abort(
+      "No expression genes have genomic positions; CNA computation is not applicable.",
+      class = "cna_ineligible_error"
+    )
+  }
   
   # Prevent matrix drop collapsing
   expmat_cna <- expmat_cent[genes_top, , drop = FALSE]
@@ -531,17 +584,35 @@ compute_cna <- function(expmat, gene_positions, ref_cells) {
   # Dynamically adjust 'k' so it never exceeds the number of genes (.N) on the chromosome
   expdt[, cna := log2(caTools::runmean(2^value, k = min(100, .N))), by = .(chr, cell_name)]
   expdt[, cna := cna - median(cna, na.rm = TRUE), keyby = cell_name] 
+  if (nrow(expdt) == 0L || any(!is.finite(expdt$cna))) {
+    cna_abort("CNA smoothing produced empty or non-finite values.")
+  }
   
   # MATHEMATICALLY IDENTICAL REPLACEMENT FOR 1ST DO.CALL:
   expdt_ref <- expdt[ref_cells, on = "cell_name", nomatch = NULL]
+  if (nrow(expdt_ref) == 0L) {
+    cna_abort(
+      "No configured reference cells remain after CNA gene/cell alignment.",
+      class = "cna_ineligible_error"
+    )
+  }
   ref_range <- expdt_ref[, .(mean_cna = mean(cna, na.rm = TRUE)), by = .(cell_type, gene)]
+  if (nrow(ref_range) == 0L || any(!is.finite(ref_range$mean_cna))) {
+    cna_abort("Reference-cell CNA baselines are empty or non-finite.")
+  }
   ref_range <- ref_range[, .(mn = min(mean_cna), mx = max(mean_cna)), keyby = gene]
+  if (any(!is.finite(ref_range$mn)) || any(!is.finite(ref_range$mx))) {
+    cna_abort("Reference-cell CNA ranges are non-finite.")
+  }
   
   # MATHEMATICALLY IDENTICAL REPLACEMENT FOR 2ND DO.CALL:
   expdt[ref_range, on = "gene", c("mn", "mx") := .(i.mn, i.mx)]
   expdt[, cna := ifelse(cna > mx + 0.1, cna - mx - 0.1, 
                         ifelse(cna < mn - 0.1, cna - mn + 0.1, 0))]
   expdt[, c("mn", "mx") := NULL]
+  if (any(!is.finite(expdt$cna))) {
+    cna_abort("Reference correction produced non-finite CNA values.")
+  }
   
   return(expdt)
 }
@@ -562,8 +633,35 @@ hierarchical_clustering_cna <- function(hdata_cast, method = 'ward.D2') {
   #'
   #' @return An object of class \code{hclust} describing the clustering tree.
   
-  # Calculate distance based on 1 - Pearson correlation, then cluster
-  clust_hclust <- stats::hclust(stats::as.dist(1 - stats::cor(hdata_cast)), method = method)
+  if (!is.matrix(hdata_cast) || !is.numeric(hdata_cast) || nrow(hdata_cast) < 1L) {
+    cna_abort("CNA clustering requires a non-empty numeric gene-by-cell matrix.")
+  }
+  if (ncol(hdata_cast) < 2L) {
+    cna_abort(
+      "CNA clustering is not applicable with fewer than two candidate cells.",
+      class = "cna_ineligible_error"
+    )
+  }
+  if (is.null(colnames(hdata_cast)) || anyNA(colnames(hdata_cast)) || anyDuplicated(colnames(hdata_cast))) {
+    cna_abort("CNA clustering requires unique, non-missing cell names.")
+  }
+  if (any(!is.finite(hdata_cast))) {
+    cna_abort("CNA clustering matrix contains non-finite values.")
+  }
+
+  correlations <- suppressWarnings(stats::cor(hdata_cast))
+  if (any(!is.finite(correlations))) {
+    cna_abort(
+      "CNA correlations are non-finite, usually because one or more cell profiles have zero variance."
+    )
+  }
+  distances <- 1 - correlations
+  distances[distances < 0 & distances > -sqrt(.Machine$double.eps)] <- 0
+  if (any(!is.finite(distances)) || any(distances < 0)) {
+    cna_abort("CNA correlation distances are invalid or non-finite.")
+  }
+
+  clust_hclust <- stats::hclust(stats::as.dist(distances), method = method)
   return(clust_hclust)
 }
 

@@ -22,6 +22,9 @@ create_app_state <- function(context) {
     sample_name = NULL,
     res = NULL,
     final_plot = NULL,
+    annotation_dirty = FALSE,
+    annotation_loaded_index = NULL,
+    annotation_pending_navigation = NULL,
 
     # Active CNA preview state.
     cna_preview_res = NULL

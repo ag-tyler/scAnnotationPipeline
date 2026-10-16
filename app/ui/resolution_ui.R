@@ -13,6 +13,17 @@ resolution_panel <- function(sample_choices) {
           choices = sample_choices
         ),
         uiOutput("res_status_badge"),
+        textAreaInput(
+          "res_sample_notes",
+          "Sample Notes:",
+          rows = 4,
+          placeholder = "Record observations for this sample..."
+        ),
+        actionButton(
+          "btn_save_res_notes",
+          "Save Notes",
+          class = "btn-outline-secondary btn-sm w-100"
+        ),
         hr(),
         uiOutput("res_radio_ui"),
         actionButton(

@@ -136,3 +136,17 @@ test_that("hdbscan_clustering_cna preserves cell labels and returns UMAP", {
     colnames(mat)
   )
 })
+
+test_that("hierarchical_clustering_cna reports zero-variance profiles", {
+  mat <- matrix(
+    c(1, 1, 1, 1, 2, 3),
+    nrow = 3,
+    dimnames = list(paste0("gene_", 1:3), c("constant", "variable"))
+  )
+
+  expect_error(
+    hierarchical_clustering_cna(mat),
+    "zero variance",
+    class = "cna_input_error"
+  )
+})

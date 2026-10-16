@@ -1,27 +1,41 @@
-test_that("M0 characterization: CNA computation exposes empty reference input", {
+test_that("CNA computation rejects an empty reference set cleanly", {
   inputs <- make_cna_golden_inputs()
   empty_ref_cells <- inputs$ref_cells[0, ]
 
-  warning_messages <- character()
-  cna <- withCallingHandlers(
+  expect_error(
     compute_cna(
       inputs$expmat,
       inputs$gene_positions,
       empty_ref_cells
     ),
-    warning = function(w) {
-      warning_messages <<- c(warning_messages, conditionMessage(w))
-      invokeRestart("muffleWarning")
-    }
+    "requires at least one reference cell",
+    class = "cna_ineligible_error"
   )
-
-  expect_match(paste(warning_messages, collapse = "\n"), "no non-missing arguments")
-  expect_match(paste(warning_messages, collapse = "\n"), "returning Inf")
-  expect_match(paste(warning_messages, collapse = "\n"), "returning -Inf")
-  expect_true(any(!is.finite(cna$cna)))
 })
 
-test_that("M0 characterization: CNA clustering rejects non-finite correlations", {
+test_that("CNA computation rejects non-finite expression values", {
+  inputs <- make_cna_golden_inputs()
+  inputs$expmat[1, 1] <- Inf
+
+  expect_error(
+    compute_cna(inputs$expmat, inputs$gene_positions, inputs$ref_cells),
+    "non-finite expression values",
+    class = "cna_input_error"
+  )
+})
+
+test_that("CNA computation classifies missing positioned genes as ineligible", {
+  inputs <- make_cna_golden_inputs()
+  inputs$gene_positions$symbol <- paste0("NOT_PRESENT_", seq_len(nrow(inputs$gene_positions)))
+
+  expect_error(
+    compute_cna(inputs$expmat, inputs$gene_positions, inputs$ref_cells),
+    "No expression genes have genomic positions",
+    class = "cna_ineligible_error"
+  )
+})
+
+test_that("CNA clustering rejects non-finite matrix values cleanly", {
   hdata <- matrix(
     c(1, 2, 3, 1, NA, 3, 3, 2, 1),
     nrow = 3,
@@ -30,11 +44,12 @@ test_that("M0 characterization: CNA clustering rejects non-finite correlations",
 
   expect_error(
     hierarchical_clustering_cna(hdata),
-    "NA/NaN/Inf"
+    "contains non-finite values",
+    class = "cna_input_error"
   )
 })
 
-test_that("M0 characterization: CNA clustering rejects a single object", {
+test_that("CNA clustering classifies a single candidate as ineligible", {
   hdata <- matrix(
     c(1, 2, 3),
     ncol = 1,
@@ -43,7 +58,8 @@ test_that("M0 characterization: CNA clustering rejects a single object", {
 
   expect_error(
     hierarchical_clustering_cna(hdata),
-    "must have n >= 2 objects"
+    "fewer than two candidate cells",
+    class = "cna_ineligible_error"
   )
 })
 

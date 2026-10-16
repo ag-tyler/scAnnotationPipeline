@@ -38,10 +38,17 @@ register_dashboard_server <- function(input, output, session, state, context) {
   observeEvent(input$btn_go_res, { updateNavbarPage(session, "main_nav", selected = "res_tab") })
   observeEvent(input$btn_go_anno, { updateNavbarPage(session, "main_nav", selected = "anno_tab") })
   observeEvent(input$btn_back_menu_1, { updateNavbarPage(session, "main_nav", selected = "menu_tab") })
-  observeEvent(input$btn_back_menu_2, { updateNavbarPage(session, "main_nav", selected = "menu_tab") })
   observeEvent(input$btn_copy_info, { updateNavbarPage(session, "main_nav", selected = "clipboard_tab") })
   observeEvent(input$btn_back_menu_3, { updateNavbarPage(session, "main_nav", selected = "menu_tab") })
   observeEvent(input$btn_go_cna, { updateNavbarPage(session, "main_nav", selected = "cna_tab") })
+  observeEvent(input$btn_after_clustering_res, {
+    removeModal()
+    updateNavbarPage(session, "main_nav", selected = "res_tab")
+  })
+  observeEvent(input$btn_after_de_anno, {
+    removeModal()
+    updateNavbarPage(session, "main_nav", selected = "anno_tab")
+  })
 
   observeEvent(input$btn_select_all, {
     runjs("document.getElementById('prompt_text_area').select();")
@@ -110,7 +117,19 @@ register_dashboard_server <- function(input, output, session, state, context) {
         outcome = "completed",
         parameters = list(sample_count = length(rv$paths_list$sample_dir_paths))
       )
-      showNotification("Clustering complete!", type = "message")
+      showModal(modalDialog(
+        title = "Clustering complete",
+        "All samples have been clustered. Review the generated UMAP plots and save one resolution per sample before running differential expression.",
+        easyClose = TRUE,
+        footer = tagList(
+          modalButton("Stay on Start Menu"),
+          actionButton(
+            "btn_after_clustering_res",
+            "Go to Resolution Selection",
+            class = "btn-primary"
+          )
+        )
+      ))
     }, error = function(error) {
       record_state_event(
         rv,
@@ -208,7 +227,19 @@ register_dashboard_server <- function(input, output, session, state, context) {
         outcome = "completed",
         parameters = list(sample_count = length(rv$paths_list$sample_dir_paths))
       )
-      showNotification("Differential Expression Analysis complete!", type = "message")
+      showModal(modalDialog(
+        title = "Differential expression complete",
+        "Marker results are ready for all samples. Continue to Manual Annotation to review clusters and assign cell types.",
+        easyClose = TRUE,
+        footer = tagList(
+          modalButton("Stay on Start Menu"),
+          actionButton(
+            "btn_after_de_anno",
+            "Go to Manual Annotation",
+            class = "btn-primary"
+          )
+        )
+      ))
     }, error = function(error) {
       record_state_event(
         rv,

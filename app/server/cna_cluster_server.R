@@ -437,11 +437,13 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
       shinyjs::enable("btn_cna_go_thresholds")
       nav_select("cna_main_views", "cna_view_thresholds")
     }, error = function(error) {
+      ineligible <- inherits(error, "cna_ineligible_error")
+      outcome <- if (ineligible) "skipped" else "failed"
       try(
         persist_cna_step(
           "cna_signal_correlation",
           s_name,
-          "failed",
+          outcome,
           reason = conditionMessage(error)
         ),
         silent = TRUE
@@ -450,13 +452,16 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
         rv,
         stage = "cna",
         event_type = "cna_signal_correlation",
-        outcome = "failed",
+        outcome = outcome,
         sample = s_name,
         reason = conditionMessage(error)
       )
       showNotification(
-        paste("Signal/correlation computation failed:", conditionMessage(error)),
-        type = "error",
+        paste(
+          if (ineligible) "Signal/correlation is not applicable:" else "Signal/correlation computation failed:",
+          conditionMessage(error)
+        ),
+        type = if (ineligible) "warning" else "error",
         duration = 10
       )
     })

@@ -75,7 +75,7 @@ test_that("setup_selected_config initializes every sample under every section", 
   cfg <- setup_selected_config(samples)
 
   expect_named(cfg, c("resolutions", "cna_ref_cells", "cna_pot_mal_cells",
-                       "cna_ward_ref_cluster", "cna_thresholds"))
+                       "cna_ward_ref_cluster", "cna_thresholds", "sample_notes"))
   for (section in names(cfg)) {
     expect_named(cfg[[section]], samples)
   }
@@ -102,6 +102,63 @@ test_that("build_cells creates one row per cell id with expected columns", {
   expect_named(dt, c("cell_name", "sample", "cell_type", "complexity",
                       "cell_subtype", "patient", "subclone", "source"))
   expect_true(all(is.na(dt$cell_type)))
+})
+
+test_that("reconcile_selected_config adds notes without replacing decisions", {
+  existing <- list(resolutions = list(sample1 = 0.5))
+
+  reconciled <- reconcile_selected_config(existing, c("sample1", "sample2"))
+
+  expect_identical(reconciled$resolutions$sample1, 0.5)
+  expect_identical(reconciled$resolutions$sample2, 0)
+  expect_identical(reconciled$sample_notes$sample1, "")
+  expect_identical(reconciled$sample_notes$sample2, "")
+  expect_true(is.list(reconciled$cna_ref_cells$sample1))
+})
+
+test_that("save_sample_note persists multiline text", {
+  path <- withr::local_tempfile(fileext = ".yaml")
+  config <- setup_selected_config("sample1")
+
+  saved <- save_sample_note(config, path, "sample1", "Review CD3D\nPossible T cells")
+  reloaded <- yaml::read_yaml(path)
+
+  expect_identical(saved$sample_notes$sample1, "Review CD3D\nPossible T cells")
+  expect_identical(reloaded$sample_notes$sample1, "Review CD3D\nPossible T cells")
+})
+
+test_that("normalize_marker_table canonicalizes legacy gene columns", {
+  markers <- data.table::data.table(
+    cancer_type = "CRC",
+    gene = "EPCAM",
+    combined = 2.5
+  )
+
+  normalized <- normalize_marker_table(markers, "cancer_type", "Malignant markers")
+
+  expect_true("symbol" %in% names(normalized))
+  expect_false("gene" %in% names(normalized))
+  expect_identical(normalized$symbol, "EPCAM")
+  expect_true("gene" %in% names(markers))
+})
+
+test_that("normalize_marker_table reports actionable schema errors", {
+  expect_error(
+    normalize_marker_table(
+      data.table::data.table(cancer_type = "CRC", combined = 2.5),
+      "cancer_type",
+      "Malignant markers"
+    ),
+    "must contain a 'symbol' column"
+  )
+  expect_error(
+    normalize_marker_table(
+      data.table::data.table(gene = "EPCAM", combined = 2.5),
+      "cancer_type",
+      "Malignant markers"
+    ),
+    "missing required column.*cancer_type"
+  )
 })
 
 test_that("validate_samples_config preserves canonical sample identifiers", {

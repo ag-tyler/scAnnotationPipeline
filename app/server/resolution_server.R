@@ -3,6 +3,40 @@
 register_resolution_server <- function(input, output, session, state, context) {
   rv <- state
 
+  observe({
+    req(rv$paths_list, input$res_sample_idx, rv$live_selected_config)
+    idx <- as.numeric(input$res_sample_idx)
+    sample_name <- basename(rv$paths_list$sample_dir_paths)[idx]
+    note <- rv$live_selected_config$sample_notes[[sample_name]]
+    updateTextAreaInput(
+      session,
+      "res_sample_notes",
+      value = if (is.null(note)) "" else note
+    )
+  })
+
+  observeEvent(input$btn_save_res_notes, {
+    req(rv$paths_list, input$res_sample_idx, rv$live_selected_config)
+    idx <- as.numeric(input$res_sample_idx)
+    sample_name <- basename(rv$paths_list$sample_dir_paths)[idx]
+    rv$live_selected_config <- save_sample_note(
+      rv$live_selected_config,
+      rv$selected_config_path,
+      sample_name,
+      input$res_sample_notes
+    )
+    rv$config$selected <- rv$live_selected_config
+    record_state_event(
+      rv,
+      stage = "notes",
+      event_type = "sample_note_saved",
+      outcome = "saved",
+      sample = sample_name,
+      parameters = list(source = "resolution")
+    )
+    showNotification(paste("Notes saved for", sample_name), type = "message")
+  })
+
   persist_de_state <- function(sample_name, status, reason = NULL, details = NULL) {
     current <- get_pipeline_step(
       rv$pipeline_state,

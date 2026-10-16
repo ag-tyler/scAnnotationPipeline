@@ -14,6 +14,17 @@ annotation_panel <- function(sample_choices) {
           selected = sample_choices[1]
         ),
         uiOutput("anno_status_badge"),
+        textAreaInput(
+          "anno_sample_notes",
+          "Sample Notes:",
+          rows = 4,
+          placeholder = "Record observations for this sample..."
+        ),
+        actionButton(
+          "btn_save_anno_notes",
+          "Save Notes",
+          class = "btn-outline-secondary btn-sm w-100"
+        ),
         actionButton(
           "btn_anno_next",
           "Next Sample",
@@ -65,8 +76,10 @@ annotation_panel <- function(sample_choices) {
         )
       ),
       navset_card_underline(
+        id = "annotation_view",
         nav_panel(
-          "Cluster Exploration",
+          title = "Cluster Exploration",
+          value = "annotation_cluster",
           fluidRow(
             column(
               6,
@@ -81,12 +94,14 @@ annotation_panel <- function(sample_choices) {
           )
         ),
         nav_panel(
-          "DE Marker Matches",
+          title = "DE Marker Matches",
+          value = "annotation_markers",
           h4("Matched Marker Genes for Selected Cluster"),
           DT::DTOutput("marker_table")
         ),
         nav_panel(
-          "Final Annotation Preview",
+          title = "Final Annotation Preview",
+          value = "annotation_preview",
           h4("Annotated UMAP"),
           p("Click 'Preview Annotated Plot' to render this view before saving."),
           plotOutput("final_umap_plot", height = "600px")

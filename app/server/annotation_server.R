@@ -56,6 +56,89 @@ register_annotation_server <- function(input, output, session, state, context) {
     )
   }
 
+  show_unsaved_annotation_dialog <- function() {
+    showModal(modalDialog(
+      title = "Unsaved annotation changes",
+      "This sample has cell-type assignments that have not been saved.",
+      easyClose = FALSE,
+      footer = tagList(
+        modalButton("Cancel"),
+        actionButton("btn_discard_annotation_navigation", "Discard and continue", class = "btn-danger"),
+        actionButton("btn_save_annotation_navigation", "Save and continue", class = "btn-primary")
+      )
+    ))
+  }
+
+  finish_annotation_navigation <- function() {
+    pending <- rv$annotation_pending_navigation
+    rv$annotation_pending_navigation <- NULL
+    if (is.null(pending)) return(invisible(FALSE))
+
+    if (identical(pending$type, "sample")) {
+      updateSelectInput(session, "sample_idx", selected = pending$index)
+    } else if (identical(pending$type, "menu")) {
+      updateNavbarPage(session, "main_nav", selected = "menu_tab")
+    } else if (identical(pending$type, "navbar")) {
+      updateNavbarPage(session, "main_nav", selected = pending$target)
+    }
+    invisible(TRUE)
+  }
+
+  discard_current_annotation_edits <- function() {
+    if (!is.null(rv$cells_filt) && !is.null(rv$cells_raw)) {
+      restored <- data.table::copy(rv$cells_filt)
+      if ("cell_type" %in% names(rv$cells_raw)) {
+        restored[
+          rv$cells_raw,
+          on = "cell_name",
+          cell_type := i.cell_type
+        ]
+      }
+      rv$cells_filt <- restored
+    }
+    rv$final_plot <- NULL
+    rv$annotation_dirty <- FALSE
+    invisible(TRUE)
+  }
+
+  cna_decision_recorded <- function() {
+    get_pipeline_step(
+      rv$pipeline_state,
+      "cna_configuration",
+      rv$sample_name
+    )$status %in% c("completed", "skipped")
+  }
+
+  observe({
+    req(rv$sample_name, rv$live_selected_config)
+    note <- rv$live_selected_config$sample_notes[[rv$sample_name]]
+    updateTextAreaInput(
+      session,
+      "anno_sample_notes",
+      value = if (is.null(note)) "" else note
+    )
+  })
+
+  observeEvent(input$btn_save_anno_notes, {
+    req(rv$sample_name, rv$live_selected_config)
+    rv$live_selected_config <- save_sample_note(
+      rv$live_selected_config,
+      rv$selected_config_path,
+      rv$sample_name,
+      input$anno_sample_notes
+    )
+    rv$config$selected <- rv$live_selected_config
+    record_state_event(
+      rv,
+      stage = "notes",
+      event_type = "sample_note_saved",
+      outcome = "saved",
+      sample = rv$sample_name,
+      parameters = list(source = "annotation")
+    )
+    showNotification(paste("Notes saved for", rv$sample_name), type = "message")
+  })
+
   observeEvent(input$btn_anno_next, {
     req(rv$paths_list, input$sample_idx)
     idx <- as.numeric(input$sample_idx)
@@ -243,6 +326,23 @@ register_annotation_server <- function(input, output, session, state, context) {
   observeEvent(input$sample_idx, {
     req(rv$paths_list, input$sample_idx)
     idx <- as.numeric(input$sample_idx)
+    if (
+      !is.null(rv$annotation_loaded_index) &&
+        identical(idx, as.numeric(rv$annotation_loaded_index))
+    ) {
+      return()
+    }
+    if (isTRUE(rv$annotation_dirty) && !is.null(rv$annotation_loaded_index)) {
+      rv$annotation_pending_navigation <- list(type = "sample", index = idx)
+      updateSelectInput(
+        session,
+        "sample_idx",
+        selected = rv$annotation_loaded_index
+      )
+      show_unsaved_annotation_dialog()
+      return()
+    }
+    nav_select("annotation_view", "annotation_cluster")
 
     cells_file <- rv$paths_list$cell_file_paths[idx]
     if (!file.exists(cells_file)) return()
@@ -254,6 +354,8 @@ register_annotation_server <- function(input, output, session, state, context) {
     rv$cells_raw <- load_cells(cells_file)
     rv$sample_name <- unique(rv$cells_raw$sample)
     rv$res <- rv$live_selected_config$resolutions[[rv$sample_name]]
+    rv$annotation_loaded_index <- idx
+    rv$annotation_dirty <- FALSE
 
     readiness <- pipeline_step_readiness(rv$pipeline_state, "annotation", rv$sample_name)
     if (!readiness$ready) {
@@ -264,7 +366,7 @@ register_annotation_server <- function(input, output, session, state, context) {
 
     tryCatch({
       results_list <- cell_type_annotation_setup(idx, rv$paths_list, rv$results_dir_path,
-                                                 rv$config, rv$dataset_dir_path, rv$complete_markers,
+                                                 rv$dataset_dir_path, rv$complete_markers,
                                                  dataset_config = rv$dataset_config,
                                                  selected_config = rv$live_selected_config)
       rv$cells_filt <- results_list$cells_filt
@@ -370,8 +472,14 @@ register_annotation_server <- function(input, output, session, state, context) {
     curr_annotation <- ifelse(input$cell_type_input == "NA", NA_character_, input$cell_type_input)
 
     tmp <- data.table::copy(rv$cells_filt)
+    cluster_rows <- tmp$clust == input$cluster
+    previous_annotation <- as.character(tmp$cell_type[cluster_rows])
     tmp[clust == input$cluster, cell_type := curr_annotation]
     rv$cells_filt <- tmp
+    rv$annotation_dirty <- isTRUE(rv$annotation_dirty) || !identical(
+      previous_annotation,
+      as.character(tmp$cell_type[cluster_rows])
+    )
 
     record_state_event(
       rv,
@@ -406,12 +514,45 @@ register_annotation_server <- function(input, output, session, state, context) {
     id <- showNotification("Generating preview plot...", duration = NULL, type = "message")
     on.exit(removeNotification(id), add = TRUE)
 
-    plot_title <- paste0('Cell types of sample: ', rv$sample_name, '; res=', rv$res)
-    rv$final_plot <- plot_clusters(rv$cells_filt, plot_title, x_col = umap1, y_col = umap2, cluster_col = cell_type)
+    plot_title <- rv$sample_name
+    plot_subtitle <- paste("Annotated cell types; clustering resolution", rv$res)
+    rv$final_plot <- plot_clusters(
+      rv$cells_filt,
+      plot_title,
+      x_col = umap1,
+      y_col = umap2,
+      cluster_col = cell_type,
+      subtitle = plot_subtitle
+    )
     output$final_umap_plot <- renderPlot({ rv$final_plot })
+    nav_select("annotation_view", "annotation_preview")
   })
 
-  observeEvent(input$save_btn, {
+  observeEvent(input$btn_back_menu_2, {
+    if (isTRUE(rv$annotation_dirty)) {
+      rv$annotation_pending_navigation <- list(type = "menu")
+      show_unsaved_annotation_dialog()
+    } else {
+      updateNavbarPage(session, "main_nav", selected = "menu_tab")
+    }
+  })
+
+  observeEvent(input$main_nav, {
+    req(input$main_nav)
+    if (
+      isTRUE(rv$annotation_dirty) &&
+        !identical(input$main_nav, "anno_tab")
+    ) {
+      rv$annotation_pending_navigation <- list(
+        type = "navbar",
+        target = input$main_nav
+      )
+      updateNavbarPage(session, "main_nav", selected = "anno_tab")
+      show_unsaved_annotation_dialog()
+    }
+  }, ignoreInit = TRUE)
+
+  save_current_annotations <- function(skip_cna = FALSE) {
     req(rv$paths_list, rv$cells_filt, rv$cells_raw, rv$sample_name, rv$res, rv$results_dir_path)
     readiness <- pipeline_step_readiness(rv$pipeline_state, "annotation", rv$sample_name)
     if (!readiness$ready) {
@@ -420,7 +561,7 @@ register_annotation_server <- function(input, output, session, state, context) {
         type = "error",
         duration = 10
       )
-      return()
+      return(FALSE)
     }
     id <- showNotification("Saving annotations and plot to disk...", duration = NULL, type = "message")
     on.exit(removeNotification(id), add = TRUE)
@@ -485,7 +626,7 @@ register_annotation_server <- function(input, output, session, state, context) {
         type = "error",
         duration = 10
       )
-      return()
+      return(FALSE)
     }
 
     invalidated_cache <- character()
@@ -507,6 +648,88 @@ register_annotation_server <- function(input, output, session, state, context) {
       )
     )
 
+    if (isTRUE(skip_cna)) {
+      rv$live_selected_config$cna_ref_cells[[rv$sample_name]] <- list()
+      rv$live_selected_config$cna_pot_mal_cells[[rv$sample_name]] <- list()
+      rv$config$selected <- rv$live_selected_config
+      yaml::write_yaml(rv$live_selected_config, rv$selected_config_path)
+      persist_annotation_step(
+        "cna_configuration",
+        "skipped",
+        reason = "User explicitly omitted CNA configuration when saving annotations.",
+        details = list(omitted_by_user = TRUE)
+      )
+      record_state_event(
+        rv,
+        stage = "cna_configuration",
+        event_type = "cna_configuration_skipped",
+        outcome = "skipped",
+        sample = rv$sample_name,
+        reason = "User explicitly omitted CNA configuration when saving annotations."
+      )
+    }
+
+    rv$annotation_dirty <- FALSE
     showNotification("Successfully saved annotations to disk!", type = "default")
+    TRUE
+  }
+
+  request_annotation_save <- function() {
+    if (!cna_decision_recorded()) {
+      showModal(modalDialog(
+        title = "CNA configuration is incomplete",
+        paste0(
+          "No complete CNA reference/candidate configuration is saved for ",
+          rv$sample_name, ". You can return to configure CNA, or explicitly ",
+          "save these annotations while marking CNA as omitted for this sample."
+        ),
+        easyClose = FALSE,
+        footer = tagList(
+          modalButton("Return to annotation"),
+          actionButton(
+            "btn_confirm_save_before_cna",
+            "Save; configure CNA next",
+            class = "btn-primary"
+          ),
+          actionButton(
+            "btn_confirm_save_without_cna",
+            "Save and omit CNA",
+            class = "btn-warning"
+          )
+        )
+      ))
+      return(invisible(FALSE))
+    }
+
+    saved <- save_current_annotations()
+    if (isTRUE(saved)) finish_annotation_navigation()
+    invisible(saved)
+  }
+
+  observeEvent(input$save_btn, {
+    request_annotation_save()
+  })
+
+  observeEvent(input$btn_confirm_save_without_cna, {
+    removeModal()
+    saved <- save_current_annotations(skip_cna = TRUE)
+    if (isTRUE(saved)) finish_annotation_navigation()
+  })
+
+  observeEvent(input$btn_confirm_save_before_cna, {
+    removeModal()
+    saved <- save_current_annotations()
+    if (isTRUE(saved)) finish_annotation_navigation()
+  })
+
+  observeEvent(input$btn_discard_annotation_navigation, {
+    removeModal()
+    discard_current_annotation_edits()
+    finish_annotation_navigation()
+  })
+
+  observeEvent(input$btn_save_annotation_navigation, {
+    removeModal()
+    request_annotation_save()
   })
 }

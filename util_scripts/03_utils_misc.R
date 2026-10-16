@@ -89,6 +89,43 @@ map_ensembl_to_symbol_vector <- function(ensembl_ids, hgnc_complete_set) {
 # 4. Config functions
 # --------------------------------------------------------------------------------------------------
 
+
+normalize_marker_table <- function(marker_table, group_column, table_label = "Marker table") {
+  #' Validate and normalize a marker-gene resource table
+  #'
+  #' Marker resources historically use `gene`, while downstream annotation
+  #' code uses the canonical name `symbol`. This function accepts either input
+  #' spelling, returns an independent data.table with `symbol`, and fails early
+  #' with an actionable schema error when required fields are absent.
+  required_columns <- c(group_column, "combined")
+  missing_columns <- setdiff(required_columns, names(marker_table))
+  if (length(missing_columns) > 0L) {
+    stop(
+      table_label, " is missing required column(s): ",
+      paste(missing_columns, collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+
+  normalized <- data.table::as.data.table(data.table::copy(marker_table))
+  if (!"symbol" %in% names(normalized)) {
+    if (!"gene" %in% names(normalized)) {
+      stop(
+        table_label, " must contain a 'symbol' column (or legacy 'gene' column).",
+        call. = FALSE
+      )
+    }
+    data.table::setnames(normalized, "gene", "symbol")
+  }
+
+  normalized[, symbol := trimws(as.character(symbol))]
+  if (anyNA(normalized$symbol) || any(normalized$symbol == "")) {
+    stop(table_label, " contains missing or empty gene symbols.", call. = FALSE)
+  }
+
+  normalized
+}
+
 setup_selected_config <- function(sample_names) {
   #' Setup Configuration List for Samples
   #'
@@ -120,19 +157,60 @@ setup_selected_config <- function(sample_names) {
   cna_pot_mal_cells = list()
   cna_ward_ref_cluster = list()
   cna_thresholds = list()
+  sample_notes = list()
   for (sample_name in sample_names) {
     resolutions[[sample_name]] <- 0.0
     cna_ref_cells[[sample_name]] <- list()
     cna_pot_mal_cells[[sample_name]] <- list()
     cna_ward_ref_cluster[[sample_name]] <- list()
     cna_thresholds[[sample_name]] <- list()
+    sample_notes[[sample_name]] <- ""
   }
   selected_config[['resolutions']] <- resolutions
   selected_config[['cna_ref_cells']] <- cna_ref_cells
   selected_config[['cna_pot_mal_cells']] <- cna_pot_mal_cells
   selected_config[['cna_ward_ref_cluster']] <- cna_ward_ref_cluster
   selected_config[['cna_thresholds']] <- cna_thresholds
+  selected_config[['sample_notes']] <- sample_notes
   return(selected_config)
+}
+
+
+reconcile_selected_config <- function(selected_config, sample_names) {
+  #' Add missing selected-config sections and sample entries
+  #'
+  #' Existing decisions are preserved while older selected_config.yaml files
+  #' gain defaults introduced by newer app versions.
+  defaults <- setup_selected_config(sample_names)
+  if (is.null(selected_config) || !is.list(selected_config)) selected_config <- list()
+
+  for (section in names(defaults)) {
+    if (is.null(selected_config[[section]]) || !is.list(selected_config[[section]])) {
+      selected_config[[section]] <- list()
+    }
+    for (sample_name in sample_names) {
+      if (is.null(selected_config[[section]][[sample_name]])) {
+        selected_config[[section]][[sample_name]] <- defaults[[section]][[sample_name]]
+      }
+    }
+  }
+  selected_config
+}
+
+
+save_sample_note <- function(selected_config, selected_config_path, sample_name, note) {
+  if (is.null(sample_name) || length(sample_name) != 1L || is.na(sample_name) || !nzchar(sample_name)) {
+    stop("A sample name is required to save a note.", call. = FALSE)
+  }
+  if (is.null(selected_config$sample_notes)) selected_config$sample_notes <- list()
+  note <- if (is.null(note) || length(note) == 0L || is.na(note[[1]])) {
+    ""
+  } else {
+    as.character(note[[1]])
+  }
+  selected_config$sample_notes[[sample_name]] <- note
+  yaml::write_yaml(selected_config, selected_config_path)
+  selected_config
 }
 
 

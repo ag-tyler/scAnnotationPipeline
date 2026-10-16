@@ -7,7 +7,10 @@ register_cna_compute_server <- function(input, output, session, state, context) 
     current <- get_pipeline_step(rv$pipeline_state, "cna_compute", sample_name)
     invalidate <- identical(status, "in_progress") &&
       current$status %in% c("completed", "skipped")
-    if (identical(status, "incomplete") && current$status %in% c("completed", "skipped")) {
+    if (
+      status %in% c("incomplete", "skipped") &&
+        current$status %in% c("completed", "skipped")
+    ) {
       rv$pipeline_state <- persist_pipeline_step_update(
         rv$pipeline_state,
         rv$pipeline_state_path,
@@ -53,6 +56,47 @@ register_cna_compute_server <- function(input, output, session, state, context) 
       return()
     }
 
+
+    preflight <- cna_sample_preflight(
+      s_name,
+      rv$live_selected_config,
+      rv$dataset_dir_path,
+      gene_positions = context$resources$gene_positions,
+      pipeline_state = rv$pipeline_state,
+      validate_expression = TRUE
+    )
+    if (!isTRUE(preflight$eligible)) {
+      state_status <- if (identical(preflight$status, "ineligible")) {
+        "skipped"
+      } else {
+        "incomplete"
+      }
+      try(
+        persist_cna_compute(
+          s_name,
+          state_status,
+          reason = preflight$reason,
+          details = list(preflight_status = preflight$status, counts = preflight$counts)
+        ),
+        silent = TRUE
+      )
+      record_state_event(
+        rv,
+        stage = "cna",
+        event_type = "cna_preflight",
+        outcome = preflight$status,
+        sample = s_name,
+        parameters = preflight$counts,
+        reason = preflight$reason
+      )
+      showNotification(
+        paste("CNA cannot run:", preflight$reason),
+        type = if (identical(preflight$status, "invalid")) "error" else "warning",
+        duration = 12
+      )
+      return()
+    }
+
     state_started <- tryCatch(persist_cna_compute(s_name, "in_progress"), error = identity)
     if (inherits(state_started, "error")) {
       showNotification(
@@ -74,16 +118,9 @@ register_cna_compute_server <- function(input, output, session, state, context) 
     )
 
     tryCatch({
-      # Load filtered data from cache
-      cells_file <- paste0('cells_filt_clust_res_', rv$live_selected_config$resolutions[[s_name]], '_', s_name, '.qs2')
-      expmat_file <- paste0('expmat_filt_', s_name, '.qs2')
-
-      cells_filt <- cache_load_data(cells_file, rv$dataset_dir_path)
-      expmat_filt <- cache_load_data(expmat_file, rv$dataset_dir_path)
-
-      # Prepare reference cells
-      cells_filt[is.na(cell_type), cell_type := 'Unassigned']
-      ref_cells <- cells_filt[cell_type %in% rv$live_selected_config$cna_ref_cells[[s_name]]]
+      cells_filt <- preflight$cells
+      expmat_filt <- preflight$expmat
+      ref_cells <- preflight$ref_cells
 
       # Compute CNA
       cna_mat_file_name <- paste0('cna_matrix_', s_name, '.qs2')
@@ -138,18 +175,23 @@ register_cna_compute_server <- function(input, output, session, state, context) 
       # Trigger UI update by moving to the next tab
       nav_select("cna_main_views", "cna_view_select_malignant")
     }, error = function(error) {
-      try(persist_cna_compute(s_name, "failed", reason = conditionMessage(error)), silent = TRUE)
+      ineligible <- inherits(error, "cna_ineligible_error")
+      outcome <- if (ineligible) "skipped" else "failed"
+      try(persist_cna_compute(s_name, outcome, reason = conditionMessage(error)), silent = TRUE)
       record_state_event(
         rv,
         stage = "cna",
         event_type = "cna_compute",
-        outcome = "failed",
+        outcome = outcome,
         sample = s_name,
         reason = conditionMessage(error)
       )
       showNotification(
-        paste("CNA computation failed:", conditionMessage(error)),
-        type = "error",
+        paste(
+          if (ineligible) "CNA is not applicable:" else "CNA computation failed:",
+          conditionMessage(error)
+        ),
+        type = if (ineligible) "warning" else "error",
         duration = 10
       )
     })
@@ -158,9 +200,30 @@ register_cna_compute_server <- function(input, output, session, state, context) 
   # --- STEP 1b: Batch Compute CNA & Heatmaps ---
   observeEvent(input$btn_cna_batch_compute, {
     req(rv$paths_list)
+    sample_names <- basename(rv$paths_list$sample_dir_paths)
+    status_labels <- vapply(sample_names, function(sample_name) {
+      get_pipeline_step(rv$pipeline_state, "cna_compute", sample_name)$status
+    }, character(1))
+    choices <- stats::setNames(
+      sample_names,
+      paste0(sample_names, " (", status_labels, ")")
+    )
+    resume_samples <- sample_names[status_labels != "completed"]
     showModal(modalDialog(
       title = "Confirm Batch CNA Computation",
-      "Are you sure you want to run the CNA and Heatmap pipeline for ALL valid samples? This process takes a significant amount of time and will lock the application.",
+      p(
+        "Select the samples to run. Incomplete, skipped, stale, and failed samples are selected by default; completed samples remain available for an intentional rerun."
+      ),
+      checkboxGroupInput(
+        "cna_batch_samples",
+        "Samples:",
+        choices = choices,
+        selected = resume_samples
+      ),
+      p(
+        "Each sample is preflighted independently. Ineligible samples are skipped and a failure in one sample will not stop the others.",
+        class = "text-muted"
+      ),
       easyClose = TRUE,
       footer = tagList(
         modalButton("Cancel"),
@@ -170,27 +233,12 @@ register_cna_compute_server <- function(input, output, session, state, context) 
   })
 
   observeEvent(input$confirm_cna_batch, {
-    removeModal()
-    sample_names <- basename(rv$paths_list$sample_dir_paths)
-    blocked_samples <- sample_names[vapply(sample_names, function(sample_name) {
-      !pipeline_step_readiness(rv$pipeline_state, "cna_compute", sample_name)$ready
-    }, logical(1))]
-    if (length(blocked_samples) > 0L) {
-      reason <- paste(
-        "CNA prerequisites are incomplete for:",
-        paste(blocked_samples, collapse = ", ")
-      )
-      record_state_event(
-        rv,
-        stage = "cna",
-        event_type = "cna_batch_compute",
-        outcome = "incomplete",
-        reason = reason,
-        parameters = list(blocked_samples = blocked_samples)
-      )
-      showNotification(reason, type = "error", duration = 10)
+    selected_samples <- input$cna_batch_samples
+    if (is.null(selected_samples) || length(selected_samples) == 0L) {
+      showNotification("Select at least one sample for batch CNA.", type = "warning")
       return()
     }
+    removeModal()
     id <- showNotification("Running Batch CNA Computation. Check R console...", duration = NULL, type = "warning")
     on.exit(removeNotification(id), add = TRUE)
     record_state_event(
@@ -198,7 +246,10 @@ register_cna_compute_server <- function(input, output, session, state, context) 
       stage = "cna",
       event_type = "cna_batch_compute",
       outcome = "started",
-      parameters = list(sample_count = length(rv$paths_list$sample_dir_paths))
+      parameters = list(
+        sample_count = length(selected_samples),
+        samples = unname(selected_samples)
+      )
     )
 
     tryCatch({
@@ -209,25 +260,26 @@ register_cna_compute_server <- function(input, output, session, state, context) 
         results_dir_path = rv$results_dir_path,
         selected_config = rv$live_selected_config,
         gene_positions = context$resources$gene_positions,
+        sample_names = selected_samples,
+        pipeline_state = rv$pipeline_state,
         state_callback = function(sample_name, status, reason = NULL, details = NULL) {
           persist_cna_compute(sample_name, status, reason, details)
         }
       )
 
       for (skip_label in res$skipped) {
-        missing_cache <- grepl(" \\(Missing Cache\\)$", skip_label)
         skipped_sample <- sub(" \\(Missing Cache\\)$", "", skip_label)
+        preflight <- res$preflight[[skipped_sample]]
         record_state_event(
           rv,
           stage = "cna",
           event_type = "cna_compute",
-          outcome = "incomplete",
+          outcome = if (!is.null(preflight$status)) preflight$status else "incomplete",
           sample = skipped_sample,
-          reason = if (missing_cache) {
-            "Required filtering or clustering caches are missing."
-          } else {
-            "Reference or potentially malignant cell types are not configured."
-          }
+          parameters = if (is.null(preflight$counts)) list() else preflight$counts,
+          reason = if (is.null(preflight$reason)) {
+            "CNA preflight did not pass."
+          } else preflight$reason
         )
       }
       for (processed_sample in res$processed) {
@@ -240,23 +292,47 @@ register_cna_compute_server <- function(input, output, session, state, context) 
           parameters = list(batch = TRUE)
         )
       }
+      for (failed_sample in names(res$failed)) {
+        record_state_event(
+          rv,
+          stage = "cna",
+          event_type = "cna_compute",
+          outcome = "failed",
+          sample = failed_sample,
+          reason = unname(res$failed[[failed_sample]]),
+          parameters = list(batch = TRUE)
+        )
+      }
       record_state_event(
         rv,
         stage = "cna",
         event_type = "cna_batch_compute",
-        outcome = "completed",
+        outcome = if (length(res$failed) > 0L) "completed_with_failures" else "completed",
         parameters = list(
           processed_count = length(res$processed),
-          skipped_count = length(res$skipped)
+          skipped_count = length(res$skipped),
+          failed_count = length(res$failed),
+          processed_samples = unname(res$processed),
+          skipped_samples = unname(res$skipped),
+          failed_samples = names(res$failed)
         )
       )
 
       # Report results to user
-      msg <- paste0(
-        "Batch Complete!\nProcessed: ", length(res$processed),
-        " samples\nIncomplete: ", length(res$skipped), " samples"
-      )
-      showNotification(msg, type = "message", duration = 15)
+      result_line <- function(label, samples) {
+        tags$p(
+          tags$strong(paste0(label, " (", length(samples), "): ")),
+          if (length(samples) == 0L) "None" else paste(samples, collapse = ", ")
+        )
+      }
+      showModal(modalDialog(
+        title = "Batch CNA complete",
+        result_line("Completed", res$processed),
+        result_line("Skipped / incomplete", res$skipped),
+        result_line("Failed", names(res$failed)),
+        easyClose = TRUE,
+        footer = modalButton("Close")
+      ))
 
       # If the currently selected sample in the UI was just processed, unlock Step 2 automatically
       current_s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
