@@ -77,3 +77,9 @@ On 2026-10-21 under Windows and R 4.5.3, `Rscript tests/testthat.R` passed 818
 assertions with zero failures, warnings, or skips. This total includes all 21
 synthetic Edge assertions and five reviewed screenshot comparisons. No local
 dataset or untracked biological resource was accessed.
+
+The F01 follow-up run on 2026-10-21 passed 843 assertions with zero failures
+or warnings. One browser-baseline test was skipped because Chromium could not
+obtain a local process pipe/port in the restricted test environment; all
+non-browser tests, including the new session and stale-state characterizations,
+passed.

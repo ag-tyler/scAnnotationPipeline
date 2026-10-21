@@ -50,6 +50,7 @@ test_that("shared state remains flat and contains only mutable session data", {
     state_names,
     c(
       "paths_list", "dataset_config", "samples_config",
+      "session_id", "session_started_at", "session_logged_datasets",
       "live_selected_config", "complete_markers", "results_dir_path",
       "selected_config_path", "pipeline_state", "pipeline_state_path",
       "dataset_dir_path", "config", "cells_filt",
@@ -63,6 +64,28 @@ test_that("shared state remains flat and contains only mutable session data", {
     "cancer_cell_map",
     "clipboard_text"
   ) %in% state_names))
+})
+
+
+test_that("application state carries a stable per-session diagnostic identity", {
+  app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
+  component_env <- new.env(parent = globalenv())
+  sys.source(file.path(app_dir, "app/state.R"), envir = component_env)
+
+  started_at <- as.POSIXct("2026-10-21 12:00:00", tz = "UTC")
+  state <- component_env$create_app_state(
+    list(),
+    session_id = "test-session-token",
+    session_started_at = started_at
+  )
+
+  expect_identical(shiny::isolate(state$session_id), "test-session-token")
+  expect_identical(
+    shiny::isolate(state$session_started_at),
+    "2026-10-21T12:00:00.000Z"
+  )
+  expect_identical(shiny::isolate(state$session_logged_datasets), character())
+  expect_match(component_env$new_app_session_id(), "^session-")
 })
 
 test_that("each server registration is composed exactly once", {
@@ -158,7 +181,9 @@ test_that("new dataset creation offers and copies only the general template", {
 test_that("pipeline persistence boundaries emit structured events", {
   app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
   expected_events <- list(
-    "app/server/dataset_server.R" = c("workspace_created", "dataset_load"),
+    "app/server/dataset_server.R" = c(
+      "workspace_created", "app_session_started", "dataset_load"
+    ),
     "app/server/dashboard_server.R" = c("clustering_run", "de_run"),
     "app/server/resolution_server.R" = c("resolution_saved", "single_sample_de"),
     "app/server/annotation_server.R" = c(

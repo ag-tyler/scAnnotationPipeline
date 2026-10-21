@@ -1,8 +1,38 @@
 # Per-session mutable application state.
 
-create_app_state <- function(context) {
+new_app_session_id <- function(token = NULL) {
+  if (
+    length(token) == 1L && !is.na(token) &&
+      nzchar(trimws(as.character(token)))
+  ) {
+    return(as.character(token))
+  }
+
+  paste0(
+    "session-", Sys.getpid(), "-",
+    format(Sys.time(), "%Y%m%dT%H%M%OS6", tz = "UTC"), "-",
+    sprintf("%08x", sample.int(.Machine$integer.max, 1L))
+  )
+}
+
+
+app_session_timestamp <- function(timestamp = Sys.time()) {
+  if (exists("format_pipeline_timestamp", mode = "function")) {
+    return(format_pipeline_timestamp(timestamp))
+  }
+  paste0(format(as.POSIXct(timestamp, tz = "UTC"), "%Y-%m-%dT%H:%M:%OS3", tz = "UTC"), "Z")
+}
+
+create_app_state <- function(
+  context,
+  session_id = NULL,
+  session_started_at = Sys.time()
+) {
   shiny::reactiveValues(
     # Dataset/session configuration.
+    session_id = new_app_session_id(session_id),
+    session_started_at = app_session_timestamp(session_started_at),
+    session_logged_datasets = character(),
     paths_list = NULL,
     dataset_config = NULL,
     samples_config = NULL,

@@ -278,12 +278,37 @@ register_dataset_server <- function(input, output, session, state, context) {
     local_config$selected <- selected_config
     rv$config <- local_config
 
+    if (!(dataset_name %in% rv$session_logged_datasets)) {
+      record_state_event(
+        rv,
+        stage = "session",
+        event_type = "app_session_started",
+        outcome = "started",
+        parameters = list(
+          session_id = rv$session_id,
+          session_started_at = rv$session_started_at,
+          process_id = Sys.getpid(),
+          r_version = R.version.string,
+          shiny_version = as.character(utils::packageVersion("shiny")),
+          shiny_autoreload = if (is.null(getOption("shiny.autoreload"))) {
+            "unset"
+          } else {
+            as.character(getOption("shiny.autoreload"))
+          }
+        )
+      )
+      rv$session_logged_datasets <- unique(c(rv$session_logged_datasets, dataset_name))
+    }
+
     record_state_event(
       rv,
       stage = "dataset",
       event_type = "dataset_load",
       outcome = "completed",
-      parameters = list(sample_count = length(sample_dir_paths))
+      parameters = list(
+        sample_count = length(sample_dir_paths),
+        session_id = rv$session_id
+      )
     )
     record_state_event(
       rv,

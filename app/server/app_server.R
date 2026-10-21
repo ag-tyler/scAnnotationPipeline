@@ -11,7 +11,11 @@ build_app_server <- function(context) {
     nav_hide("main_nav", target = "cna_tab")
     updateNavbarPage(session, "main_nav", selected = "dataset_tab")
 
-    state <- create_app_state(context)
+    state <- create_app_state(context, session_id = session$token)
+    message(
+      "Shiny session started: ", state$session_id,
+      " at ", state$session_started_at
+    )
 
     register_dataset_server(input, output, session, state, context)
     register_dashboard_server(input, output, session, state, context)
