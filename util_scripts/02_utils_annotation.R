@@ -10,6 +10,30 @@
 library(docstring)
 
 
+validate_annotation_cell_alignment <- function(clustered_cells, saved_cells) {
+  if (
+    !is.data.frame(clustered_cells) || !is.data.frame(saved_cells) ||
+      !("cell_name" %in% names(clustered_cells)) ||
+      !("cell_name" %in% names(saved_cells))
+  ) {
+    stop("Annotation alignment requires cell_name columns.", call. = FALSE)
+  }
+  clustered_names <- as.character(clustered_cells$cell_name)
+  saved_names <- as.character(saved_cells$cell_name)
+  if (
+    anyNA(clustered_names) || anyDuplicated(clustered_names) ||
+      anyNA(saved_names) || anyDuplicated(saved_names) ||
+      length(setdiff(clustered_names, saved_names)) > 0L
+  ) {
+    stop(
+      "Saved annotation cell identities do not align with the current clustering cache.",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
+
 # --------------------------------------------------------------------------------------------------
 # 2. Filtering & processing
 # --------------------------------------------------------------------------------------------------

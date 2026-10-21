@@ -71,7 +71,7 @@ test_that("F03 destructive modal actions disable immediately and claim a token",
       fixed = TRUE
     )
   }
-  for (key in c("annotation_navigation", "annotation_save_decision")) {
+  for (key in c("annotation_navigation", "omit_cna")) {
     expect_match(
       annotation,
       paste0('claim_app_confirmation(rv, "', key, '")'),
@@ -84,7 +84,7 @@ test_that("F03 destructive modal actions disable immediately and claim a token",
       paste(dashboard, annotation),
       gregexpr('onclick = "this.disabled = true;"', paste(dashboard, annotation), fixed = TRUE)
     )),
-    8L
+    7L
   )
 })
 

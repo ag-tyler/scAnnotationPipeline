@@ -61,12 +61,21 @@ annotation_panel <- function(sample_choices) {
         ),
         hr(),
         h5("5. CNA Configuration"),
+        p(
+          "After saving annotations, either save a complete CNA configuration or explicitly omit CNA for this sample.",
+          class = "text-muted small"
+        ),
         uiOutput("ref_cell_selector"),
         uiOutput("pot_mal_cell_selector"),
         actionButton(
           "btn_save_refs",
           "Save CNA Config",
           class = "btn-warning w-100"
+        ),
+        actionButton(
+          "btn_omit_cna",
+          "Omit CNA for This Sample",
+          class = "btn-outline-warning w-100 mt-2"
         ),
         hr(),
         actionButton(

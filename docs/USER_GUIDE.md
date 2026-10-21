@@ -512,7 +512,18 @@ For each selected clustering result, the pipeline:
 
 The annotation interface loads cached clustered cells together with DE marker matches/signature scores so clusters can be assigned final cell types.
 
-Saved annotations update the corresponding `Cells.csv`.
+Saved annotations update the corresponding `Cells.csv`. Annotation saving is
+independent of the later CNA decision: save the cell types first, then either
+save a complete reference/candidate CNA configuration or use **Omit CNA for
+This Sample**. Omission is explicit and reversible by saving a complete CNA
+configuration later.
+
+If clustering or DE was rerun, a stale annotation can be reopened once DE is
+complete. The currently selected sample is retried automatically when its DE
+state becomes ready; changing the sample dropdown away and back is not needed.
+Saved labels are reused only when their cell identifiers align with the current
+clustering cache. CNA configuration and omission are blocked while annotation
+edits remain unsaved.
 
 ### CNA analysis
 

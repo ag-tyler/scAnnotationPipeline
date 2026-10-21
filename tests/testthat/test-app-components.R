@@ -346,7 +346,7 @@ test_that("manual annotation views have deterministic navigation", {
   expect_match(dataset_text, 'choices = s_choices, selected = 1', fixed = TRUE)
 })
 
-test_that("manual annotation protects unsaved edits and records CNA omission", {
+test_that("manual annotation protects unsaved edits and separates CNA omission", {
   app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
   server_text <- paste(
     readLines(file.path(app_dir, "app/server/annotation_server.R"), warn = FALSE),
@@ -359,10 +359,11 @@ test_that("manual annotation protects unsaved edits and records CNA omission", {
   expect_match(server_text, "annotation_dirty <- isTRUE", fixed = TRUE)
   expect_match(server_text, 'observeEvent(input$main_nav', fixed = TRUE)
   expect_match(server_text, 'type = "navbar"', fixed = TRUE)
-  expect_match(server_text, "CNA configuration is incomplete", fixed = TRUE)
-  expect_match(server_text, "Save; configure CNA next", fixed = TRUE)
-  expect_match(server_text, "Save and omit CNA", fixed = TRUE)
-  expect_match(server_text, '"cna_configuration",\n        "skipped"')
+  expect_false(grepl("CNA configuration is incomplete", server_text, fixed = TRUE))
+  expect_match(server_text, 'observeEvent(input$btn_omit_cna', fixed = TRUE)
+  expect_match(server_text, 'claim_app_confirmation(rv, "omit_cna")', fixed = TRUE)
+  expect_match(server_text, "Omit CNA for this sample?", fixed = TRUE)
+  expect_match(server_text, '"cna_configuration",\n      "skipped"')
   expect_match(server_text, "cna_configuration_skipped", fixed = TRUE)
 })
 

@@ -13,8 +13,9 @@ register_annotation_server <- function(input, output, session, state, context) {
   ) {
     current <- get_pipeline_step(rv$pipeline_state, step, rv$sample_name)
     if (
-      status == "incomplete" &&
-        current$status %in% c("completed", "skipped")
+      status %in% c("incomplete", "skipped") &&
+        current$status %in% c("completed", "skipped") &&
+        !identical(current$status, status)
     ) {
       rv$pipeline_state <- persist_pipeline_step_update(
         rv$pipeline_state,
@@ -128,14 +129,6 @@ register_annotation_server <- function(input, output, session, state, context) {
     rv$final_plot <- NULL
     rv$annotation_dirty <- FALSE
     invisible(TRUE)
-  }
-
-  cna_decision_recorded <- function() {
-    get_pipeline_step(
-      rv$pipeline_state,
-      "cna_configuration",
-      rv$sample_name
-    )$status %in% c("completed", "skipped")
   }
 
   observe({
@@ -260,6 +253,15 @@ register_annotation_server <- function(input, output, session, state, context) {
   observeEvent(input$btn_save_refs, {
     req(rv$sample_name)
 
+    if (isTRUE(rv$annotation_dirty)) {
+      showNotification(
+        "Save the current annotation edits before saving CNA configuration.",
+        type = "error",
+        duration = 10
+      )
+      return()
+    }
+
     readiness <- pipeline_step_readiness(
       rv$pipeline_state,
       "cna_configuration",
@@ -352,16 +354,60 @@ register_annotation_server <- function(input, output, session, state, context) {
     showNotification(paste("CNA Configuration saved for", rv$sample_name), type = "message")
   })
 
-  observeEvent(input$sample_idx, {
-    req(rv$paths_list, input$sample_idx)
+  annotation_load_trigger <- reactive({
+    req(rv$paths_list, rv$pipeline_state, input$sample_idx, input$main_nav)
     idx <- as.numeric(input$sample_idx)
-    if (
-      !is.null(rv$annotation_loaded_index) &&
-        identical(idx, as.numeric(rv$annotation_loaded_index))
-    ) {
+    sample_name <- basename(rv$paths_list$sample_dir_paths[[idx]])
+    de_record <- get_pipeline_step(
+      rv$pipeline_state,
+      "differential_expression",
+      sample_name
+    )
+    list(
+      index = idx,
+      sample = sample_name,
+      nav = input$main_nav,
+      de_status = de_record$status,
+      de_updated_at = de_record$updated_at
+    )
+  })
+
+  show_annotation_blocked <- function(readiness) {
+    showNotification(
+      paste(
+        "Cannot load annotations yet:",
+        paste(readiness$reasons, collapse = "; ")
+      ),
+      type = "warning",
+      duration = 10
+    )
+  }
+
+  observeEvent(annotation_load_trigger(), {
+    trigger <- annotation_load_trigger()
+    if (!identical(trigger$nav, "anno_tab")) return()
+    idx <- trigger$index
+    same_sample <- !is.null(rv$annotation_loaded_index) &&
+      identical(idx, as.numeric(rv$annotation_loaded_index))
+    readiness <- pipeline_step_readiness(
+      rv$pipeline_state,
+      "annotation",
+      trigger$sample
+    )
+
+    if (same_sample && !readiness$ready) {
+      rv$cells_filt <- NULL
+      rv$all_matches <- NULL
+      rv$annotation_loaded_index <- NULL
+      rv$annotation_dirty <- FALSE
+      show_annotation_blocked(readiness)
       return()
     }
-    if (isTRUE(rv$annotation_dirty) && !is.null(rv$annotation_loaded_index)) {
+    if (same_sample && !is.null(rv$cells_filt)) return()
+    if (
+      !same_sample && isTRUE(rv$annotation_dirty) &&
+        !is.null(rv$annotation_loaded_index)
+    ) {
       rv$annotation_pending_navigation <- list(type = "sample", index = idx)
       updateSelectInput(
         session,
@@ -383,13 +429,18 @@ register_annotation_server <- function(input, output, session, state, context) {
     rv$cells_raw <- load_cells(cells_file)
     rv$sample_name <- unique(rv$cells_raw$sample)
     rv$res <- rv$live_selected_config$resolutions[[rv$sample_name]]
-    rv$annotation_loaded_index <- idx
     rv$annotation_dirty <- FALSE
 
-    readiness <- pipeline_step_readiness(rv$pipeline_state, "annotation", rv$sample_name)
+    readiness <- pipeline_step_readiness(
+      rv$pipeline_state,
+      "annotation",
+      rv$sample_name
+    )
     if (!readiness$ready) {
       rv$cells_filt <- NULL
       rv$all_matches <- NULL
+      rv$annotation_loaded_index <- NULL
+      show_annotation_blocked(readiness)
       return()
     }
 
@@ -402,11 +453,16 @@ register_annotation_server <- function(input, output, session, state, context) {
       rv$all_matches <- results_list$all_matches
 
       if ("cell_type" %in% names(rv$cells_raw)) {
+        validate_annotation_cell_alignment(rv$cells_filt, rv$cells_raw)
         rv$cells_filt[rv$cells_raw, on = 'cell_name', cell_type := i.cell_type]
       } else if (!"cell_type" %in% names(rv$cells_filt)) {
         rv$cells_filt[, cell_type := NA_character_]
       }
+      rv$annotation_loaded_index <- idx
     }, error = function(e) {
+      rv$cells_filt <- NULL
+      rv$all_matches <- NULL
+      rv$annotation_loaded_index <- NULL
       message("Error loading annotation setup: ", e$message)
       record_state_event(
         rv,
@@ -416,7 +472,11 @@ register_annotation_server <- function(input, output, session, state, context) {
         sample = rv$sample_name,
         reason = conditionMessage(e)
       )
-      showNotification("Could not load DE data. Did you run the DE Analysis step?", type = "error")
+      showNotification(
+        paste("Could not load annotation data:", conditionMessage(e)),
+        type = "error",
+        duration = 10
+      )
     })
   })
 
@@ -581,12 +641,11 @@ register_annotation_server <- function(input, output, session, state, context) {
     }
   }, ignoreInit = TRUE)
 
-  save_current_annotations <- function(skip_cna = FALSE) {
+  save_current_annotations <- function() {
     req(rv$paths_list, rv$cells_filt, rv$cells_raw, rv$sample_name, rv$res, rv$results_dir_path)
     if (!begin_app_action(rv, "annotation_save")) return(FALSE)
     save_button_ids <- c(
-      "save_btn", "btn_confirm_save_before_cna",
-      "btn_confirm_save_without_cna", "btn_save_annotation_navigation"
+      "save_btn", "btn_save_annotation_navigation"
     )
     invisible(lapply(save_button_ids, shinyjs::disable))
     on.exit({
@@ -688,62 +747,12 @@ register_annotation_server <- function(input, output, session, state, context) {
       )
     )
 
-    if (isTRUE(skip_cna)) {
-      rv$live_selected_config$cna_ref_cells[[rv$sample_name]] <- list()
-      rv$live_selected_config$cna_pot_mal_cells[[rv$sample_name]] <- list()
-      rv$config$selected <- rv$live_selected_config
-      yaml::write_yaml(rv$live_selected_config, rv$selected_config_path)
-      persist_annotation_step(
-        "cna_configuration",
-        "skipped",
-        reason = "User explicitly omitted CNA configuration when saving annotations.",
-        details = list(omitted_by_user = TRUE)
-      )
-      record_state_event(
-        rv,
-        stage = "cna_configuration",
-        event_type = "cna_configuration_skipped",
-        outcome = "skipped",
-        sample = rv$sample_name,
-        reason = "User explicitly omitted CNA configuration when saving annotations."
-      )
-    }
-
     rv$annotation_dirty <- FALSE
     showNotification("Successfully saved annotations to disk!", type = "default")
     TRUE
   }
 
   request_annotation_save <- function() {
-    if (!cna_decision_recorded()) {
-      arm_app_confirmation(rv, "annotation_save_decision")
-      showModal(modalDialog(
-        title = "CNA configuration is incomplete",
-        paste0(
-          "No complete CNA reference/candidate configuration is saved for ",
-          rv$sample_name, ". You can return to configure CNA, or explicitly ",
-          "save these annotations while marking CNA as omitted for this sample."
-        ),
-        easyClose = FALSE,
-        footer = tagList(
-          modalButton("Return to annotation"),
-          actionButton(
-            "btn_confirm_save_before_cna",
-            "Save; configure CNA next",
-            class = "btn-primary",
-            onclick = "this.disabled = true;"
-          ),
-          actionButton(
-            "btn_confirm_save_without_cna",
-            "Save and omit CNA",
-            class = "btn-warning",
-            onclick = "this.disabled = true;"
-          )
-        )
-      ))
-      return(invisible(FALSE))
-    }
-
     saved <- save_current_annotations()
     if (isTRUE(saved)) finish_annotation_navigation()
     invisible(saved)
@@ -753,18 +762,98 @@ register_annotation_server <- function(input, output, session, state, context) {
     request_annotation_save()
   })
 
-  observeEvent(input$btn_confirm_save_without_cna, {
-    if (!claim_app_confirmation(rv, "annotation_save_decision")) return()
-    removeModal()
-    saved <- save_current_annotations(skip_cna = TRUE)
-    if (isTRUE(saved)) finish_annotation_navigation()
+  observeEvent(input$btn_omit_cna, {
+    req(rv$sample_name, rv$pipeline_state)
+    if (isTRUE(rv$annotation_dirty)) {
+      showNotification(
+        "Save the current annotation edits before omitting CNA.",
+        type = "error",
+        duration = 10
+      )
+      return()
+    }
+    readiness <- pipeline_step_readiness(
+      rv$pipeline_state,
+      "cna_configuration",
+      rv$sample_name
+    )
+    if (!readiness$ready) {
+      showNotification(
+        paste(
+          "Save annotations before omitting CNA:",
+          paste(readiness$reasons, collapse = "; ")
+        ),
+        type = "error",
+        duration = 10
+      )
+      return()
+    }
+    arm_app_confirmation(rv, "omit_cna")
+    showModal(modalDialog(
+      title = "Omit CNA for this sample?",
+      paste0(
+        "This records that CNA is intentionally omitted for ", rv$sample_name,
+        ". You can reverse this later by saving a complete CNA configuration."
+      ),
+      easyClose = TRUE,
+      footer = tagList(
+        modalButton("Cancel"),
+        actionButton(
+          "btn_confirm_omit_cna",
+          "Omit CNA",
+          class = "btn-warning",
+          onclick = "this.disabled = true;"
+        )
+      )
+    ))
   })
 
-  observeEvent(input$btn_confirm_save_before_cna, {
-    if (!claim_app_confirmation(rv, "annotation_save_decision")) return()
+  observeEvent(input$btn_confirm_omit_cna, {
+    if (!claim_app_confirmation(rv, "omit_cna")) return()
     removeModal()
-    saved <- save_current_annotations()
-    if (isTRUE(saved)) finish_annotation_navigation()
+    current <- get_pipeline_step(
+      rv$pipeline_state,
+      "cna_configuration",
+      rv$sample_name
+    )
+    decision_changed <- !identical(current$status, "skipped")
+    if (!decision_changed) {
+      showNotification(
+        paste("CNA is already omitted for", rv$sample_name),
+        type = "message"
+      )
+      return()
+    }
+    rv$live_selected_config$cna_ref_cells[[rv$sample_name]] <- list()
+    rv$live_selected_config$cna_pot_mal_cells[[rv$sample_name]] <- list()
+    rv$config$selected <- rv$live_selected_config
+    yaml::write_yaml(rv$live_selected_config, rv$selected_config_path)
+    persist_annotation_step(
+      "cna_configuration",
+      "skipped",
+      reason = "User explicitly omitted CNA because it is not warranted for this sample.",
+      details = list(omitted_by_user = TRUE),
+      invalidate_downstream = decision_changed,
+      invalidation_reason = if (decision_changed) {
+        "The CNA configuration was explicitly omitted."
+      } else NULL
+    )
+    invalidated_cache <- if (decision_changed) {
+      cache_invalidate_sample(rv$sample_name, rv$dataset_dir_path)
+    } else character()
+    record_state_event(
+      rv,
+      stage = "cna_configuration",
+      event_type = "cna_configuration_skipped",
+      outcome = "skipped",
+      sample = rv$sample_name,
+      reason = "User explicitly omitted CNA because it is not warranted for this sample.",
+      parameters = list(invalidated_cache_files = length(invalidated_cache))
+    )
+    showNotification(
+      paste("CNA omitted for", rv$sample_name),
+      type = "message"
+    )
   })
 
   observeEvent(input$btn_discard_annotation_navigation, {
