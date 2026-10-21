@@ -12,9 +12,11 @@ build_app_server <- function(context) {
     updateNavbarPage(session, "main_nav", selected = "dataset_tab")
 
     state <- create_app_state(context, session_id = session$token)
+    session_id <- shiny::isolate(state$session_id)
+    session_started_at <- shiny::isolate(state$session_started_at)
     message(
-      "Shiny session started: ", state$session_id,
-      " at ", state$session_started_at
+      "Shiny session started: ", session_id,
+      " at ", session_started_at
     )
 
     register_dataset_server(input, output, session, state, context)

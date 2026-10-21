@@ -88,6 +88,26 @@ test_that("application state carries a stable per-session diagnostic identity", 
   expect_match(component_env$new_app_session_id(), "^session-")
 })
 
+
+test_that("top-level server isolates startup reads from reactive state", {
+  app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
+  server_text <- paste(
+    readLines(file.path(app_dir, "app/server/app_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(
+    server_text,
+    "shiny::isolate(state$session_id)",
+    fixed = TRUE
+  )
+  expect_match(
+    server_text,
+    "shiny::isolate(state$session_started_at)",
+    fixed = TRUE
+  )
+})
+
 test_that("each server registration is composed exactly once", {
   app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
   component_env <- new.env(parent = globalenv())

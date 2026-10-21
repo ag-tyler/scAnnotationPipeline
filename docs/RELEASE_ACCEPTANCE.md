@@ -85,5 +85,6 @@ non-browser tests, including the new session and stale-state characterizations,
 passed.
 
 After the F02 stable-launch policy was added, the same full-suite command passed
-852 assertions with zero failures or warnings. The browser baseline was again
+854 assertions with zero failures or warnings after correcting the startup
+session diagnostic to isolate its reads from reactive state. The browser baseline was again
 the only skip for the same restricted-environment Chromium startup failure.
