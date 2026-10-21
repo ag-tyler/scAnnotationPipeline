@@ -44,6 +44,7 @@ scAnnotationPipeline/
 │   ├── PIPELINE_LOGGING.md
 │   ├── PIPELINE_STATE.md
 │   ├── CACHE_VALIDITY.md
+│   ├── RELEASE_ACCEPTANCE.md
 │   └── USER_GUIDE.md
 │
 ├── resources/
@@ -341,7 +342,8 @@ It stores state such as:
 - CNA reference cell types;
 - potentially malignant cell types;
 - selected malignant CNA subclusters;
-- CNA thresholds.
+- CNA thresholds;
+- per-sample notes shared across resolution, annotation, and CNA screens.
 
 It normally should not be edited manually.
 
@@ -508,16 +510,32 @@ Saved annotations update the corresponding `Cells.csv`.
 
 ### CNA analysis
 
-The CNA workflow:
+The CNA workflow is guarded by the persisted pipeline state and a shared
+sample preflight. Preflight verifies that manual annotation and CNA
+configuration are saved, reference and candidate populations are usable,
+cached cells align with expression data, expression values are finite, and
+enough genes have genomic positions. An ineligible sample is blocked or
+skipped with an actionable reason instead of entering a numerical failure.
 
-1. selects reference and potentially malignant cell types;
-2. computes inferred CNA profiles;
-3. clusters candidate malignant/unassigned cells;
-4. identifies malignant subclone candidates;
-5. computes CNA signal/correlation metrics;
-6. applies user-selected malignant/non-malignant thresholds;
-7. previews the final assignments;
-8. saves malignant assignments and diagnostic plots.
+1. Select reference and potentially malignant cell types. If CNA is genuinely
+   not applicable, save an explicit omission; missing configuration remains
+   incomplete rather than being treated as skipped.
+2. Compute inferred CNA profiles for one sample or a selected batch. Batch runs
+   preflight samples independently, continue after per-sample failures, report
+   completed/skipped/failed groups, and can resume only unfinished samples.
+3. Cluster candidate malignant/unassigned cells. Canonical zero-padded cluster
+   IDs are shared by the heatmap legend, selector, configuration, and preview,
+   including runs with more than ten clusters.
+4. Select malignant subclone candidates and compute CNA signal/correlation
+   metrics. Progress reports the current stage and real sample/subclone counts.
+5. Choose malignant/non-malignant thresholds on one shared, data-informed
+   y-axis. Display clipping is indicated and never changes saved assignments.
+6. Open **Assign & Summary**. A current fingerprinted preview is generated or
+   safely reused automatically, defaults to the scatter comparison, and also
+   provides the summary heatmap plus saved pre-CNA and proposed post-CNA UMAPs.
+7. Save only while the preview fingerprint still matches the current inputs.
+   Use **Reset Sample CNA** before deliberately rerunning a sample; this removes
+   dependent CNA artifacts/state while preserving its saved CNA configuration.
 
 A cell satisfying malignant thresholds for exactly one subclone receives that subclone ID.
 
@@ -601,11 +619,19 @@ Some tests deliberately exercise validation/error/warning paths. Those condition
 | `test-05_utils_workflow.R` | DE workflow orchestration, cached DE outputs, multi-sample routing, annotation setup |
 | `test-05_utils_workflow_clustering.R` | End-to-end clustering orchestration, clustering caches, generated plots |
 | `test-05_utils_workflow_cna.R` | CNA thresholds, collision behavior, signal/correlation, batch branches, heatmap/clustering integration, preview behavior |
+| `test-05_utils_workflow_cna_preflight.R` | CNA eligibility, persisted omission, reference/candidate counts, finite inputs, and positioned-gene requirements |
 | `test-06_utils_logging.R` | Structured/readable event persistence, append behavior, required failure/skip reasons, state-derived dataset IDs, malformed-log errors |
 | `test-07_utils_state.R` | State schema and transitions, prerequisites, staleness, revisions, atomic persistence, backup recovery, legacy migration, and sample reconciliation |
+| `test-app-bootstrap.R` | Clean Shiny package-directory startup and application assembly |
+| `test-app-components.R` | Component graph, workflow guards/events, annotation behavior, batch/progress/threshold/preview integration |
+| `test-app-ui-baseline.R` | Edge/Chromium browser navigation for the five main screens, plus screenshot comparisons where a reviewed platform baseline exists |
 | `test-golden_outputs.R` | Deterministic `compute_cna()` golden regression baseline |
+| `test-m0-cna-characterization.R` | Regression coverage for formerly exposed CNA numerical/cache failures |
+| `test-m5-cna-batch.R` | Mixed-validity batch isolation, subsets, progress, and retry behavior |
 | `test-regression_clustering.R` | Preprocessing → PCA → UMAP → Louvain integration/regression behavior |
 | `test-regression_cna_cache.R` | CNA compute/cache/load round trip and missing-cache behavior |
+| `test-standardize-general-template.R` | General-template safety, alignment, duplicate-gene preservation, and checklist contract |
+| `test-t23-release-integration.R` | Multi-sample strict validation plus cache/state/log restart and recovery contracts |
 
 The helper files have distinct roles:
 
@@ -625,17 +651,26 @@ Coverage is strongest in:
 - **Caching**: creation, persistence, retrieval, missing-cache behavior, clearing, and CNA cache round trips.
 - **CNA analysis**: deterministic CNA arithmetic, hierarchical/HDBSCAN/UMAP helpers, signal/correlation, malignant/non-malignant/gray-zone threshold behavior, multi-subclone collisions, batch branches, heatmap/clustering outputs, and non-mutating preview behavior.
 - **Regression protection**: deterministic golden baseline, clustering integration/regression tests, and CNA cache integration/regression tests.
+- **Application/browser behavior**: clean app assembly, explicit component
+  integration, main-screen navigation, and tolerant reviewed screenshot
+  comparisons on platforms with an approved baseline and a configured Chromium
+  browser.
 
 No numeric line/branch coverage percentage is currently claimed or enforced.
 
 Areas intentionally not exhaustively covered include:
 
-- the Shiny reactive/UI layer itself;
-- pixel-identical plot snapshots;
+- compute, save, reset, and batch mutations through the browser (their handlers
+  and workflows are covered below the browser layer);
+- pixel-identical plot snapshots (browser screenshots use a small comparison
+  threshold to tolerate platform rendering differences);
 - Quarto rendering across every platform;
 - every possible real biological dataset/resource combination.
 
 Plot tests generally validate construction/buildability and workflow side effects rather than rendered pixels.
+
+For the complete portable release gate and scenario-to-test map, see
+[Release Acceptance](RELEASE_ACCEPTANCE.md).
 
 ### Golden fixtures
 
@@ -748,8 +783,12 @@ Saving a new malignant-subclone selection clears stale threshold configuration a
 - Most biological resource files are not distributed with the repository and must be obtained/generated separately.
 - The general standardization template requires dataset-specific import and
   sample-splitting logic in its two marked user-code functions.
-- The Shiny reactive/UI layer is not currently covered by a dedicated browser-level integration test suite.
-- Cached results are not automatically invalidated for every analysis-parameter change.
+- Browser coverage uses a temporary synthetic workspace to verify application
+  startup and the five main navigation screens, but deliberately does not
+  trigger compute, save, reset, or batch actions through the browser.
+- Cache fingerprints cover the pipeline inputs, parameters, upstream artifacts,
+  and saved decisions documented in [Cache Validity and Invalidation](CACHE_VALIDITY.md);
+  newly introduced parameters must be added to the relevant dependency family.
 - Real-world biological inputs can expose cases not represented by the deterministic synthetic test fixtures.
 
 ---

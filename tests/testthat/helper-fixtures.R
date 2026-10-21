@@ -58,6 +58,7 @@ make_mini_cells_dt <- function(cell_names, sample_name = "sample1") {
 #'   generate them, so tests can assert against ground truth.
 write_mini_sample <- function(parent_dir, sample_name = "sample1",
                                n_genes = 30, n_cells = 20, seed = 1,
+                               cell_prefix = NULL,
                                std_names = list(expmat = "Exp_data_UMIcounts.mtx",
                                                  genes = "Genes.txt",
                                                  cells = "Cells.csv")) {
@@ -65,6 +66,9 @@ write_mini_sample <- function(parent_dir, sample_name = "sample1",
   dir.create(sample_dir, recursive = TRUE, showWarnings = FALSE)
 
   mat <- make_mini_expmat(n_genes = n_genes, n_cells = n_cells, seed = seed)
+  if (!is.null(cell_prefix)) {
+    colnames(mat) <- paste0(cell_prefix, colnames(mat))
+  }
   cells <- make_mini_cells_dt(colnames(mat), sample_name = sample_name)
   data.table::set(
     cells,

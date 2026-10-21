@@ -16,7 +16,7 @@ For detailed information about dataset setup, configuration, standardization, re
 ## Requirements
 
 * **R ≥ 4.5.2**
-* **Quarto** for the standardization templates
+* **Quarto** only if using the historical/reference `.qmd` templates
 * Required R packages:
 
 ```r
@@ -113,7 +113,9 @@ Use **Create New Dataset** in the app. A dataset is created under:
 datasets/<dataset\_id>/
 ```
 
-with configuration files, data/result directories, and a technology-specific `standardize.qmd` template.
+with configuration files, data/result/log directories, an initialized pipeline
+state, and a copy of the adaptable `templates/standardize_general.R` template
+named `standardize.R`.
 
 The standardization template must be run before the dataset can enter the downstream clustering/annotation workflow.
 
@@ -137,19 +139,26 @@ Rscript tests/testthat.R
 
 The suite focuses on behavioral/workflow coverage across I/O, validation, preprocessing, clustering, differential expression, annotation, caching, CNA analysis, and regression protection.
 
-The browser baseline uses `shinytest2` with a configured Chromium-based browser and the local `Che2021_Colorectal` workspace. It is skipped when those local prerequisites are unavailable or tests run in CRAN mode. To run it explicitly from R:
+The browser baseline uses `shinytest2` with a configured Chromium-based browser.
+It creates a deterministic synthetic dataset, resources, caches, and workflow
+state inside a temporary app directory, so it does not require or modify any
+local dataset. It is skipped only when the browser/testing dependency is
+unavailable. To run it explicitly from R:
 
 ```r
-Sys.setenv(NOT_CRAN = "true")
 testthat::test_file("tests/testthat/test-app-ui-baseline.R")
 ```
 
 The test does not invoke compute, scientific-output saves, reset, or batch
-actions. Loading may append a dataset-load event and initialize or reconcile
-`pipeline_state.yaml`, just as a normal app restart does. Approved screenshots
-are stored under `tests/testthat/fixtures/ui-baseline/`.
+actions. All state/log/cache changes occur only in its temporary synthetic
+workspace. Approved platform-specific screenshots are stored under
+`tests/testthat/fixtures/ui-baseline/`; platforms without a reviewed screenshot
+set still run all functional browser assertions.
 
 See the [Testing](docs/USER_GUIDE.md#testing) section for the test-file breakdown and coverage summary.
+
+See [Release Acceptance](docs/RELEASE_ACCEPTANCE.md) for the complete portable
+automated gate and scenario-to-test map.
 
 ## Repository Notes
 
@@ -169,7 +178,9 @@ The latest per-step workflow-state contract is described in
 append-only processing history is described in
 [**docs/PIPELINE\_LOGGING.md**](docs/PIPELINE_LOGGING.md). Cache manifests,
 dependency fingerprints, recovery, and migration are described in
-[**docs/CACHE\_VALIDITY.md**](docs/CACHE_VALIDITY.md).
+[**docs/CACHE\_VALIDITY.md**](docs/CACHE_VALIDITY.md). The reproducible release
+gate is described in
+[**docs/RELEASE\_ACCEPTANCE.md**](docs/RELEASE_ACCEPTANCE.md).
 
 It covers:
 
