@@ -453,11 +453,21 @@ from inside the dataset directory.
 
 ## Running the Analysis Pipeline
 
-Launch the app from the repository root:
+Launch the app from the repository root using the R/Positron console:
 
 ```r
-shiny::runApp(".")
+source("scripts/run_app.R")
 ```
+
+This launcher sets `options(shiny.autoreload = FALSE)` before Shiny starts.
+Use it for normal pipeline work because the app writes logs, workflow state,
+caches, configuration, and plots inside the repository while it runs. With an
+IDE development watcher enabled, those expected writes can otherwise cause a
+full session reload and return the app to Dataset Selection. No `watcher`
+package installation is needed for this launch method.
+
+Direct `shiny::runApp(".")` or IDE **Run App** launches are intended only for
+developers who deliberately configure autoreload behavior.
 
 The main workflow is:
 

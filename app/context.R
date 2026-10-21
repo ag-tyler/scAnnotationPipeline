@@ -4,9 +4,8 @@ create_app_context <- function(config_path = "general_config.yaml") {
   if (!file.exists(config_path)) {
     stop(
       config_path, " not found in the working directory (", getwd(), ").\n",
-      "This app must be launched from its own directory — e.g. via ",
-      "shiny::runApp('path/to/app'), or the RStudio 'Run App' button ",
-      "with app.R open.",
+      "This app must be launched from its own directory. Start an R console ",
+      "there and run source('scripts/run_app.R').",
       call. = FALSE
     )
   }

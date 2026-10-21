@@ -89,13 +89,22 @@ package-directory autoload remains disabled.
 
 ## Running the App
 
-From the repository root:
+From the repository root, use the stable launcher in the R/Positron console:
 
 ```r
-shiny::runApp(".")
+source("scripts/run_app.R")
 ```
 
-or open `app.R` in RStudio and click **Run App**.
+The launcher disables Shiny autoreload before starting the app. This is the
+recommended mode because the pipeline intentionally writes logs, state, cache,
+configuration, and result files below the application directory; an IDE
+development watcher can otherwise treat those writes as a reason to restart
+the session.
+
+For code-development sessions, `shiny::runApp(".")` or the IDE's **Run App**
+button can still be used, but the developer is responsible for disabling or
+configuring autoreload. Ordinary pipeline runs do not require the optional
+`watcher` package.
 
 On startup, the app:
 

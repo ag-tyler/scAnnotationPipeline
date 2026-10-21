@@ -83,3 +83,7 @@ or warnings. One browser-baseline test was skipped because Chromium could not
 obtain a local process pipe/port in the restricted test environment; all
 non-browser tests, including the new session and stale-state characterizations,
 passed.
+
+After the F02 stable-launch policy was added, the same full-suite command passed
+852 assertions with zero failures or warnings. The browser baseline was again
+the only skip for the same restricted-environment Chromium startup failure.
