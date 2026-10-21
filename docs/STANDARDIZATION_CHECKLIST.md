@@ -93,15 +93,17 @@ Edit the `settings` list near the top of `standardize.R`:
 
 ```r
 settings <- list(
-  app_folder_path = "C:/path/to/scAnnotationPipeline",
+  app_folder_path = NULL,
   dataset_name = "My_Dataset",
   matrix_state = "UMIcounts",
   reset_selected_config = FALSE
 )
 ```
 
-- [ ] `app_folder_path` points to the checkout containing
-  `general_config.yaml` and `util_scripts/`.
+- [ ] Leave `app_folder_path = NULL` to search upward from the script and
+  working directory for `general_config.yaml` and `util_scripts/`.
+- [ ] Set an explicit application-root path only when automatic discovery is
+  unsuitable.
 - [ ] `dataset_name` exactly matches the dataset folder name.
 - [ ] `matrix_state` is one of:
 
@@ -115,59 +117,40 @@ settings <- list(
   repeat runs. This preserves saved clustering and CNA choices.
 - [ ] Set `reset_selected_config = TRUE` only when those saved choices should
   intentionally be reinitialized.
-- [ ] Keep `RUN_STANDARDIZATION <- FALSE` until both user-code functions are
+- [ ] Keep `RUN_STANDARDIZATION <- FALSE` until the `BEGIN USER CODE` region is
   implemented and reviewed.
 
 Other scales, including log-transformed matrices, are not accepted by the
 standardized-data contract.
 
-## 5. Implement `prepare_raw_data()`
+## 5. Complete the linear `BEGIN USER CODE` region
 
-Use this function for work shared by multiple samples.
+Use ordinary R code in this region. No callback functions are required. Load
+shared inputs once, apply dataset-specific mappings or transformations, and use
+whatever loop structure is natural for the source data.
 
 Possible responsibilities include:
 
 - [ ] Extract an archive when extraction is reproducible and necessary.
-- [ ] Discover input files and build a sample-to-file table.
-- [ ] Load a combined matrix once.
+- [ ] Discover input files or build a sample-to-file table.
+- [ ] Load a combined matrix once or load one matrix inside the sample loop.
 - [ ] Load shared gene or cell metadata.
-- [ ] Load a gene-identifier mapping table.
-- [ ] Validate that every configured sample has a raw input source.
+- [ ] Map raw sample identifiers to canonical configured names.
+- [ ] Load and apply a gene-identifier mapping resource when necessary.
+- [ ] Confirm every configured sample has a raw input source.
 
-Return any object needed by `load_sample_input()`. For example:
+For explicit raw-to-canonical mappings, the optional helper preserves order and
+fails on unmapped identifiers:
 
 ```r
-prepare_raw_data <- function(
-  raw_data_dir_path,
-  resources_dir_path,
-  sample_names,
-  samples_info_dt,
-  config,
-  dataset_config
-) {
-  file_map <- data.table::data.table(
-    sample = sample_names,
-    matrix_path = file.path(raw_data_dir_path, paste0(sample_names, ".mtx")),
-    genes_path = file.path(raw_data_dir_path, paste0(sample_names, "_genes.txt")),
-    cells_path = file.path(raw_data_dir_path, paste0(sample_names, "_cells.txt"))
-  )
-
-  missing_paths <- unlist(file_map[, .(matrix_path, genes_path, cells_path)])
-  missing_paths <- missing_paths[!file.exists(missing_paths)]
-  if (length(missing_paths) > 0) {
-    stop("Missing raw files: ", paste(missing_paths, collapse = ", "))
-  }
-
-  list(file_map = file_map)
-}
+sample_ids <- map_standardization_sample_ids(
+  raw_ids,
+  c(raw_A = "sample1", raw_B = "sample2")
+)
+validate_standardization_sample_mapping(unique(sample_ids), sample_names)
 ```
 
-This example is illustrative. Adapt it to the actual raw layout; do not rename
-files or invent matching rules that are unsupported by the source data.
-
-## 6. Implement `load_sample_input()`
-
-This function is called once for each canonical sample and must return:
+Inside the sample loop, construct one `sample_input` list:
 
 ```r
 list(
@@ -177,6 +160,30 @@ list(
   cell_metadata = optional_cell_metadata
 )
 ```
+
+Then call the two visible pipeline steps:
+
+```r
+standardized_sample <- prepare_standardized_sample(
+  sample_input = sample_input,
+  sample_name = sample_name,
+  sample_meta = sample_meta,
+  matrix_state = settings$matrix_state
+)
+
+register_standardized_sample(
+  context = standardization,
+  sample_name = sample_name,
+  standardized_sample = standardized_sample
+)
+```
+
+`prepare_standardized_sample()` validates and transforms one in-memory sample.
+`register_standardized_sample()` checks cross-sample cell uniqueness, writes to
+the isolated staging directory, and records the calculated cell count. Their
+full contracts and side effects are available through their docstrings.
+
+## 6. Construct each `sample_input`
 
 ### Expression matrix
 
@@ -190,7 +197,8 @@ list(
 ### Genes
 
 - [ ] Return one final gene symbol per matrix row.
-- [ ] Map Ensembl or other identifiers to gene symbols in this function.
+- [ ] Map Ensembl or other identifiers to gene symbols before constructing
+  `sample_input`.
 - [ ] Preserve row order during mapping.
 - [ ] Use `NA` or an empty value for genuinely unmapped genes; shared code
   removes those identifiers and the corresponding matrix rows together.
@@ -205,7 +213,7 @@ list(
 - [ ] Make identifiers unique across the complete dataset, not only within one
   sample.
 - [ ] If raw barcodes repeat between samples, add a deterministic sample suffix
-  or prefix in `load_sample_input()`.
+  or prefix in the user-code loop.
 - [ ] Apply the same renamed identifiers to optional cell metadata.
 - [ ] Never rely on row order alone when attaching optional metadata; provide a
   `cell_name` key.
@@ -221,9 +229,9 @@ list(
 - [ ] Do not use it to override `sample`, `patient`, `source`, or `complexity`.
   Shared code derives those fields consistently.
 
-The template reorders optional metadata by `cell_name`, constructs the required
-cell schema, assigns sample/patient/source fields, and calculates complexity as
-the number of expressed genes per cell.
+`prepare_standardized_sample()` reorders optional metadata by `cell_name`,
+constructs the required cell schema, assigns sample/patient/source fields, and
+calculates complexity as the number of expressed genes per cell.
 
 ## 7. Review the shared transformations
 
@@ -239,9 +247,10 @@ Before enabling execution, confirm that the shared behavior is appropriate:
 - [ ] Existing `selected_config.yaml` is preserved unless reset was explicitly
   requested.
 
-Do not edit the shared helper sections to work around malformed inputs. Correct
-the dataset-specific loading code or configuration instead. Change shared code
-only when the standardized contract itself is intentionally being revised.
+Do not edit pipeline-code sections to work around malformed inputs. Correct the
+dataset-specific user code or configuration instead. Reusable implementation
+details are in `util_scripts/08_utils_standardization.R`; the template keeps
+their order and purpose visible through named calls and explanatory comments.
 
 ## 8. Run the standardization
 
@@ -259,9 +268,10 @@ RUN_STANDARDIZATION <- TRUE
 - [ ] Review messages about removed or duplicate genes.
 - [ ] Do not continue into downstream analysis if the script stops.
 
-The script writes one sample at a time, then creates `Samples.csv`, updates the
-configured expression filename, optionally initializes `selected_config.yaml`,
-and invokes strict postvalidation.
+The script stages one sample at a time under `processed_data_staging`, creates
+`Samples.csv`, and invokes strict postvalidation against the complete staging
+directory. Only valid staging output replaces `processed_data`; it then updates
+configuration and pipeline state.
 
 ## 9. Review the generated outputs
 

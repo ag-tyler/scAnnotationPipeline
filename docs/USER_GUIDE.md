@@ -406,35 +406,31 @@ material, but they are not offered by the app or copied into new workspaces.
 
 The general template follows this structure:
 
-1. **Path definitions**
-   - application root;
-   - dataset directory;
-   - resources directory.
-2. **Pre-validation**
-   - checks `samples_config.yaml`;
-   - hard-stops on structurally invalid setup.
-3. **Data ingestion**
-   - `prepare_raw_data()` performs optional shared extraction, discovery, or loading;
-   - `load_sample_input()` contains dataset-specific loading, sample mapping, gene mapping, and splitting logic.
-4. **Matrix inspection and `matrix_state`**
-   - inspect matrix values;
-   - determine whether the input represents UMI counts, CPM, TPM, etc.;
-   - set the corresponding state.
-5. **Standardization**
-   - map genes to HGNC symbols where needed;
-   - construct standardized cell metadata;
-   - write expression, gene, and cell files.
-6. **Finalize configuration**
-   - create/update `Samples.csv`;
-   - initialize `selected_config.yaml`;
-   - update the standardized expression-matrix filename.
-7. **Post-validation**
+1. **User settings and application discovery**
+   - the application root is normally found automatically;
+   - the dataset name and supported matrix state remain explicit.
+2. **Initialization and prevalidation**
+   - load the dedicated standardization helpers;
+   - check `samples_config.yaml` and prepare an isolated staging directory.
+3. **One linear user-code region**
+   - use ordinary R statements to load and inspect raw data;
+   - map samples and genes, split matrices, and construct each `sample_input`;
+   - call `prepare_standardized_sample()` and
+     `register_standardized_sample()` for every configured sample.
+4. **Dataset-wide sample metadata**
+   - ensure every configured sample was registered;
+   - create `Samples.csv` with calculated cell counts.
+5. **Strict postvalidation**
    - verify every configured sample directory and required file;
    - require the standardized cell schema and matching sample assignments;
    - verify matrix/metadata dimensions and dataset-wide sample counts;
    - reject blank or duplicate gene/cell identifiers and cells reused between samples;
    - reject non-finite/negative expression values and non-integer count matrices;
    - hard-stop if any invariant fails.
+6. **Publish and record completion**
+   - replace `processed_data` only after staging passes validation;
+   - update dataset configuration while preserving selected choices by default;
+   - record the event and completed pipeline state.
 
 Examples of standardized expression matrix names are:
 
@@ -444,8 +440,8 @@ Exp_data_CPM.mtx
 Exp_data_TPM.mtx
 ```
 
-After adapting the two user-code functions and settings described in the
-checklist, run the complete script from a clean R session:
+After adapting the settings and the region marked `BEGIN USER CODE` as described
+in the checklist, run the complete script from a clean R session:
 
 ```r
 source("standardize.R")
