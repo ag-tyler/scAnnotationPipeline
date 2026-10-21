@@ -294,19 +294,32 @@ register_resolution_server <- function(input, output, session, state, context) {
         )
         return()
       }
+      arm_app_confirmation(rv, "single_sample_de")
       showModal(modalDialog(
         title = "Confirm Single Sample DE",
         paste0("Are you sure you want to rerun the Differential Expression analysis for '", s_name, "'? This will lock the application until finished."),
         easyClose = TRUE,
         footer = tagList(
           modalButton("Cancel"),
-          actionButton("confirm_run_single_de", "Yes, Rerun DE", class = "btn-danger")
+          actionButton(
+            "confirm_run_single_de",
+            "Yes, Rerun DE",
+            class = "btn-danger",
+            onclick = "this.disabled = true;"
+          )
         )
       ))
     }
   })
 
   observeEvent(input$confirm_run_single_de, {
+    if (!claim_app_confirmation(rv, "single_sample_de")) return()
+    if (!begin_app_action(rv, "single_sample_de")) return()
+    shinyjs::disable("btn_rerun_single_de")
+    on.exit({
+      finish_app_action(rv, "single_sample_de")
+      shinyjs::enable("btn_rerun_single_de")
+    }, add = TRUE)
     removeModal()
     req(rv$paths_list, rv$dataset_config, rv$complete_markers)
     idx <- as.numeric(input$res_sample_idx)

@@ -23,6 +23,55 @@ app_session_timestamp <- function(timestamp = Sys.time()) {
   paste0(format(as.POSIXct(timestamp, tz = "UTC"), "%Y-%m-%dT%H:%M:%OS3", tz = "UTC"), "Z")
 }
 
+
+.app_action_key <- function(key) {
+  if (length(key) != 1L || is.na(key) || !nzchar(trimws(as.character(key)))) {
+    stop("Action key must be one non-empty value.", call. = FALSE)
+  }
+  trimws(as.character(key))
+}
+
+
+begin_app_action <- function(state, key) {
+  key <- .app_action_key(key)
+  shiny::isolate({
+    active <- state$active_actions
+    if (key %in% active) return(FALSE)
+    state$active_actions <- unique(c(active, key))
+  })
+  TRUE
+}
+
+
+finish_app_action <- function(state, key) {
+  key <- .app_action_key(key)
+  shiny::isolate({
+    state$active_actions <- setdiff(state$active_actions, key)
+  })
+  invisible(TRUE)
+}
+
+
+arm_app_confirmation <- function(state, key) {
+  key <- .app_action_key(key)
+  shiny::isolate({
+    state$open_confirmations <- unique(c(state$open_confirmations, key))
+  })
+  invisible(TRUE)
+}
+
+
+claim_app_confirmation <- function(state, key) {
+  key <- .app_action_key(key)
+  claimed <- shiny::isolate({
+    open <- state$open_confirmations
+    if (!(key %in% open)) return(FALSE)
+    state$open_confirmations <- setdiff(open, key)
+    TRUE
+  })
+  isTRUE(claimed)
+}
+
 create_app_state <- function(
   context,
   session_id = NULL,
@@ -33,6 +82,8 @@ create_app_state <- function(
     session_id = new_app_session_id(session_id),
     session_started_at = app_session_timestamp(session_started_at),
     session_logged_datasets = character(),
+    active_actions = character(),
+    open_confirmations = character(),
     paths_list = NULL,
     dataset_config = NULL,
     samples_config = NULL,

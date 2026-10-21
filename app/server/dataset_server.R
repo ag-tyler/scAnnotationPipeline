@@ -355,6 +355,17 @@ register_dataset_server <- function(input, output, session, state, context) {
 
   observeEvent(input$btn_change_dataset, {
     # Allow user to swap datasets - reveal selection UI
+    record_state_event(
+      rv,
+      stage = "navigation",
+      event_type = "change_dataset",
+      outcome = "selected",
+      parameters = list(
+        source = "menu_tab",
+        target = "dataset_tab",
+        session_id = rv$session_id
+      )
+    )
     nav_show("main_nav", target = "dataset_tab")
     nav_hide("main_nav", target = "menu_tab")
     nav_hide("main_nav", target = "clipboard_tab")
@@ -364,6 +375,7 @@ register_dataset_server <- function(input, output, session, state, context) {
   })
 
   observeEvent(input$btn_create_dataset_ui, {
+    arm_app_confirmation(rv, "create_dataset")
     showModal(modalDialog(
       title = "Create New Dataset Workspace",
       textInput("new_ds_name", "Dataset Name (Folder Name):", placeholder = "e.g., Pancreas_Dataset_02"),
@@ -442,6 +454,16 @@ register_dataset_server <- function(input, output, session, state, context) {
       )
       return()
     }
+
+    if (!claim_app_confirmation(rv, "create_dataset")) return()
+    if (!begin_app_action(rv, "create_dataset")) return()
+    shinyjs::disable("btn_create_dataset_ui")
+    shinyjs::disable("btn_confirm_create_ds")
+    on.exit({
+      finish_app_action(rv, "create_dataset")
+      shinyjs::enable("btn_create_dataset_ui")
+      shinyjs::enable("btn_confirm_create_ds")
+    }, add = TRUE)
 
     # 2. Create Directory Structure
     dir.create(new_ds_path, recursive = TRUE, showWarnings = FALSE)

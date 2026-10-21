@@ -42,11 +42,27 @@ register_dashboard_server <- function(input, output, session, state, context) {
   observeEvent(input$btn_back_menu_3, { updateNavbarPage(session, "main_nav", selected = "menu_tab") })
   observeEvent(input$btn_go_cna, { updateNavbarPage(session, "main_nav", selected = "cna_tab") })
   observeEvent(input$btn_after_clustering_res, {
+    if (!claim_app_confirmation(rv, "after_clustering_navigation")) return()
     removeModal()
+    record_state_event(
+      rv,
+      stage = "navigation",
+      event_type = "completion_navigation",
+      outcome = "selected",
+      parameters = list(source = "clustering_complete", target = "res_tab")
+    )
     updateNavbarPage(session, "main_nav", selected = "res_tab")
   })
   observeEvent(input$btn_after_de_anno, {
+    if (!claim_app_confirmation(rv, "after_de_navigation")) return()
     removeModal()
+    record_state_event(
+      rv,
+      stage = "navigation",
+      event_type = "completion_navigation",
+      outcome = "selected",
+      parameters = list(source = "de_complete", target = "anno_tab")
+    )
     updateNavbarPage(session, "main_nav", selected = "anno_tab")
   })
 
@@ -68,18 +84,31 @@ register_dashboard_server <- function(input, output, session, state, context) {
       )
       return()
     }
+    arm_app_confirmation(rv, "bulk_clustering")
     showModal(modalDialog(
       title = "Confirm Clustering",
       "Are you sure you want to run the clustering pipeline? This process takes a significant amount of time and will lock the application until finished.",
       easyClose = TRUE,
       footer = tagList(
         modalButton("Cancel"),
-        actionButton("confirm_run_clustering", "Yes, Run Clustering", class = "btn-danger")
+        actionButton(
+          "confirm_run_clustering",
+          "Yes, Run Clustering",
+          class = "btn-danger",
+          onclick = "this.disabled = true;"
+        )
       )
     ))
   })
 
   observeEvent(input$confirm_run_clustering, {
+    if (!claim_app_confirmation(rv, "bulk_clustering")) return()
+    if (!begin_app_action(rv, "bulk_clustering")) return()
+    shinyjs::disable("btn_run_clustering")
+    on.exit({
+      finish_app_action(rv, "bulk_clustering")
+      shinyjs::enable("btn_run_clustering")
+    }, add = TRUE)
     removeModal()
     id <- showNotification("Running clustering pipeline. This may take a while. Check R console...",
                            duration = NULL, type = "warning")
@@ -117,6 +146,7 @@ register_dashboard_server <- function(input, output, session, state, context) {
         outcome = "completed",
         parameters = list(sample_count = length(rv$paths_list$sample_dir_paths))
       )
+      arm_app_confirmation(rv, "after_clustering_navigation")
       showModal(modalDialog(
         title = "Clustering complete",
         "All samples have been clustered. Review the generated UMAP plots and save one resolution per sample before running differential expression.",
@@ -126,7 +156,8 @@ register_dashboard_server <- function(input, output, session, state, context) {
           actionButton(
             "btn_after_clustering_res",
             "Go to Resolution Selection",
-            class = "btn-primary"
+            class = "btn-primary",
+            onclick = "this.disabled = true;"
           )
         )
       ))
@@ -179,19 +210,32 @@ register_dashboard_server <- function(input, output, session, state, context) {
       )
       showNotification(msg, type = "error", duration = 10)
     } else {
+      arm_app_confirmation(rv, "bulk_de")
       showModal(modalDialog(
         title = "Confirm DE Analysis",
         "Are you sure you want to run the Differential Expression analysis? This process is computationally heavy and will lock the application.",
         easyClose = TRUE,
         footer = tagList(
           modalButton("Cancel"),
-          actionButton("confirm_run_de", "Yes, Run DE Analysis", class = "btn-danger")
+          actionButton(
+            "confirm_run_de",
+            "Yes, Run DE Analysis",
+            class = "btn-danger",
+            onclick = "this.disabled = true;"
+          )
         )
       ))
     }
   })
 
   observeEvent(input$confirm_run_de, {
+    if (!claim_app_confirmation(rv, "bulk_de")) return()
+    if (!begin_app_action(rv, "bulk_de")) return()
+    shinyjs::disable("btn_run_de")
+    on.exit({
+      finish_app_action(rv, "bulk_de")
+      shinyjs::enable("btn_run_de")
+    }, add = TRUE)
     removeModal()
     id <- showNotification("Running DE analysis. Check R console...", duration = NULL, type = "warning")
     on.exit(removeNotification(id), add = TRUE)
@@ -227,6 +271,7 @@ register_dashboard_server <- function(input, output, session, state, context) {
         outcome = "completed",
         parameters = list(sample_count = length(rv$paths_list$sample_dir_paths))
       )
+      arm_app_confirmation(rv, "after_de_navigation")
       showModal(modalDialog(
         title = "Differential expression complete",
         "Marker results are ready for all samples. Continue to Manual Annotation to review clusters and assign cell types.",
@@ -236,7 +281,8 @@ register_dashboard_server <- function(input, output, session, state, context) {
           actionButton(
             "btn_after_de_anno",
             "Go to Manual Annotation",
-            class = "btn-primary"
+            class = "btn-primary",
+            onclick = "this.disabled = true;"
           )
         )
       ))

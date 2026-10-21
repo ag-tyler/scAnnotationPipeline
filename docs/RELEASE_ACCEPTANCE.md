@@ -86,5 +86,11 @@ passed.
 
 After the F02 stable-launch policy was added, the same full-suite command passed
 854 assertions with zero failures or warnings after correcting the startup
-session diagnostic to isolate its reads from reactive state. The browser baseline was again
-the only skip for the same restricted-environment Chromium startup failure.
+session diagnostic to isolate its reads from reactive state. The browser
+baseline was again the only skip for the same restricted-environment Chromium
+startup failure.
+
+After F03 navigation and duplicate-action hardening, the full suite passed 894
+assertions with zero failures or warnings. Direct Shiny server tests verified
+that clustering and DE completion dialogs navigate once and ignore a repeated
+event. The browser baseline remained the only restricted-environment skip.

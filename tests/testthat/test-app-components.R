@@ -51,6 +51,7 @@ test_that("shared state remains flat and contains only mutable session data", {
     c(
       "paths_list", "dataset_config", "samples_config",
       "session_id", "session_started_at", "session_logged_datasets",
+      "active_actions", "open_confirmations",
       "live_selected_config", "complete_markers", "results_dir_path",
       "selected_config_path", "pipeline_state", "pipeline_state_path",
       "dataset_dir_path", "config", "cells_filt",
@@ -106,6 +107,24 @@ test_that("top-level server isolates startup reads from reactive state", {
     "shiny::isolate(state$session_started_at)",
     fixed = TRUE
   )
+})
+
+
+test_that("action and confirmation guards are single-shot", {
+  app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
+  component_env <- new.env(parent = globalenv())
+  sys.source(file.path(app_dir, "app/state.R"), envir = component_env)
+  state <- component_env$create_app_state(list(), session_id = "guard-test")
+
+  expect_true(component_env$begin_app_action(state, "annotation_save"))
+  expect_false(component_env$begin_app_action(state, "annotation_save"))
+  component_env$finish_app_action(state, "annotation_save")
+  expect_true(component_env$begin_app_action(state, "annotation_save"))
+
+  expect_false(component_env$claim_app_confirmation(state, "bulk_de"))
+  component_env$arm_app_confirmation(state, "bulk_de")
+  expect_true(component_env$claim_app_confirmation(state, "bulk_de"))
+  expect_false(component_env$claim_app_confirmation(state, "bulk_de"))
 })
 
 test_that("each server registration is composed exactly once", {
@@ -202,7 +221,7 @@ test_that("pipeline persistence boundaries emit structured events", {
   app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
   expected_events <- list(
     "app/server/dataset_server.R" = c(
-      "workspace_created", "app_session_started", "dataset_load"
+      "workspace_created", "app_session_started", "dataset_load", "change_dataset"
     ),
     "app/server/dashboard_server.R" = c("clustering_run", "de_run"),
     "app/server/resolution_server.R" = c("resolution_saved", "single_sample_de"),

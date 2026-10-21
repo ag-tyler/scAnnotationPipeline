@@ -57,14 +57,25 @@ register_annotation_server <- function(input, output, session, state, context) {
   }
 
   show_unsaved_annotation_dialog <- function() {
+    arm_app_confirmation(rv, "annotation_navigation")
     showModal(modalDialog(
       title = "Unsaved annotation changes",
       "This sample has cell-type assignments that have not been saved.",
       easyClose = FALSE,
       footer = tagList(
         modalButton("Cancel"),
-        actionButton("btn_discard_annotation_navigation", "Discard and continue", class = "btn-danger"),
-        actionButton("btn_save_annotation_navigation", "Save and continue", class = "btn-primary")
+        actionButton(
+          "btn_discard_annotation_navigation",
+          "Discard and continue",
+          class = "btn-danger",
+          onclick = "this.disabled = true;"
+        ),
+        actionButton(
+          "btn_save_annotation_navigation",
+          "Save and continue",
+          class = "btn-primary",
+          onclick = "this.disabled = true;"
+        )
       )
     ))
   }
@@ -73,6 +84,24 @@ register_annotation_server <- function(input, output, session, state, context) {
     pending <- rv$annotation_pending_navigation
     rv$annotation_pending_navigation <- NULL
     if (is.null(pending)) return(invisible(FALSE))
+
+    record_state_event(
+      rv,
+      stage = "navigation",
+      event_type = "annotation_navigation",
+      outcome = "selected",
+      sample = rv$sample_name,
+      parameters = list(
+        type = pending$type,
+        target = if (identical(pending$type, "sample")) {
+          as.character(pending$index)
+        } else if (identical(pending$type, "menu")) {
+          "menu_tab"
+        } else {
+          pending$target
+        }
+      )
+    )
 
     if (identical(pending$type, "sample")) {
       updateSelectInput(session, "sample_idx", selected = pending$index)
@@ -554,6 +583,17 @@ register_annotation_server <- function(input, output, session, state, context) {
 
   save_current_annotations <- function(skip_cna = FALSE) {
     req(rv$paths_list, rv$cells_filt, rv$cells_raw, rv$sample_name, rv$res, rv$results_dir_path)
+    if (!begin_app_action(rv, "annotation_save")) return(FALSE)
+    save_button_ids <- c(
+      "save_btn", "btn_confirm_save_before_cna",
+      "btn_confirm_save_without_cna", "btn_save_annotation_navigation"
+    )
+    invisible(lapply(save_button_ids, shinyjs::disable))
+    on.exit({
+      finish_app_action(rv, "annotation_save")
+      invisible(lapply(save_button_ids, shinyjs::enable))
+    }, add = TRUE)
+
     readiness <- pipeline_step_readiness(rv$pipeline_state, "annotation", rv$sample_name)
     if (!readiness$ready) {
       showNotification(
@@ -676,6 +716,7 @@ register_annotation_server <- function(input, output, session, state, context) {
 
   request_annotation_save <- function() {
     if (!cna_decision_recorded()) {
+      arm_app_confirmation(rv, "annotation_save_decision")
       showModal(modalDialog(
         title = "CNA configuration is incomplete",
         paste0(
@@ -689,12 +730,14 @@ register_annotation_server <- function(input, output, session, state, context) {
           actionButton(
             "btn_confirm_save_before_cna",
             "Save; configure CNA next",
-            class = "btn-primary"
+            class = "btn-primary",
+            onclick = "this.disabled = true;"
           ),
           actionButton(
             "btn_confirm_save_without_cna",
             "Save and omit CNA",
-            class = "btn-warning"
+            class = "btn-warning",
+            onclick = "this.disabled = true;"
           )
         )
       ))
@@ -711,24 +754,28 @@ register_annotation_server <- function(input, output, session, state, context) {
   })
 
   observeEvent(input$btn_confirm_save_without_cna, {
+    if (!claim_app_confirmation(rv, "annotation_save_decision")) return()
     removeModal()
     saved <- save_current_annotations(skip_cna = TRUE)
     if (isTRUE(saved)) finish_annotation_navigation()
   })
 
   observeEvent(input$btn_confirm_save_before_cna, {
+    if (!claim_app_confirmation(rv, "annotation_save_decision")) return()
     removeModal()
     saved <- save_current_annotations()
     if (isTRUE(saved)) finish_annotation_navigation()
   })
 
   observeEvent(input$btn_discard_annotation_navigation, {
+    if (!claim_app_confirmation(rv, "annotation_navigation")) return()
     removeModal()
     discard_current_annotation_edits()
     finish_annotation_navigation()
   })
 
   observeEvent(input$btn_save_annotation_navigation, {
+    if (!claim_app_confirmation(rv, "annotation_navigation")) return()
     removeModal()
     request_annotation_save()
   })

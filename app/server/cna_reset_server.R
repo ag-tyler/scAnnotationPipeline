@@ -8,18 +8,31 @@ register_cna_reset_server <- function(input, output, session, state, context) {
     req(input$cna_sample_idx, rv$paths_list)
     s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
 
+    arm_app_confirmation(rv, "cna_reset")
     showModal(modalDialog(
       title = "Confirm CNA Reset",
       paste("Are you sure you want to reset the CNA analysis for '", s_name, "'? This will delete the cached CNA matrix, clustering, and thresholds. It will also revert any assigned malignant cells back to their manual annotations."),
       easyClose = TRUE,
       footer = tagList(
         modalButton("Cancel"),
-        actionButton("confirm_cna_reset", "Yes, Reset", class = "btn-danger")
+        actionButton(
+          "confirm_cna_reset",
+          "Yes, Reset",
+          class = "btn-danger",
+          onclick = "this.disabled = true;"
+        )
       )
     ))
   })
 
   observeEvent(input$confirm_cna_reset, {
+    if (!claim_app_confirmation(rv, "cna_reset")) return()
+    if (!begin_app_action(rv, "cna_reset")) return()
+    shinyjs::disable("btn_cna_reset")
+    on.exit({
+      finish_app_action(rv, "cna_reset")
+      shinyjs::enable("btn_cna_reset")
+    }, add = TRUE)
     removeModal()
     req(input$cna_sample_idx, rv$paths_list, rv$live_selected_config)
     s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]

@@ -213,6 +213,7 @@ register_cna_compute_server <- function(input, output, session, state, context) 
       paste0(sample_names, " (", status_labels, ")")
     )
     resume_samples <- sample_names[status_labels != "completed"]
+    arm_app_confirmation(rv, "cna_batch_compute")
     showModal(modalDialog(
       title = "Confirm Batch CNA Computation",
       p(
@@ -242,6 +243,15 @@ register_cna_compute_server <- function(input, output, session, state, context) 
       showNotification("Select at least one sample for batch CNA.", type = "warning")
       return()
     }
+    if (!claim_app_confirmation(rv, "cna_batch_compute")) return()
+    if (!begin_app_action(rv, "cna_batch_compute")) return()
+    shinyjs::disable("btn_cna_batch_compute")
+    shinyjs::disable("confirm_cna_batch")
+    on.exit({
+      finish_app_action(rv, "cna_batch_compute")
+      shinyjs::enable("btn_cna_batch_compute")
+      shinyjs::enable("confirm_cna_batch")
+    }, add = TRUE)
     removeModal()
     record_state_event(
       rv,
