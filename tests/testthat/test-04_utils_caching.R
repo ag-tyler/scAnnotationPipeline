@@ -52,6 +52,73 @@ test_that("cache_load_data errors clearly for missing and untracked artifacts", 
   )
 })
 
+
+test_that("cache availability is a metadata-only screen", {
+  skip_if_not_installed("qs2")
+  dataset_dir <- withr::local_tempdir()
+  filename <- "screened.qs2"
+  cache_save_data(list(value = 42L), filename, dataset_dir)
+  manifest <- load_cache_manifest(dataset_dir)
+
+  expect_true(cache_check_available(filename, dataset_dir, manifest))
+  expect_false(cache_check_available("missing.qs2", dataset_dir, manifest))
+
+  artifact_path <- file.path(dataset_dir, "cache", filename)
+  bytes <- readBin(artifact_path, what = "raw", n = file.info(artifact_path)$size)
+  bytes[[length(bytes)]] <- as.raw(bitwXor(as.integer(bytes[[length(bytes)]]), 1L))
+  writeBin(bytes, artifact_path)
+  expect_false(cache_check_available(filename, dataset_dir, manifest))
+
+  legacy_manifest <- manifest
+  legacy_manifest$artifacts[[filename]]$modified_at <- NULL
+
+  # A legacy record has only its unchanged size as a fast screen, while
+  # first-use deep validation still rejects the changed content.
+  expect_true(cache_check_available(filename, dataset_dir, legacy_manifest))
+  expect_false(cache_check_valid(filename, dataset_dir))
+})
+
+
+test_that("input fingerprints are reused only while file metadata is unchanged", {
+  input_path <- withr::local_tempfile()
+  writeLines("first", input_path)
+
+  calls <- 0L
+  test_env <- new.env(parent = environment(.cache_file_fingerprint))
+  test_env$.cache_file_fingerprint_index <- new.env(parent = emptyenv())
+  test_env$.cache_md5 <- function(path) {
+    calls <<- calls + 1L
+    paste0("checksum-", calls)
+  }
+  fingerprint <- .cache_file_fingerprint
+  environment(fingerprint) <- test_env
+
+  expect_identical(fingerprint(input_path), "checksum-1")
+  expect_identical(fingerprint(input_path), "checksum-1")
+  expect_identical(calls, 1L)
+
+  Sys.setFileTime(input_path, Sys.time() + 2)
+  expect_identical(fingerprint(input_path), "checksum-2")
+  expect_identical(calls, 2L)
+})
+
+
+test_that("fast availability rejects conclusive source metadata changes", {
+  skip_if_not_installed("qs2")
+  dataset_dir <- withr::local_tempdir()
+  input_path <- file.path(dataset_dir, "expression.tsv")
+  writeLines("original", input_path)
+  dependencies <- cache_dependency_spec(files = c(expression = input_path))
+  cache_save_data(42L, "dependent.qs2", dataset_dir, dependencies = dependencies)
+  manifest <- load_cache_manifest(dataset_dir)
+
+  expect_true(cache_check_available("dependent.qs2", dataset_dir, manifest))
+  Sys.setFileTime(input_path, Sys.time() + 2)
+  expect_true(cache_check_available("dependent.qs2", dataset_dir, manifest))
+  writeLines(c("original", "larger"), input_path)
+  expect_false(cache_check_available("dependent.qs2", dataset_dir, manifest))
+})
+
 test_that("dependency fingerprints prevent stale cache reuse", {
   skip_if_not_installed("qs2")
   dataset_dir <- withr::local_tempdir()

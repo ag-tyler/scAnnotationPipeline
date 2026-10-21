@@ -467,6 +467,56 @@ test_that("persisted step updates combine invalidation and one revisioned write"
 })
 
 
+test_that("rerun completion and failure replace temporary downstream reasons", {
+  state <- new_pipeline_state("Example_Dataset", "sample1", fixed_state_time)
+  for (step in c("clustering", "resolution", "differential_expression", "annotation")) {
+    state <- transition_pipeline_step(
+      state,
+      step,
+      "completed",
+      sample = "sample1",
+      force = TRUE,
+      timestamp = fixed_state_time + 1
+    )
+  }
+  state <- mark_pipeline_steps_stale(
+    state,
+    upstream_step = "clustering",
+    sample = "sample1",
+    reason = "The clustering step is being rerun for this sample.",
+    timestamp = fixed_state_time + 2
+  )
+
+  completed <- update_downstream_stale_reason(
+    state,
+    upstream_step = "clustering",
+    sample = "sample1",
+    reason = "Clustering was rerun; review and save a resolution again.",
+    timestamp = fixed_state_time + 3
+  )
+  expect_identical(
+    get_pipeline_step(completed, "resolution", "sample1")$reason,
+    "Clustering was rerun; review and save a resolution again."
+  )
+  expect_identical(
+    get_pipeline_step(completed, "annotation", "sample1")$reason,
+    "Clustering was rerun; review and save a resolution again."
+  )
+
+  failed <- update_downstream_stale_reason(
+    state,
+    upstream_step = "clustering",
+    sample = "sample1",
+    reason = "Clustering rerun failed: synthetic failure. Resolve the error and rerun this step.",
+    timestamp = fixed_state_time + 4
+  )
+  expect_match(
+    get_pipeline_step(failed, "resolution", "sample1")$reason,
+    "rerun failed"
+  )
+})
+
+
 test_that("unchanged decisions preserve downstream completion while changes stale it", {
   dataset_dir <- withr::local_tempdir()
   state_path <- file.path(dataset_dir, "pipeline_state.yaml")

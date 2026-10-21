@@ -12,6 +12,23 @@ register_dashboard_server <- function(input, output, session, state, context) {
     } else {
       NULL
     }
+    downstream_stale_reason <- if (identical(status, "completed")) {
+      switch(
+        step,
+        clustering = "Clustering was rerun; review and save a resolution again.",
+        differential_expression = "Differential expression was rerun; review and save annotations again.",
+        NULL
+      )
+    } else if (identical(status, "failed")) {
+      paste0(
+        tools::toTitleCase(gsub("_", " ", step)),
+        " rerun failed",
+        if (!is.null(reason)) paste0(": ", reason, ".") else ".",
+        " Resolve the error and rerun this step."
+      )
+    } else {
+      NULL
+    }
     rv$pipeline_state <- persist_pipeline_step_update(
       rv$pipeline_state,
       rv$pipeline_state_path,
@@ -21,7 +38,8 @@ register_dashboard_server <- function(input, output, session, state, context) {
       reason = reason,
       details = details,
       invalidate_downstream = invalidate,
-      invalidation_reason = invalidation_reason
+      invalidation_reason = invalidation_reason,
+      downstream_stale_reason = downstream_stale_reason
     )
     record_state_event(
       rv,

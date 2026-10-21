@@ -425,6 +425,43 @@ mark_pipeline_steps_stale <- function(
 }
 
 
+update_downstream_stale_reason <- function(
+  state,
+  upstream_step,
+  sample,
+  reason,
+  timestamp = Sys.time()
+) {
+  if (!(upstream_step %in% names(PIPELINE_STALE_DEPENDENCIES))) {
+    stop("Unknown upstream pipeline step: ", upstream_step, call. = FALSE)
+  }
+  if (is.null(sample) || !(sample %in% names(state$samples))) {
+    stop("A configured sample is required for stale-reason updates.", call. = FALSE)
+  }
+  if (is.null(reason) || !nzchar(trimws(reason))) {
+    stop("A replacement stale reason is required.", call. = FALSE)
+  }
+  for (step in PIPELINE_STALE_DEPENDENCIES[[upstream_step]]) {
+    current <- get_pipeline_step(state, step, sample)
+    stale_after <- current$details$stale_after
+    if (
+      identical(current$status, "stale") &&
+        !is.null(stale_after) && upstream_step %in% stale_after
+    ) {
+      state <- transition_pipeline_step(
+        state,
+        step = step,
+        status = "stale",
+        sample = sample,
+        reason = reason,
+        timestamp = timestamp
+      )
+    }
+  }
+  state
+}
+
+
 reset_pipeline_steps <- function(
   state,
   steps,
@@ -934,6 +971,18 @@ reconcile_pipeline_state_cache <- function(
 ) {
   validate_pipeline_state(state)
   changes <- character()
+  manifest <- tryCatch(
+    load_cache_manifest(dataset_dir_path, recover = FALSE),
+    error = function(error) NULL
+  )
+
+  cache_available <- function(filename) {
+    !is.null(manifest) && cache_check_available(
+      filename,
+      dataset_dir_path,
+      manifest = manifest
+    )
+  }
 
   mark_cache_stale <- function(current_state, step, sample_name, reason) {
     record <- get_pipeline_step(current_state, step, sample_name)
@@ -965,34 +1014,16 @@ reconcile_pipeline_state_cache <- function(
     clustering_record <- get_pipeline_step(state, "clustering", sample_name)
     if (clustering_record$status %in% c("completed", "skipped")) {
       resolutions <- dataset_config$params$resolutions
-      filter_dependencies <- tryCatch(
-        filter_cache_dependencies(paths_list, sample_index, dataset_config),
-        error = identity
+      expression_valid <- cache_available(
+        paste0("expmat_filt_", sample_name, ".qs2")
       )
-      expression_valid <- !inherits(filter_dependencies, "error") &&
-        cache_check_valid(
-          paste0("expmat_filt_", sample_name, ".qs2"),
-          dataset_dir_path,
-          filter_dependencies
-        )
       cluster_valid <- length(resolutions) > 0L && all(vapply(
         resolutions,
         function(resolution) {
-          dependencies <- tryCatch(
-            clustering_cache_dependencies(
-              paths_list,
-              sample_index,
-              dataset_config,
-              resolution
-            ),
-            error = identity
-          )
-          !inherits(dependencies, "error") && cache_check_valid(
+          cache_available(
             paste0(
               "cells_filt_clust_res_", resolution, "_", sample_name, ".qs2"
-            ),
-            dataset_dir_path,
-            dependencies
+            )
           )
         },
         logical(1)
@@ -1009,36 +1040,8 @@ reconcile_pipeline_state_cache <- function(
 
     cna_record <- get_pipeline_step(state, "cna_compute", sample_name)
     if (cna_record$status %in% c("completed", "skipped")) {
-      cna_valid <- isTRUE(tryCatch({
-        resolution <- selected_config$resolutions[[sample_name]]
-        cells_filename <- paste0(
-          "cells_filt_clust_res_", resolution, "_", sample_name, ".qs2"
-        )
-        cells <- cache_load_data(cells_filename, dataset_dir_path, recover = FALSE)
-        cells <- data.table::as.data.table(cells)
-        if (!("cell_type" %in% names(cells))) stop("Cell annotations are unavailable.")
-        refs <- cells[cell_type %in% selected_config$cna_ref_cells[[sample_name]]]
-        matrix_dependencies <- cna_matrix_cache_dependencies(
-          sample_name,
-          dataset_dir_path,
-          gene_positions,
-          refs
-        )
-        hclust_dependencies <- cna_hclust_cache_dependencies(
-          sample_name,
-          dataset_dir_path,
-          selected_config
-        )
-        cache_check_valid(
-          paste0("cna_matrix_", sample_name, ".qs2"),
-          dataset_dir_path,
-          matrix_dependencies
-        ) && cache_check_valid(
-          paste0("hclust_", sample_name, ".qs2"),
-          dataset_dir_path,
-          hclust_dependencies
-        )
-      }, error = function(error) FALSE))
+      cna_valid <- cache_available(paste0("cna_matrix_", sample_name, ".qs2")) &&
+        cache_available(paste0("hclust_", sample_name, ".qs2"))
       if (!cna_valid) {
         state <- mark_cache_stale(
           state,
@@ -1051,32 +1054,14 @@ reconcile_pipeline_state_cache <- function(
 
     signal_record <- get_pipeline_step(state, "cna_signal_correlation", sample_name)
     if (signal_record$status %in% c("completed", "skipped")) {
-      signal_valid <- isTRUE(tryCatch({
-        resolution <- selected_config$resolutions[[sample_name]]
-        cells <- cache_load_data(
-          paste0("cells_filt_clust_res_", resolution, "_", sample_name, ".qs2"),
-          dataset_dir_path,
-          recover = FALSE
-        )
-        cells <- data.table::as.data.table(cells)
-        cells[is.na(cell_type), cell_type := "Unassigned"]
-        refs <- cells[cell_type %in% selected_config$cna_ref_cells[[sample_name]]]
-        subclones <- selected_config$cna_ward_ref_cluster[[sample_name]]
-        length(subclones) > 0L && all(vapply(seq_along(subclones), function(i) {
-          dependencies <- cna_signal_cache_dependencies(
-            sample_name,
-            i,
-            refs,
-            selected_config,
-            dataset_dir_path
-          )
-          cache_check_valid(
-            paste0("cna_sig_cor_", sample_name, "_subclone_", i, ".qs2"),
-            dataset_dir_path,
-            dependencies
-          )
-        }, logical(1)))
-      }, error = function(error) FALSE))
+      subclones <- selected_config$cna_ward_ref_cluster[[sample_name]]
+      signal_valid <- length(subclones) > 0L && all(vapply(
+        seq_along(subclones),
+        function(i) cache_available(
+          paste0("cna_sig_cor_", sample_name, "_subclone_", i, ".qs2")
+        ),
+        logical(1)
+      ))
       if (!signal_valid) {
         state <- mark_cache_stale(
           state,
@@ -1317,6 +1302,7 @@ persist_pipeline_step_update <- function(
   details = NULL,
   invalidate_downstream = FALSE,
   invalidation_reason = NULL,
+  downstream_stale_reason = NULL,
   timestamp = Sys.time(),
   force = FALSE
 ) {
@@ -1343,5 +1329,14 @@ persist_pipeline_step_update <- function(
     timestamp = timestamp,
     force = force
   )
+  if (!is.null(downstream_stale_reason)) {
+    updated <- update_downstream_stale_reason(
+      updated,
+      upstream_step = step,
+      sample = sample,
+      reason = downstream_stale_reason,
+      timestamp = timestamp
+    )
+  }
   save_pipeline_state_at_path(updated, state_path, timestamp)
 }

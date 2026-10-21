@@ -20,7 +20,7 @@ test_that("F01 cache validity checks eagerly deserialize the artifact", {
 })
 
 
-test_that("F01 initial reconciliation work scales with samples and resolutions", {
+test_that("F04 initial reconciliation uses only metadata availability checks", {
   sample_names <- c("sample1", "sample2")
   resolutions <- c(0.25, 0.5, 1)
   state <- new_pipeline_state("Synthetic_Dataset", sample_names)
@@ -35,20 +35,31 @@ test_that("F01 initial reconciliation work scales with samples and resolutions",
   }
 
   calls <- new.env(parent = emptyenv())
-  calls$filter_dependencies <- 0L
-  calls$clustering_dependencies <- 0L
-  calls$validations <- 0L
+  calls$manifest_loads <- 0L
+  calls$availability_checks <- 0L
+  calls$deep_validations <- 0L
+  calls$artifact_loads <- 0L
   test_env <- new.env(parent = environment(reconcile_pipeline_state_cache))
+  test_env$load_cache_manifest <- function(...) {
+    calls$manifest_loads <- calls$manifest_loads + 1L
+    list(artifacts = list())
+  }
   test_env$filter_cache_dependencies <- function(...) {
-    calls$filter_dependencies <- calls$filter_dependencies + 1L
-    list(kind = "filter")
+    fail("Initial reconciliation must not build filter dependencies.")
   }
   test_env$clustering_cache_dependencies <- function(...) {
-    calls$clustering_dependencies <- calls$clustering_dependencies + 1L
-    list(kind = "clustering")
+    fail("Initial reconciliation must not build clustering dependencies.")
   }
   test_env$cache_check_valid <- function(...) {
-    calls$validations <- calls$validations + 1L
+    calls$deep_validations <- calls$deep_validations + 1L
+    TRUE
+  }
+  test_env$cache_load_data <- function(...) {
+    calls$artifact_loads <- calls$artifact_loads + 1L
+    stop("Initial reconciliation must not deserialize cache artifacts.")
+  }
+  test_env$cache_check_available <- function(...) {
+    calls$availability_checks <- calls$availability_checks + 1L
     TRUE
   }
   characterized_reconcile <- reconcile_pipeline_state_cache
@@ -64,15 +75,12 @@ test_that("F01 initial reconciliation work scales with samples and resolutions",
   )
 
   expect_length(attr(result, "cache_changes"), 0L)
-  expect_identical(calls$filter_dependencies, length(sample_names))
-  expect_identical(
-    calls$clustering_dependencies,
-    length(sample_names) * length(resolutions)
-  )
-  expect_identical(
-    calls$validations,
+  expect_identical(calls$manifest_loads, 1L)
+  expect_identical(calls$availability_checks,
     length(sample_names) * (length(resolutions) + 1L)
   )
+  expect_identical(calls$deep_validations, 0L)
+  expect_identical(calls$artifact_loads, 0L)
 })
 
 

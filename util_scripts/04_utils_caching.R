@@ -8,6 +8,13 @@ CACHE_MANIFEST_SCHEMA_VERSION <- 1L
 CACHE_MANIFEST_FILENAME <- "cache_manifest.yaml"
 
 
+# Content fingerprints are expensive for standardized expression inputs. Keep
+# them for the lifetime of the R process and reuse them only while both size and
+# modification time are unchanged. Scientific fingerprints intentionally omit
+# the added path/mtime metadata so existing manifests remain compatible.
+.cache_file_fingerprint_index <- new.env(parent = emptyenv())
+
+
 cache_timestamp <- function(timestamp = Sys.time()) {
   if (exists("format_pipeline_timestamp", mode = "function")) {
     return(format_pipeline_timestamp(timestamp))
@@ -275,6 +282,42 @@ save_cache_manifest_atomic <- function(
 }
 
 
+.cache_mtime_token <- function(value) {
+  sprintf("%.6f", as.numeric(value))
+}
+
+
+.cache_file_fingerprint <- function(path) {
+  if (!file.exists(path)) return(NULL)
+  normalized_path <- normalizePath(path, winslash = "/", mustWork = TRUE)
+  info <- file.info(normalized_path)
+  current <- list(
+    size_bytes = unname(info$size),
+    modified_at = unname(as.numeric(info$mtime))
+  )
+  cached <- .cache_file_fingerprint_index[[normalized_path]]
+  if (
+    !is.null(cached) &&
+      identical(as.numeric(cached$size_bytes), as.numeric(current$size_bytes)) &&
+      identical(as.numeric(cached$modified_at), as.numeric(current$modified_at))
+  ) {
+    return(cached$checksum)
+  }
+  checksum <- .cache_md5(normalized_path)
+  .cache_file_fingerprint_index[[normalized_path]] <- c(current, list(checksum = checksum))
+  checksum
+}
+
+
+cache_clear_fingerprint_index <- function() {
+  entries <- ls(envir = .cache_file_fingerprint_index, all.names = TRUE)
+  if (length(entries) > 0L) {
+    rm(list = entries, envir = .cache_file_fingerprint_index)
+  }
+  invisible(TRUE)
+}
+
+
 cache_hash_value <- function(value) {
   path <- tempfile(fileext = ".rds")
   on.exit(if (file.exists(path)) file.remove(path), add = TRUE)
@@ -298,7 +341,12 @@ cache_dependency_spec <- function(
       stop("Dependency file does not exist: ", path, call. = FALSE)
     }
     info <- file.info(path)
-    list(size_bytes = unname(info$size), checksum = .cache_md5(path))
+    list(
+      size_bytes = unname(info$size),
+      checksum = .cache_file_fingerprint(path),
+      path = normalizePath(path, winslash = "/", mustWork = TRUE),
+      modified_at = .cache_mtime_token(info$mtime)
+    )
   })
   value_records <- lapply(values, function(value) list(hash = cache_hash_value(value)))
   artifact_records <- list()
@@ -327,7 +375,17 @@ cache_dependency_spec <- function(
 cache_dependency_fingerprint <- function(dependencies) {
   if (is.null(dependencies)) return(NULL)
   if (!is.list(dependencies)) stop("dependencies must be a list.", call. = FALSE)
-  cache_hash_value(dependencies)
+  # Path and mtime support the fast metadata screen but are not scientific
+  # dependencies. Excluding them preserves fingerprints from schema-v1 records
+  # and avoids invalidating content merely because a dataset was moved.
+  fingerprint_dependencies <- dependencies
+  if (is.list(fingerprint_dependencies$files)) {
+    fingerprint_dependencies$files <- lapply(
+      fingerprint_dependencies$files,
+      function(record) record[setdiff(names(record), c("path", "modified_at"))]
+    )
+  }
+  cache_hash_value(fingerprint_dependencies)
 }
 
 
@@ -493,6 +551,7 @@ cache_save_data <- function(
     created_at = cache_timestamp(timestamp),
     checksum = .cache_md5(paths$primary),
     size_bytes = unname(info$size),
+    modified_at = .cache_mtime_token(info$mtime),
     dependency_fingerprint = cache_dependency_fingerprint(dependencies),
     dependencies = if (is.null(dependencies)) list() else dependencies,
     validation = validation
@@ -625,6 +684,47 @@ cache_load_data <- function(
 cache_check_exists <- function(data_file_name, dataset_dir_path) {
   paths <- .cache_artifact_paths(dataset_dir_path, data_file_name)
   file.exists(paths$primary)
+}
+
+
+# Fast startup/reconciliation screen. This intentionally does not checksum or
+# deserialize the artifact. Scientific consumers must still call
+# cache_check_valid()/cache_load_data(), with dependencies where applicable.
+cache_check_available <- function(
+  data_file_name,
+  dataset_dir_path,
+  manifest = NULL
+) {
+  isTRUE(tryCatch({
+    paths <- .cache_artifact_paths(dataset_dir_path, data_file_name)
+    if (!file.exists(paths$primary)) return(FALSE)
+    if (is.null(manifest)) manifest <- load_cache_manifest(dataset_dir_path, recover = FALSE)
+    validate_cache_manifest(manifest)
+    record <- manifest$artifacts[[data_file_name]]
+    if (is.null(record)) return(FALSE)
+    info <- file.info(paths$primary)
+    size_matches <- identical(as.numeric(info$size), as.numeric(record$size_bytes))
+    mtime_matches <- is.null(record$modified_at) || identical(
+      .cache_mtime_token(info$mtime),
+      as.character(record$modified_at)
+    )
+    dependency_files <- record$dependencies$files
+    source_metadata_matches <- is.null(dependency_files) || all(vapply(
+      dependency_files,
+      function(source) {
+        # Legacy dependency records do not carry their source path/mtime. They
+        # remain available here and receive full dependency validation on use.
+        if (is.null(source$path) || is.null(source$modified_at)) return(TRUE)
+        if (!file.exists(source$path)) return(FALSE)
+        source_info <- file.info(source$path)
+        # A changed mtime with unchanged size is inconclusive. Keep the step
+        # available and let first-use dependency validation rehash the source.
+        identical(as.numeric(source_info$size), as.numeric(source$size_bytes))
+      },
+      logical(1)
+    ))
+    size_matches && mtime_matches && source_metadata_matches
+  }, error = function(error) FALSE))
 }
 
 
