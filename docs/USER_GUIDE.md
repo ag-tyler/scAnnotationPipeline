@@ -131,6 +131,7 @@ datasets/<dataset_id>/
 ├── samples_config.yaml
 ├── selected_config.yaml
 ├── pipeline_state.yaml
+├── storage_state.yaml
 ├── standardize.R
 ├── cache/
 ├── data/
@@ -644,6 +645,26 @@ This current-state document is intentionally separate from
 `selected_config.yaml` and the append-only event logs. See
 [Pipeline State](PIPELINE_STATE.md) for status meanings, dependencies, legacy
 migration, and recovery behavior.
+
+### Archiving a finished dataset
+
+The Start Menu includes a **Dataset Storage** card. Once all samples are
+finished and their durable outputs are verified, choose **Review Dataset
+Cleanup** to see the exact cache file count, estimated space recovery, retained
+files, and any remaining requirements. Cleanup requires typing the dataset ID.
+
+The action removes only reconstructible files under that dataset's `cache/`.
+It retains processed data, final `Cells.csv` files, result tables and plots,
+configuration, logs, pipeline state, and reusable CNA values exports. A sample
+where the user explicitly chose **Omit CNA** is considered finished; a sample
+with completed CNA must have a current CNA values export.
+
+After cleanup, the dataset is an archived, read-only result set and the pipeline
+overview keeps its scientific completion statuses. If a retained output later
+goes missing or changes size, the storage card reports archive damage. Use
+**Reopen Dataset for Editing** only when recomputation is intended: archived
+results remain, but the deleted caches cannot be restored and affected stages
+are marked stale.
 
 ---
 

@@ -4,7 +4,7 @@
 
 **Initial plan date:** 2026-10-21  
 **Last progress update:** 2026-10-28
-**Current phase:** Milestones 0–3 complete; Milestone 4 in progress, with F16 next and F14 afterward
+**Current phase:** Milestones 0–3 complete; Milestone 4 in progress, with F16 complete and F14 next
 **Basis:** Manual test notes, follow-up console-launch testing, current source inspection, file-size inventory, `pipeline.log`, and `pipeline_state.yaml` from `Che2021_Colorectal_2`.
 
 ---
@@ -763,7 +763,7 @@ This feature is potentially useful for large, completed datasets because the val
 Implement dataset-level cleanup only. Enable it when every sample has a valid terminal workflow branch:
 
 - annotation is `completed` for every sample;
-- CNA is either finalized through `cna_assignment: completed`, or is explicitly/validly omitted with the applicable CNA records `skipped`;
+- CNA is either finalized through `cna_assignment: completed`, or is explicitly omitted through `cna_configuration: skipped` with `omitted_by_user: true`;
 - no relevant record is `not_started`, `in_progress`, `incomplete`, `failed`, or `stale`;
 - required durable outputs exist and pass a lightweight integrity check, including final `Cells.csv`, selected configuration, DE marker tables/plots, final CNA plots where applicable, and a current F13 CNA values CSV/provenance pair for every completed CNA sample.
 
@@ -817,6 +817,8 @@ Required tests:
 - a synthetic multi-sample end-to-end test covers completed CNA and omitted-CNA samples without touching a real dataset.
 
 **Acceptance:** A user can reclaim the displayed amount of cache storage only after the whole dataset has verified durable final outputs. Reloading the cleaned dataset clearly presents it as an archived, read-only result set rather than as broken or stale work. No retained scientific output is deleted, partial failure is recoverable, and reopening explicitly re-enters the normal recomputation lifecycle.
+
+**Acceptance result:** Complete in implementation and automated coverage. The Start Menu now has a separate Dataset Storage card backed by revisioned `storage_state.yaml`. Readiness verifies every general stage, explicit CNA omission or fully completed CNA, durable plots/tables, current F13 exports, and a closed cache inventory. Cleanup records retained-output checksums and the exact cache inventory, revalidates at confirmation, journals intent, retires the cache by same-parent rename, rolls back on checkpoint failure, and exposes deletion retry when files remain locked. Archived datasets skip cache reconciliation, hide compute/edit tabs, audit retained outputs with lightweight existence/size checks, and require a strongly confirmed reopen that preserves results while marking prior cache-dependent completion stale. Focused failure-path tests and the full suite pass. Manual UI review is intentionally deferred to the final F15 full-dataset replay after all development-plan changes are complete.
 
 ### F14 — Performance investigation and optimization
 
@@ -905,7 +907,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | F11 | CNA threshold guidance and equal Y-threshold support | Complete | 2026-10-28 | Equal Y values, directional clamping, explicit X/Y validation, and classification guidance added |
 | F12 | High-count CNA subtree selection | Complete | 2026-10-28 | Lightweight top-to-bottom navigator accepted without main-heatmap highlighting; saved PNG retains its full cluster legend |
 | F13 | CNA values-table results export | Complete | 2026-10-28 | Atomic chunked gzip CSV plus provenance, automatic finalization export, current/outdated status, and manual re-export without CNA recomputation |
-| F16 | Finished-dataset cache cleanup and archive lifecycle | Planned | — | Dataset-level first; separate storage status, durable-output gate, recoverable retirement, and explicit reopen path |
+| F16 | Finished-dataset cache cleanup and archive lifecycle | Complete | 2026-10-28 | Dataset-level archive card, durable-output/F13 gate, atomic journal, recoverable retirement/deletion retry, archive audit, and explicit stale-on-reopen path |
 | F14 | Residual performance optimization | Not started | — | Begins after F16 manual review |
 | F15 | Integration and CNA replay | Not started | — | — |
 
@@ -944,6 +946,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | 2026-10-28 | F12 manual acceptance | Accepted the lightweight navigator without direct main-heatmap or saved-image selection highlighting | The saved cluster legend is sufficient for the rare retrospective high-`k` review case, while the common interactive path remains fast |
 | 2026-10-28 | F13 | Added canonical chunked CNA cache-to-long conversion, atomic gzip CSV/provenance publication, automatic post-assignment export, explicit current/outdated status, and manual re-export | Focused tests cover exact round-trip values/ordering, CSV quoting and typed import, provenance invalidation, no recomputation, publication rollback, invalid identifiers, and preview/finalization lifecycle ordering; full suite passed 1,358 assertions with 0 failures/warnings and the known restricted-browser skip |
 | 2026-10-28 | F16 planning | Added a finished-dataset cleanup/archive lifecycle and compared per-sample with dataset-level scope | Recommended dataset-level cleanup only after every sample is terminal and durable outputs—including current F13 exports—are verified; scientific statuses remain intact while a separate storage lifecycle prevents intentional cache retirement from appearing stale |
+| 2026-10-28 | F16 | Implemented whole-dataset cache cleanup as a separate archive lifecycle with exact preview, typed confirmation, output/F13 validation, recoverable directory retirement, retry, read-only reload, retained-output audit, and explicit reopen | Focused lifecycle/component tests and the full suite passed (1,438 assertions, 0 failures/warnings, 1 restricted-browser skip) |
 
 ## 12. Progress notes and additional information — living section
 

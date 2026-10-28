@@ -184,6 +184,43 @@ register_dataset_server <- function(input, output, session, state, context) {
       return()
     }
 
+    storage_state <- tryCatch(
+      load_or_initialize_dataset_storage_state(
+        dataset_dir_path,
+        dataset_name
+      ),
+      error = identity
+    )
+    if (inherits(storage_state, "error")) {
+      record_pipeline_event(
+        dataset_dir_path = dataset_dir_path,
+        dataset = dataset_name,
+        stage = "storage",
+        event_type = "storage_state_load",
+        outcome = "failed",
+        reason = conditionMessage(storage_state)
+      )
+      showNotification(
+        paste("Dataset storage state could not be loaded:", conditionMessage(storage_state)),
+        type = "error",
+        duration = 10
+      )
+      return()
+    }
+    storage_initialized <- isTRUE(attr(storage_state, "initialized"))
+    if (storage_initialized) {
+      attr(storage_state, "initialized") <- NULL
+      storage_state <- save_dataset_storage_state_atomic(storage_state, dataset_dir_path)
+    }
+    storage_state <- reconcile_interrupted_dataset_storage(
+      storage_state,
+      dataset_dir_path
+    )
+    if (isTRUE(attr(storage_state, "storage_reconciled"))) {
+      attr(storage_state, "storage_reconciled") <- NULL
+      storage_state <- save_dataset_storage_state_atomic(storage_state, dataset_dir_path)
+    }
+
     selected_config_before_reconcile <- selected_config
     selected_config <- reconcile_selected_config(
       selected_config,
@@ -195,22 +232,25 @@ register_dataset_server <- function(input, output, session, state, context) {
     state_initialized <- isTRUE(attr(pipeline_state, "initialized"))
     state_sample_changes <- attr(pipeline_state, "sample_changes")
     state_dependency_changes <- attr(pipeline_state, "dependency_changes")
-    pipeline_state <- reconcile_pipeline_state_cache(
-      pipeline_state,
-      paths_list = paths_list,
-      dataset_config = dataset_config,
-      selected_config = selected_config,
-      dataset_dir_path = dataset_dir_path,
-      gene_positions = context$resources$gene_positions
-    )
-    state_cache_changes <- attr(pipeline_state, "cache_changes")
-    attr(pipeline_state, "cache_changes") <- NULL
-    if (length(state_cache_changes) > 0L) {
-      pipeline_state <- save_pipeline_state_atomic(
+    state_cache_changes <- character()
+    if (!dataset_storage_cache_is_retired(storage_state)) {
+      pipeline_state <- reconcile_pipeline_state_cache(
         pipeline_state,
-        dataset_dir_path,
-        state_filename = state_filename
+        paths_list = paths_list,
+        dataset_config = dataset_config,
+        selected_config = selected_config,
+        dataset_dir_path = dataset_dir_path,
+        gene_positions = context$resources$gene_positions
       )
+      state_cache_changes <- attr(pipeline_state, "cache_changes")
+      attr(pipeline_state, "cache_changes") <- NULL
+      if (length(state_cache_changes) > 0L) {
+        pipeline_state <- save_pipeline_state_atomic(
+          pipeline_state,
+          dataset_dir_path,
+          state_filename = state_filename
+        )
+      }
     }
 
     # 4. Generate Dataset-Specific Marker Filters
@@ -284,6 +324,8 @@ register_dataset_server <- function(input, output, session, state, context) {
     rv$selected_config_path <- selected_config_path
     rv$pipeline_state <- pipeline_state
     rv$pipeline_state_path <- file.path(dataset_dir_path, state_filename)
+    rv$storage_state <- storage_state
+    rv$storage_state_path <- file.path(dataset_dir_path, "storage_state.yaml")
     rv$complete_markers <- complete_markers
     rv$dataset_dir_path <- dataset_dir_path
     rv$cells_filt <- NULL
@@ -352,7 +394,9 @@ register_dataset_server <- function(input, output, session, state, context) {
         } else state_dependency_changes,
         caches_reconciled = if (is.null(state_cache_changes)) {
           character()
-        } else state_cache_changes
+        } else state_cache_changes,
+        storage_status = storage_state$status,
+        storage_initialized = storage_initialized
       )
     )
 
@@ -367,9 +411,15 @@ register_dataset_server <- function(input, output, session, state, context) {
     # 7. Reveal App Tabs & Jump to Dashboard
     nav_show("main_nav", target = "menu_tab")
     nav_show("main_nav", target = "clipboard_tab")
-    nav_show("main_nav", target = "res_tab")
-    nav_show("main_nav", target = "anno_tab")
-    nav_show("main_nav", target = "cna_tab")
+    if (dataset_storage_cache_is_retired(storage_state)) {
+      nav_hide("main_nav", target = "res_tab")
+      nav_hide("main_nav", target = "anno_tab")
+      nav_hide("main_nav", target = "cna_tab")
+    } else {
+      nav_show("main_nav", target = "res_tab")
+      nav_show("main_nav", target = "anno_tab")
+      nav_show("main_nav", target = "cna_tab")
+    }
     nav_hide("main_nav", target = "dataset_tab")
     updateNavbarPage(session, "main_nav", selected = "menu_tab")
 

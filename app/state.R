@@ -93,6 +93,8 @@ create_app_state <- function(
     selected_config_path = NULL,
     pipeline_state = NULL,
     pipeline_state_path = NULL,
+    storage_state = NULL,
+    storage_state_path = NULL,
     dataset_dir_path = NULL,
     config = NULL,
 

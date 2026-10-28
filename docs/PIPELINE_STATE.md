@@ -61,8 +61,9 @@ downstream steps as `stale`. Changing one sample's resolution therefore marks
 only that sample's DE, annotation, and CNA states stale. Saving the same value
 again does not stale downstream work.
 
-T09 tracks logical validity. Cache fingerprints and physical cache cleanup are
-handled separately by T10.
+Pipeline state tracks logical validity. Cache fingerprints are handled by the
+cache manifest, while intentional post-completion cleanup is tracked separately
+in `storage_state.yaml`.
 
 ## Persistence and recovery
 
@@ -92,3 +93,17 @@ marked `incomplete`.
 
 The implementation and unit tests are in `util_scripts/07_utils_state.R` and
 `tests/testthat/test-07_utils_state.R`.
+
+## Archived datasets
+
+The Start Menu's **Dataset Storage** card can archive a fully finished dataset
+after it verifies durable final outputs for every sample. Explicit user CNA
+omission is a valid terminal branch; completed CNA requires a current reusable
+CNA values export. Cleanup retires only the dataset `cache/` directory and
+leaves scientific statuses and final outputs unchanged.
+
+`storage_state.yaml` records this separate lifecycle atomically as `active`,
+`cleaning`, `cleanup_failed`, or `archived`. Archived datasets skip cache
+reconciliation and are read-only. **Reopen Dataset for Editing** preserves the
+results, creates a fresh cache directory, and marks previously completed or
+skipped cache-dependent sample steps stale so recomputation is explicit.

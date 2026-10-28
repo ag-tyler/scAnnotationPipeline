@@ -72,10 +72,28 @@ once to register clustering artifacts, then rerun the affected CNA stages.
 Do not manually edit `cache_manifest.yaml`. The in-app reset and rerun actions
 keep artifacts, workflow state, and logging aligned.
 
+## Finished-dataset cleanup
+
+Do not delete a completed dataset's cache manually. Use the **Dataset Storage**
+card on the Start Menu. Cleanup is enabled only when every sample has durable
+final tables and plots, completed CNA has a current CNA values export, and the
+cache inventory contains only recognized manifest/artifact files.
+
+The app writes a revisioned `storage_state.yaml` cleanup journal, records the
+cache inventory and retained-output checksums, renames the whole cache to a
+same-parent retirement directory, and only then deletes it. A locked file,
+interrupted operation, or failed state write remains recoverable through retry
+or rollback. Archived datasets deliberately skip normal missing-cache
+reconciliation. Reopening creates an empty cache and makes recomputation
+requirements visible in pipeline state; deleted caches are never presented as
+restored.
+
 ## Test coverage
 
 `test-04_utils_caching.R` covers manifest persistence, dependency changes,
 untracked artifacts, failed replacement, artifact/manifest recovery,
 family-specific invalidation, and clearing. Workflow and state tests cover
 dependency registration, restart reconciliation, CNA reuse, and regression
-behavior.
+behavior. `test-f16-dataset-storage.R` covers cleanup readiness, explicit CNA
+omission, the F13 export gate, retirement/retry/rollback, archive auditing, and
+reopening.

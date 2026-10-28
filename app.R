@@ -42,6 +42,7 @@ app_component_files <- c(
   "app/ui/app_ui.R",
   "app/server/dataset_server.R",
   "app/server/dashboard_server.R",
+  "app/server/storage_server.R",
   "app/server/single_de_server.R",
   "app/server/resolution_server.R",
   "app/server/annotation_server.R",

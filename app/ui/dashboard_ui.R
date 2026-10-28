@@ -157,6 +157,119 @@ pipeline_status_overview_ui <- function(summary) {
   )
 }
 
+
+dataset_storage_card_ui <- function(storage_state, readiness = NULL, archive_audit = NULL) {
+  status <- storage_state$status
+  cleanup <- storage_state$details$cleanup
+  cache_size <- if (!is.null(readiness)) {
+    readiness$cache$size_bytes
+  } else if (!is.null(cleanup$cache_size_bytes)) {
+    cleanup$cache_size_bytes
+  } else 0
+  recovered <- storage_state$details$recovered_bytes
+
+  presentation <- switch(
+    status,
+    active = if (!is.null(readiness) && isTRUE(readiness$ready)) {
+      list(class = "success", icon = "box-archive", label = "Ready to archive")
+    } else {
+      list(class = "secondary", icon = "database", label = "Active - cleanup not ready")
+    },
+    cleaning = list(class = "warning", icon = "spinner", label = "Cleanup in progress"),
+    archived = if (!is.null(archive_audit) && !isTRUE(archive_audit$intact)) {
+      list(class = "danger", icon = "triangle-exclamation", label = "Archive output missing")
+    } else {
+      list(class = "success", icon = "box-archive", label = "Results archived / caches cleaned")
+    },
+    cleanup_failed = list(class = "danger", icon = "triangle-exclamation", label = "Cleanup needs attention")
+  )
+
+  action <- if (identical(status, "archived")) {
+    actionButton(
+      "btn_reopen_dataset",
+      "Reopen Dataset for Editing...",
+      icon = icon("rotate-left"),
+      class = "btn-outline-warning"
+    )
+  } else if (
+    identical(status, "cleanup_failed") &&
+      isTRUE(storage_state$details$cache_retired) &&
+      isTRUE(storage_state$details$deletion_pending)
+  ) {
+    actionButton(
+      "btn_retry_dataset_cleanup",
+      "Retry Retired Cache Deletion",
+      icon = icon("rotate"),
+      class = "btn-outline-danger"
+    )
+  } else {
+    button <- actionButton(
+      "btn_review_dataset_cleanup",
+      "Review Dataset Cleanup...",
+      icon = icon("broom"),
+      class = "btn-outline-danger"
+    )
+    if (is.null(readiness) || !isTRUE(readiness$ready)) shinyjs::disabled(button) else button
+  }
+
+  reasons <- if (!is.null(readiness) && !isTRUE(readiness$ready)) readiness$reasons else character()
+  card(
+    class = "mb-4 dataset-storage-card",
+    card_header(
+      div(
+        class = "d-flex flex-wrap justify-content-between align-items-center gap-2",
+        h4("Dataset Storage", class = "mb-0"),
+        span(
+          class = paste0("badge text-bg-", presentation$class),
+          icon(presentation$icon, class = "me-1", `aria-hidden` = "true"),
+          presentation$label
+        )
+      )
+    ),
+    card_body(
+      if (identical(status, "archived")) {
+        tagList(
+          p(paste0(
+              "Final results are retained in read-only archive mode. ",
+              format_storage_bytes(if (is.null(recovered)) cache_size else recovered),
+              " of reconstructible cache data was removed."
+          )),
+          if (!is.null(archive_audit) && !isTRUE(archive_audit$intact)) {
+            div(
+              class = "alert alert-danger py-2",
+              "One or more retained outputs are missing or changed: ",
+              paste(utils::head(archive_audit$issues, 3L), collapse = "; ")
+            )
+          }
+        )
+      } else if (identical(status, "cleanup_failed")) {
+        div(class = "alert alert-danger py-2", storage_state$reason)
+      } else if (identical(status, "cleaning")) {
+        div(class = "alert alert-warning py-2", "Cleanup was interrupted and will be reconciled on reload.")
+      } else {
+        tagList(
+          p(paste0(
+            "Reconstructible cache: ", format_storage_bytes(cache_size),
+            ". Cleanup is available only after every sample has durable final outputs."
+          )),
+          if (length(reasons) > 0L) {
+            tags$details(
+              class = "mb-3",
+              tags$summary(paste0(length(reasons), " cleanup requirement(s) remain")),
+              tags$ul(
+                class = "small mt-2 mb-0",
+                lapply(utils::head(reasons, 15L), tags$li),
+                if (length(reasons) > 15L) tags$li(paste0("... and ", length(reasons) - 15L, " more."))
+              )
+            )
+          }
+        )
+      },
+      action
+    )
+  )
+}
+
 dashboard_panel <- function() {
   nav_panel(
     title = "Start Menu",
@@ -172,6 +285,7 @@ dashboard_panel <- function() {
         class = "btn-outline-primary btn-lg w-100 mb-4"
       ),
       uiOutput("pipeline_status_overview"),
+      uiOutput("dataset_storage_status"),
       card(
         card_header(h4("Utilities", class = "mb-0")),
         card_body(
