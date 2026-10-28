@@ -262,6 +262,21 @@ cna_panel <- function(sample_choices) {
               )
             )
           ),
+          fluidRow(
+            column(
+              6,
+              uiOutput("cna_values_export_status")
+            ),
+            column(
+              6,
+              actionButton(
+                "btn_cna_export_values",
+                "Export/Re-export CNA Values Table",
+                icon = icon("file-export"),
+                class = "btn-outline-secondary w-100 mb-3"
+              )
+            )
+          ),
           navset_card_underline(
             id = "cna_preview_tabs",
             nav_panel(

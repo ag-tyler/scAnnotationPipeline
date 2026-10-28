@@ -3,8 +3,8 @@
 **Document purpose.** This is the working implementation plan for issues found during the 2026-10-21 manual end-to-end test on `Che2021_Colorectal_2`. It follows the structure of `scAnnotationPipeline_Development_Plan.md`, but is a separate follow-up plan because the original milestones are complete. It records priorities, dependencies, acceptance criteria, and implementation order. It does not claim that the planned changes have been implemented.
 
 **Initial plan date:** 2026-10-21  
-**Last progress update:** 2026-10-21  
-**Current phase:** Milestones 0–1 complete; Milestone 2 ready  
+**Last progress update:** 2026-10-28
+**Current phase:** Milestones 0–3 complete; Milestone 4 in progress through F13
 **Basis:** Manual test notes, follow-up console-launch testing, current source inspection, file-size inventory, `pipeline.log`, and `pipeline_state.yaml` from `Che2021_Colorectal_2`.
 
 ---
@@ -745,6 +745,8 @@ Required tests:
 
 **Acceptance:** After finalizing CNA for a sample, users can find a documented long-format CNA values CSV in results and use it directly to create new plots independently of the app. The exported rows match the validated cache, large-file behavior is explicit, and export failure cannot damage or misrepresent pipeline state.
 
+**Acceptance result:** Complete in implementation and automated coverage. Final CNA assignment now publishes a gzip-compressed long table and provenance YAML under `3_cna_results`; conversion reuses the canonical cache-to-long transformation in bounded cell chunks and does not recompute CNA. Same-directory temporary files are validated before pair publication, prior complete exports are restored if publication fails, and assignment state remains completed with an actionable retry warning. The summary view shows whether the export is absent, current, or outdated and provides manual re-export. The README documents the cache relationship and an import call that preserves chromosome strings.
+
 ### F14 — Performance investigation and optimization
 
 After F02, measure before optimizing:
@@ -809,8 +811,8 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | 0 — Reproduction and baseline | Complete | Reload/cache defects and timing baseline characterized |
 | 1 — Stable runtime and navigation | Complete | No write-triggered restart or unintended Dataset Selection transition |
 | 2 — Cache loading and save correctness | Complete | Fast load, valid annotation reload, and coherent CNA decisions |
-| 3 — Onboarding and progress | Not started | Standardization guide and batch output accepted |
-| 4 — Ordering, optional controls, status, and performance | Not started | Natural ordering, safe single-sample clustering, clear status overview, flexible CNA Y thresholds, unambiguous subtree selection, and responsiveness targets met |
+| 3 — Onboarding and progress | Complete | Standardization guide and batch output accepted |
+| 4 — Ordering, optional controls, status, and performance | In progress | Natural ordering, safe single-sample clustering, clear status overview, flexible CNA Y thresholds, unambiguous subtree selection, and responsiveness targets met |
 | 5 — Integration and CNA replay | Not started | Automated gate and manual end-to-end replay pass |
 
 ### 11.2 Task status
@@ -829,7 +831,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | F10 | Main-menu pipeline status overview | Complete | 2026-10-28 | Read-only responsive stage cards and collapsible per-sample details derived solely from reactive pipeline state |
 | F11 | CNA threshold guidance and equal Y-threshold support | Complete | 2026-10-28 | Equal Y values, directional clamping, explicit X/Y validation, and classification guidance added |
 | F12 | High-count CNA subtree selection | Complete | 2026-10-28 | Lightweight top-to-bottom navigator accepted without main-heatmap highlighting; saved PNG retains its full cluster legend |
-| F13 | CNA values-table results export | Not started | — | Low-priority reusable long-format output; compressed CSV default due potentially large files |
+| F13 | CNA values-table results export | Complete | 2026-10-28 | Atomic chunked gzip CSV plus provenance, automatic finalization export, current/outdated status, and manual re-export without CNA recomputation |
 | F14 | Residual performance optimization | Not started | — | — |
 | F15 | Integration and CNA replay | Not started | — | — |
 
@@ -866,6 +868,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | 2026-10-28 | F11 | Allowed equal CNA Y thresholds, retained strict X separation, added directional slider clamping and per-subclone classification guidance | Focused regressions and the full suite passed with no failures/warnings and one restricted-browser skip |
 | 2026-10-28 | F12 implementation | Added one canonical cut-tree identity map, ordered checkbox navigator, live save confirmation, explicit `k` clearing/reload behavior, and stale-`k` save protection without selection-triggered plot rendering | Automated regressions and the full suite passed; manual high-count usability review remains required |
 | 2026-10-28 | F12 manual acceptance | Accepted the lightweight navigator without direct main-heatmap or saved-image selection highlighting | The saved cluster legend is sufficient for the rare retrospective high-`k` review case, while the common interactive path remains fast |
+| 2026-10-28 | F13 | Added canonical chunked CNA cache-to-long conversion, atomic gzip CSV/provenance publication, automatic post-assignment export, explicit current/outdated status, and manual re-export | Focused tests cover exact round-trip values/ordering, CSV quoting and typed import, provenance invalidation, no recomputation, publication rollback, invalid identifiers, and preview/finalization lifecycle ordering; full suite passed 1,358 assertions with 0 failures/warnings and the known restricted-browser skip |
 
 ## 12. Progress notes and additional information — living section
 
@@ -879,7 +882,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 - For F10, compare compact summary cards, a sample-by-stage matrix, and a combined expandable design. Avoid an always-expanded table that overwhelms the main workflow for large datasets.
 - For F11, preserve strict `>`/`<` assignment behavior at an equal Y boundary unless scientific review requests a separate classification-rule change.
 - For F12, prototype direct cluster-bar selection plus embedded stable IDs against an ordered textual/card fallback. Do not approve a palette-only solution.
-- For F13, confirm the results subdirectory name and whether an explicit plain-CSV export button is sufficient alongside the automatic long-format `.csv.gz` output. Do not automatically duplicate both large formats.
+- F13 decision: publish only the automatic long-format `.csv.gz` plus provenance under `3_cna_results`, with a compressed re-export action. A plain-CSV duplicate is intentionally omitted because of the potentially large output size.
 - Decide whether long scientific computations should eventually run asynchronously only after the current responsiveness defects are fixed and measured; that is outside this plan unless still necessary.
 
 ### 12.2 Initial evidence record — 2026-10-21

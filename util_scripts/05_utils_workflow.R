@@ -1019,6 +1019,31 @@ compute_cna_and_cache <- function(expmat, gene_positions, ref_cells, sample_name
 }
 
 
+cna_matrix_to_long <- function(cna_mat, cell_names = NULL) {
+  id_columns <- c("gene", "chr", "start_pos")
+  if (!is.data.frame(cna_mat) || !all(id_columns %in% names(cna_mat))) {
+    stop(
+      "Cached CNA matrix must contain gene, chr, and start_pos columns.",
+      call. = FALSE
+    )
+  }
+  available_cells <- setdiff(names(cna_mat), id_columns)
+  if (is.null(cell_names)) cell_names <- available_cells
+  cell_names <- as.character(cell_names)
+  if (length(cell_names) == 0L || any(!cell_names %in% available_cells)) {
+    stop("CNA long-table conversion requires valid cell columns.", call. = FALSE)
+  }
+  data.table::melt(
+    data.table::as.data.table(cna_mat)[, c(id_columns, cell_names), with = FALSE],
+    id.vars = id_columns,
+    measure.vars = cell_names,
+    variable.name = "cell_name",
+    value.name = "cna",
+    variable.factor = FALSE
+  )
+}
+
+
 load_expdt_from_cna_matrix <- function(sample_name, dataset_dir_path) {
   #' Load and Melt Cached Copy Number Alteration (CNA) Matrix
   #'
@@ -1039,9 +1064,7 @@ load_expdt_from_cna_matrix <- function(sample_name, dataset_dir_path) {
   cna_mat_file_name <- paste0('cna_matrix_', sample_name, '.qs2')
   cna_mat <- cache_load_data(cna_mat_file_name, dataset_dir_path)
   
-  expdt <- data.table::melt(cna_mat, id.vars = c('gene', 'chr', 'start_pos'), variable.name = 'cell_name', 
-                            value.name = 'cna', variable.factor = FALSE)
-  return(expdt)
+  cna_matrix_to_long(cna_mat)
 }
 
 

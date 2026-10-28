@@ -114,6 +114,25 @@ On startup, the app:
 4. creates/scans `datasets/`;
 5. displays available datasets in the Dataset Selection screen.
 
+## CNA Values Results
+
+Finalizing a sample's CNA assignment also publishes a reusable long-format
+table at `results/<sample>/3_cna_results/cna_values_<sample>.csv.gz`, with the
+columns `gene`, `chr`, `start_pos`, `cell_name`, and `cna`. A neighboring
+`.metadata.yaml` file records dimensions and the validated cache provenance.
+The CNA summary view can export or refresh this table later without recomputing
+CNA. The optimized `.qs2` cache remains authoritative and the CSV is never used
+as pipeline input.
+
+To preserve chromosome strings such as `01`, import the compressed CSV with:
+
+```r
+cna_values <- data.table::fread(
+  "results/<sample>/3_cna_results/cna_values_<sample>.csv.gz",
+  colClasses = list(character = c("gene", "chr", "cell_name"))
+)
+```
+
 ## Creating a Dataset
 
 Use **Create New Dataset** in the app. A dataset is created under:
