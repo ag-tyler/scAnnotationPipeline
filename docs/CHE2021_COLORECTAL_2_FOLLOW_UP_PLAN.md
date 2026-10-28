@@ -47,6 +47,7 @@ These findings guide task order. Items labelled **hypothesis** still require the
 | CNA threshold controls do not explain their classification effect | The view names malignant and non-malignant X/Y thresholds but does not tell the user that cells above both malignant thresholds may become malignant only when their current type is eligible, cells safely below the non-malignant thresholds retain their type, and tested cells in the intervening/mixed region become Unassigned. | Add concise helper text beside every threshold control group, using text and structure rather than colour alone and matching the implemented strict comparison rules. |
 | CNA malignant-cluster selection becomes ambiguous at high `k` | The current dendrogram-cut workflow represents clusters primarily with many colours and a separate selector/legend. As `k` grows, colours become difficult to distinguish, and selector/legend order does not communicate the same left-to-right order as the cluster bar. The user cannot be fully certain which subtree was selected. | Preserve selection of one or more cut-tree subtrees, but prototype redundant identity cues and direct spatial selection. Colour may remain supportive but must not be the only mapping. |
 | The gene-by-cell CNA values table is not published as a reusable result | `cna_matrix_<sample>.qs2` stores the internal wide matrix, while `load_expdt_from_cna_matrix()` converts it to the plotting table with columns `gene`, `chr`, `start_pos`, `cell_name`, and `cna`. That long table is not saved. Current compressed matrix caches are approximately 22 MB and 75 MB, and the long CSV may be substantially larger. | Export the validated long-format CNA values table in sample results when CNA assignment is finalized, with compressed CSV as the safe default and an explicit plain-CSV option/re-export action. |
+| Completed datasets can retain large caches indefinitely | The cache contains reconstructible filtered-expression, clustered-cell, CNA matrix, clustering, and signal/correlation artifacts. Deleting these files manually or through the existing invalidation helpers would make completed steps appear stale on the next reconciliation, even when durable final results are intentionally retained. | Add an explicit post-completion archive/cleanup lifecycle rather than treating intentional retirement as invalidation. Validate durable outputs before cleanup, preserve scientific statuses and provenance, expose storage state separately, and require an explicit reopen path before further editing. |
 | Save Annotations warns that CNA configuration is incomplete | The current UI orders Save Annotations before Save CNA Config, while the server requires a CNA decision during annotation save. | Redesign the save sequence so the UI and state machine agree. |
 | Cluster legends show `0, 1, 10, 11, ..., 2` | `plot_clusters()` supplies cluster values directly to a discrete colour scale without numeric-aware factor levels. | Apply one shared natural-order helper to plotting and annotation controls. |
 | Bulk console output lacks sample position and strong boundaries | Both clustering and DE already iterate with `i` and know the total sample count, but messages only identify the sample. DE has no batch-level console completion line. | Add a shared batch message/progress contract without changing analysis. |
@@ -61,7 +62,7 @@ These findings guide task order. Items labelled **hypothesis** still require the
 | 1 | **Stable development runtime** | F02–F03 | Positron launch no longer reloads on pipeline writes; navigation is single-shot | Long computations and saves remain in the same session |
 | 2 | **Cache loading, correctness, and save semantics** | F04–F05 | Stale annotation is made re-enterable first; dataset loading avoids eager deep cache reads; annotation persists without invalidating clustering; CNA decisions follow a coherent sequence | Stale samples can be annotated; fast load and saved-annotation reload tests pass; CNA can be tested |
 | 3 | **Onboarding and progress** | F06–F07 | New users can find standardization instructions; batch work has clear progress | Creation-to-standardization path and bulk output tests pass |
-| 4 | **Presentation, optional workflow controls, exports, and residual performance** | F08–F14 | Numeric cluster order, optional single-sample clustering, a main-menu status overview, flexible CNA Y thresholds, unambiguous CNA subtree selection, reusable CNA values-table exports, and responsive ordinary interactions | New controls, exports, and measured interaction targets pass with autoreload disabled |
+| 4 | **Presentation, optional workflow controls, exports, cleanup, and residual performance** | F08–F14, F16 | Numeric cluster order, optional single-sample clustering, a main-menu status overview, flexible CNA Y thresholds, unambiguous CNA subtree selection, reusable CNA values-table exports, safe finished-dataset cleanup, and responsive ordinary interactions | New controls, exports, cleanup lifecycle, and measured interaction targets pass with autoreload disabled |
 | 5 | **Integration and resumed CNA test** | F15 | End-to-end workflow, including CNA, is verified | All acceptance scenarios pass |
 
 Performance work is split deliberately: F04 addresses the now-confirmed dataset-load/cache-validation bottleneck on the critical path, while F14 remains limited to residual interactive latency after autoreload and eager cache validation are fixed.
@@ -85,6 +86,7 @@ flowchart TD
     M["F13: CNA values-table results export"]
     N["F14: Residual performance optimization"]
     O["F15: End-to-end acceptance and CNA replay"]
+    P["F16: Finished-dataset cache cleanup"]
 
     A --> B
     A --> D
@@ -105,9 +107,13 @@ flowchart TD
     L --> O
     M --> O
     N --> O
+    D --> P
+    J --> P
+    M --> P
+    P -.-> O
 ```
 
-**Critical path:** F01 → F02 → F03, F01 → F04, and F01 → F05, converging at F15. Implement the stale-annotation re-entry slice of F05 immediately; it does not need to wait for the larger F04 performance/cache redesign. Coordinate final invalidation semantics between F04 and F05. F06–F13 can follow the critical defects; F09–F13 must not delay the fixes or CNA replay.
+**Critical path:** F01 → F02 → F03, F01 → F04, and F01 → F05, converging at F15. Implement the stale-annotation re-entry slice of F05 immediately; it does not need to wait for the larger F04 performance/cache redesign. Coordinate final invalidation semantics between F04 and F05. F06–F13 and F16 can follow the critical defects; optional cleanup must not delay the fixes or CNA replay, but if F16 is implemented before release acceptance its destructive lifecycle must be included in F15 on a safe copy.
 
 ## 5. Milestone 0 — Reproduction and baseline
 
@@ -339,7 +345,7 @@ sample/stage-specific failure reason. Console output has sample boundaries and
 final completed/failed/skipped/not-run summaries while retaining fail-fast
 behavior.
 
-## 9. Milestone 4 — Ordering, optional workflow controls, and residual performance
+## 9. Milestone 4 — Ordering, optional workflow controls, cleanup, and residual performance
 
 | ID | Priority | Complexity | Task | Dependencies |
 | --- | --- | --- | --- | --- |
@@ -350,6 +356,7 @@ behavior.
 | **F12** | P2 | M–L | Brainstorm, prototype, select, and implement an unambiguous high-count CNA subtree-selection interaction | None |
 | **F13** | P2 | M | Export the validated long-format CNA values table to sample results in a documented CSV-compatible format when CNA assignment is finalized | F04 |
 | **F14** | P1 | M–L | Profile and remove any remaining interaction latency after runtime stabilization | F01, F02, F04 |
+| **F16** | P2 | M–L | Brainstorm, design, implement, and test safe cache cleanup for a fully finished dataset without corrupting workflow status | F04, F10, F13 |
 
 ### F08 — Natural cluster ordering
 
@@ -761,11 +768,75 @@ Likely improvements, to apply only when supported by profiling, include caching 
 
 **Acceptance:** Establish a hardware-specific baseline and target in F01. At minimum, navbar changes and lightweight buttons must not perform dataset-wide disk/cache work and should feel immediate; dataset/sample loads must show explicit busy feedback when they legitimately require I/O. Record before/after timings in the progress notes.
 
+### F16 — Finished-dataset cache cleanup and archive lifecycle
+
+This feature is potentially useful for large, completed datasets because the validated cache can remain much larger than the durable tables and plots users want to retain. It is not necessary for scientific correctness, and a simple **Clear Cache** button would be unsafe: current reconciliation correctly interprets missing cache artifacts as invalid or stale work. Cleanup must instead be an explicit transition from an editable dataset to an archived-results dataset.
+
+#### Recommended first scope
+
+Implement dataset-level cleanup only. Enable it when every sample has a valid terminal workflow branch:
+
+- annotation is `completed` for every sample;
+- CNA is either finalized through `cna_assignment: completed`, or is explicitly/validly omitted with the applicable CNA records `skipped`;
+- no relevant record is `not_started`, `in_progress`, `incomplete`, `failed`, or `stale`;
+- required durable outputs exist and pass a lightweight integrity check, including final `Cells.csv`, selected configuration, DE marker tables/plots, final CNA plots where applicable, and a current F13 CNA values CSV/provenance pair for every completed CNA sample.
+
+Do not begin with per-sample cleanup. Although technically possible, it would create a mixed dataset where some samples remain editable and others are archive-only, require per-sample cache tombstones and navigation guards, and make the status overview substantially harder to explain. Reconsider it later only if measured storage use shows a strong need.
+
+#### Storage and status model
+
+Do not add `cleaned` to every scientific pipeline step and do not change completed work to `skipped`, `not_started`, or `stale`. Those records describe the scientific workflow and should remain historically true. Add a separate dataset-level storage lifecycle, persisted atomically alongside or next to pipeline state, with states such as:
+
+- `active`: caches are expected and normal editing/reruns are available;
+- `cleanup_ready`: derived presentation state; all terminal and durable-output checks pass;
+- `cleaning`: a persisted cleanup intent/journal exists and interrupted cleanup can be resumed safely;
+- `archived`: reconstructible caches were intentionally retired and final results remain available;
+- `cleanup_failed`: cleanup did not finish; the journal identifies remaining work and permits retry or rollback where possible.
+
+Reconciliation must recognize an `archived` marker and must not mark scientific steps stale merely because the recorded cache inventory was intentionally retired. Unexpectedly missing durable results must still be reported as damaged/incomplete archive output. The cleanup record should include timestamp, pipeline-state revision, cache manifest revision, deleted artifact inventory and byte count, retained-output inventory/checksums, implementation version, and event-log reference—never cell-level values.
+
+#### GUI placement and interaction
+
+Place a **Dataset Storage** card in the Start Menu utilities area, near the pipeline overview rather than inside a scientific stage. It should show one of: active/not ready, ready to archive, cleanup in progress/failed, or archived, plus current cache size and estimated recoverable space.
+
+The action should be labelled **Review Dataset Cleanup…**, not simply **Clear Cache**. Its confirmation modal should:
+
+- list why cleanup is or is not allowed and identify any nonterminal samples;
+- show the exact directories/artifact families to be removed and the estimated bytes recovered;
+- state prominently that annotation/CNA views and reruns will no longer be available without reopening and recomputation;
+- list what will be retained (`processed_data`, final `Cells.csv`, results, configurations, state, logs, F13 exports, and cleanup provenance);
+- require a strong confirmation such as typing the dataset ID before enabling **Archive and Remove Caches**.
+
+After success, keep the pipeline overview's scientific completion display and add a distinct **Results archived / caches cleaned** storage badge. Disable compute/edit actions with a concise explanation. Provide **Reopen Dataset for Editing…** as a separate, strongly confirmed action: it removes the archive-only guard, preserves durable results for reference, and marks cache-dependent workflow stages stale/incomplete according to the normal dependency contract so the user can deliberately recompute them. Reopening must never pretend deleted caches were restored.
+
+#### Safe deletion design
+
+- Operate only while no other app action is running and hold a dataset-scoped lock.
+- Build and persist a validated cleanup plan before deleting anything; never delete `processed_data`, results, configuration, pipeline state, or logs.
+- Prefer retiring the entire cache directory through a same-parent rename and immediately creating the new archived cache/lifecycle checkpoint. This gives dataset-level cleanup a simpler recovery boundary than deleting manifest entries one at a time.
+- If the state/checkpoint update fails, restore the renamed cache directory. If later physical deletion fails because files are locked, retain a visible pending-retirement directory and offer an idempotent retry rather than declaring the space recovered.
+- Log planned, completed, failed, resumed, and reopened outcomes with counts and byte totals.
+- Keep manual filesystem deletion unsupported; only the coordinated action may suppress missing-cache staleness.
+
+Required tests:
+
+- readiness rejects every nonterminal status and accepts completed CNA plus valid explicit omission branches;
+- missing/outdated F13 exports or other required durable outputs block cleanup with exact sample/output reasons;
+- the preview inventory and estimated byte count match the actual deletion targets, including cache backups but excluding every retained path;
+- successful cleanup preserves result/config/state/log files byte-for-byte, removes only planned caches, records provenance, and leaves scientific statuses completed/skipped after reload;
+- interrupted rename, state-write failure, locked-file deletion, and resumed cleanup cannot produce a falsely archived or silently stale dataset;
+- archived datasets render results/status without cache reconciliation errors and disable all cache-dependent compute/edit actions;
+- reopen preserves archived results, removes the archive-only guard, and marks exactly the cache-dependent stages stale/incomplete before allowing recomputation;
+- repeated cleanup/retry/reopen actions are guarded, idempotent, and logged;
+- a synthetic multi-sample end-to-end test covers completed CNA and omitted-CNA samples without touching a real dataset.
+
+**Acceptance:** A user can reclaim the displayed amount of cache storage only after the whole dataset has verified durable final outputs. Reloading the cleaned dataset clearly presents it as an archived, read-only result set rather than as broken or stale work. No retained scientific output is deleted, partial failure is recoverable, and reopening explicitly re-enters the normal recomputation lifecycle.
+
 ## 10. Milestone 5 — Integration and release acceptance
 
 | ID | Priority | Complexity | Task | Dependencies |
 | --- | --- | --- | --- | --- |
-| **F15** | P0 | L | Run automated regression plus a manual end-to-end replay through CNA on `Che2021_Colorectal_2` or a safe copy | F02–F14 |
+| **F15** | P0 | L | Run automated regression plus a manual end-to-end replay through CNA on `Che2021_Colorectal_2` or a safe copy | F02–F14; include F16 if implemented |
 
 ### Acceptance scenario matrix
 
@@ -791,6 +862,7 @@ Likely improvements, to apply only when supported by profiling, include caching 
 | Dataset creation before standardization | Guide and prompt are accessible; load guard remains actionable |
 | More than ten clusters | Natural numeric order everywhere |
 | Continue through CNA configuration and analysis | Previously blocked test path completes or yields a new, precisely logged defect |
+| Clean a fully finished safe-copy dataset | Readiness and deletion preview are exact; only cache artifacts are retired; reload shows completed scientific work plus archived storage state; reopening makes cache-dependent work explicitly require recomputation |
 
 Run the existing portable gate:
 
@@ -812,7 +884,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | 1 — Stable runtime and navigation | Complete | No write-triggered restart or unintended Dataset Selection transition |
 | 2 — Cache loading and save correctness | Complete | Fast load, valid annotation reload, and coherent CNA decisions |
 | 3 — Onboarding and progress | Complete | Standardization guide and batch output accepted |
-| 4 — Ordering, optional controls, status, and performance | In progress | Natural ordering, safe single-sample clustering, clear status overview, flexible CNA Y thresholds, unambiguous subtree selection, and responsiveness targets met |
+| 4 — Ordering, optional controls, status, cleanup, and performance | In progress | Natural ordering, safe single-sample clustering, clear status overview, flexible CNA Y thresholds, unambiguous subtree selection, safe archive cleanup, and responsiveness targets met |
 | 5 — Integration and CNA replay | Not started | Automated gate and manual end-to-end replay pass |
 
 ### 11.2 Task status
@@ -834,6 +906,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | F13 | CNA values-table results export | Complete | 2026-10-28 | Atomic chunked gzip CSV plus provenance, automatic finalization export, current/outdated status, and manual re-export without CNA recomputation |
 | F14 | Residual performance optimization | Not started | — | — |
 | F15 | Integration and CNA replay | Not started | — | — |
+| F16 | Finished-dataset cache cleanup and archive lifecycle | Planned | — | Dataset-level first; separate storage status, durable-output gate, recoverable retirement, and explicit reopen path |
 
 ### 11.3 Progress history
 
@@ -869,6 +942,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | 2026-10-28 | F12 implementation | Added one canonical cut-tree identity map, ordered checkbox navigator, live save confirmation, explicit `k` clearing/reload behavior, and stale-`k` save protection without selection-triggered plot rendering | Automated regressions and the full suite passed; manual high-count usability review remains required |
 | 2026-10-28 | F12 manual acceptance | Accepted the lightweight navigator without direct main-heatmap or saved-image selection highlighting | The saved cluster legend is sufficient for the rare retrospective high-`k` review case, while the common interactive path remains fast |
 | 2026-10-28 | F13 | Added canonical chunked CNA cache-to-long conversion, atomic gzip CSV/provenance publication, automatic post-assignment export, explicit current/outdated status, and manual re-export | Focused tests cover exact round-trip values/ordering, CSV quoting and typed import, provenance invalidation, no recomputation, publication rollback, invalid identifiers, and preview/finalization lifecycle ordering; full suite passed 1,358 assertions with 0 failures/warnings and the known restricted-browser skip |
+| 2026-10-28 | F16 planning | Added a finished-dataset cleanup/archive lifecycle and compared per-sample with dataset-level scope | Recommended dataset-level cleanup only after every sample is terminal and durable outputs—including current F13 exports—are verified; scientific statuses remain intact while a separate storage lifecycle prevents intentional cache retirement from appearing stale |
 
 ## 12. Progress notes and additional information — living section
 
@@ -883,6 +957,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 - For F11, preserve strict `>`/`<` assignment behavior at an equal Y boundary unless scientific review requests a separate classification-rule change.
 - For F12, prototype direct cluster-bar selection plus embedded stable IDs against an ordered textual/card fallback. Do not approve a palette-only solution.
 - F13 decision: publish only the automatic long-format `.csv.gz` plus provenance under `3_cna_results`, with a compressed re-export action. A plain-CSV duplicate is intentionally omitted because of the potentially large output size.
+- F16 initial decision: start with whole-dataset cleanup, not per-sample cleanup. Treat cleanup as an archive lifecycle with its own status and explicit reopen/recompute path; do not overload scientific completion statuses or the existing invalidation helpers.
 - Decide whether long scientific computations should eventually run asynchronously only after the current responsiveness defects are fixed and measured; that is outside this plan unless still necessary.
 
 ### 12.2 Initial evidence record — 2026-10-21
