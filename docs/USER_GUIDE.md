@@ -240,6 +240,12 @@ resources/cancer_cell_map.json
 
 Use **Create New Dataset** from the app's Dataset Selection screen.
 
+The adjacent **Standardization Guide** is available before any dataset is
+loaded. It summarizes the preparation workflow, includes the reusable sample-
+metadata gathering prompt with select/copy controls, and links to the detailed
+checklist and this section. After workspace creation, the app reports the exact
+workspace and `standardize.R` paths and offers a direct return to that guide.
+
 A new dataset is created under:
 
 ```text
@@ -262,6 +268,11 @@ The standard workflow is:
 5. validate the standardized output;
 6. load the dataset in the app;
 7. run clustering → DE → annotation → CNA.
+
+**Load Dataset** intentionally rejects a new or incomplete workspace. It becomes
+available for downstream work only after `standardize.R` passes strict
+post-validation and has populated `processed_data/` with the configured sample
+directories and standardized files.
 
 ### `dataset_config.yaml`
 

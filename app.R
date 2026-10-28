@@ -65,6 +65,19 @@ if (length(missing_components) > 0) {
 invisible(lapply(app_component_files, source))
 
 app_context <- create_app_context()
+
+# Make the local Markdown guides reachable from the onboarding links without
+# requiring internet access. Re-registering keeps repeated development starts
+# pointed at the current app directory.
+documentation_path <- normalizePath("docs", mustWork = FALSE)
+if (dir.exists(documentation_path)) {
+  registered_resources <- shiny::resourcePaths()
+  if ("pipeline-docs" %in% names(registered_resources)) {
+    shiny::removeResourcePath("pipeline-docs")
+  }
+  shiny::addResourcePath("pipeline-docs", documentation_path)
+}
+
 ui <- build_app_ui(app_context)
 server <- build_app_server(app_context)
 

@@ -12,6 +12,29 @@ register_dataset_server <- function(input, output, session, state, context) {
   templates_dir <- context$paths$templates_dir
   available_datasets <- context$available_datasets
 
+  observeEvent(input$btn_select_standardization_prompt, {
+    runjs(paste0(
+      "const prompt = document.getElementById('standardization_prompt_text');",
+      "if (prompt) { prompt.focus(); prompt.select(); }"
+    ))
+  })
+
+  observeEvent(input$btn_copy_standardization_prompt, {
+    runjs(paste0(
+      "const prompt = document.getElementById('standardization_prompt_text');",
+      "if (prompt) { prompt.focus(); prompt.select(); ",
+      "if (navigator.clipboard && window.isSecureContext) {",
+      "navigator.clipboard.writeText(prompt.value);",
+      "} else { document.execCommand('copy'); } }"
+    ))
+    showNotification("Metadata prompt copied to the clipboard.", type = "message")
+  })
+
+  observeEvent(input$btn_open_standardization_guide, {
+    removeModal()
+    nav_select("dataset_setup_view", "standardization_guide")
+  })
+
 
   observeEvent(input$btn_load_dataset, {
     req(input$dataset_choice)
@@ -579,6 +602,6 @@ register_dataset_server <- function(input, output, session, state, context) {
     updateSelectInput(session, "dataset_choice", choices = updated_datasets, selected = ds_name)
 
     removeModal()
-    showNotification(paste("Dataset", ds_name, "initialized successfully!"), type = "message")
+    showModal(dataset_created_modal(ds_name, resolved_new_path))
   })
 }
