@@ -357,6 +357,12 @@ Create one helper that orders integer-like labels numerically (`0, 1, 2, ..., 10
 
 **Acceptance:** For at least 13 clusters, every relevant legend, axis, tab/control, and manual-annotation sequence uses the same natural order. Colours remain mapped to the correct labels.
 
+**Acceptance result:** Complete in implementation and automated coverage. One display-only helper now orders integer-like
+labels numerically and nonnumeric labels lexically. It is applied to UMAP legend
+levels and named colours, DE cluster lists/axes/output traversal, and all manual
+annotation selector/advancement paths. CNA subtree labels retain their existing
+separate zero-padded canonical ordering.
+
 ### F09 — Single-sample clustering: GUI design and implementation
 
 The app currently offers only bulk clustering across every sample. Add an optional way to rerun clustering for one sample across all configured resolutions. Because this is a convenience feature rather than a blocker, first resolve the P0 cache/state defects and then choose its GUI placement deliberately instead of simply adding another dashboard button.
@@ -638,7 +644,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | F05 | Stale-annotation recovery and annotation/CNA save sequence | Complete | 2026-10-21 | Same-sample readiness retry, safe saved-label reuse, independent annotation save, and reversible explicit CNA omission implemented |
 | F06 | Standardization onboarding | Complete | 2026-10-21 | Pre-load guide, reusable metadata prompt, local documentation links, and path-specific creation handoff added |
 | F07 | Bulk progress output | Complete | 2026-10-28 | Shared monotonic contract, clustering/DE overlays, stage-aware failures, console boundaries, elapsed time, and final summaries added |
-| F08 | Natural cluster ordering | Not started | — | — |
+| F08 | Natural cluster ordering | Complete | 2026-10-28 | Shared display-only helper covers UMAP legends/colours, DE lists/axes/traversal, and annotation selection/advancement |
 | F09 | Single-sample clustering design and implementation | Not started | — | Low-priority convenience feature; GUI placement must be evaluated first |
 | F10 | Main-menu pipeline status overview | Not started | — | Low-priority visibility feature; summary/detail design must be evaluated first |
 | F11 | CNA threshold guidance and equal Y-threshold support | Not started | — | Low-priority control refinement; helper must match actual classification and save validation already permits equality |
@@ -667,6 +673,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | 2026-10-21 | F02/F11 follow-up | Confirmed page and click responsiveness remains fixed with console startup; recorded positive CNA compute/status navigation feedback and requested equal Y-threshold support | Source inspection confirms sliders impose a 0.01 gap while save validation already accepts equality |
 | 2026-10-21 | F07 follow-up | Expanded bulk progress from console formatting to CNA-style Shiny progress overlays for clustering and DE | Existing CNA `withProgress()` and callback implementation provides the local pattern; implementation pending |
 | 2026-10-28 | F07 | Added one monotonic clustering/DE progress contract, CNA-style Shiny overlays, real stage/sample failure context, console boundaries, elapsed time, and fail-fast batch summaries | Focused regressions and the full suite passed (984 assertions, 0 failures/warnings, 1 restricted-browser skip) |
+| 2026-10-28 | F08 | Added one display-only natural cluster-order helper and applied it to UMAP legends/colours, DE lists/axes/traversal, and annotation selection/advancement | Focused regressions and the full suite passed (995 assertions, 0 failures/warnings, 1 restricted-browser skip) |
 | 2026-10-21 | F12 planning | Added brainstorming and prototyping for high-count CNA subtree selection while preserving hierarchical-tree cutting | Requires canonical leaf-order mapping, redundant non-colour identity cues, synchronized selection, and membership-level regression tests |
 | 2026-10-21 | F13 planning | Added publication of the finalized long CNA values table as a reusable CSV result with provenance and safe re-export | Required schema is `gene`, `chr`, `start_pos`, `cell_name`, `cna`; current matrix caches are 22 MB and 75 MB compressed, so chunked compressed CSV is proposed |
 | 2026-10-21 | F11 follow-up | Added concise helper text for the threshold sliders explaining eligible malignant assignment, safely non-malignant retention, and the Unassigned/NA gray zone | Wording derived from the current `apply_cna_thresholds()` comparison and eligibility rules; implementation pending |

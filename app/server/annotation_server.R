@@ -175,8 +175,7 @@ register_annotation_server <- function(input, output, session, state, context) {
   observeEvent(input$btn_cluster_next, {
     req(rv$cells_filt, input$cluster)
 
-    clusters <- unique(as.character(rv$cells_filt$clust))
-    clusters <- clusters[order(as.numeric(clusters))]
+    clusters <- natural_cluster_order(rv$cells_filt$clust)
 
     curr_idx <- which(clusters == input$cluster)
     if (length(curr_idx) > 0 && curr_idx < length(clusters)) {
@@ -482,8 +481,7 @@ register_annotation_server <- function(input, output, session, state, context) {
 
   output$cluster_selector <- renderUI({
     req(rv$cells_filt)
-    clusters <- unique(as.character(rv$cells_filt$clust))
-    clusters <- clusters[order(as.numeric(clusters))]
+    clusters <- natural_cluster_order(rv$cells_filt$clust)
     selectInput("cluster", "2. Select Cluster:", choices = clusters)
   })
 
@@ -585,8 +583,7 @@ register_annotation_server <- function(input, output, session, state, context) {
 
     showNotification(paste0("Assigned '", curr_annotation, "' to cluster ", input$cluster), type = "message")
 
-    clusters <- unique(as.character(rv$cells_filt$clust))
-    clusters <- clusters[order(as.numeric(clusters))]
+    clusters <- natural_cluster_order(rv$cells_filt$clust)
 
     curr_idx <- which(clusters == input$cluster)
 

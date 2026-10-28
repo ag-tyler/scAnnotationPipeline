@@ -155,6 +155,33 @@ louvain_clustering <- function(exp_pca, exp_umap, cells, resolution = 1.0, seed 
 # 3.1 Clustering plotting
 # --------------------------------------------------------------------------------------------------
 
+natural_cluster_order <- function(labels) {
+  #' Return unique cluster labels in a stable display order
+  #'
+  #' Integer-like labels are ordered numerically, followed by nonnumeric labels
+  #' in deterministic lexical order. Stored identifiers are returned as text
+  #' and the input is never modified.
+  #'
+  #' @param labels Vector or factor containing cluster labels.
+  #' @return Character vector of unique, non-missing labels.
+  labels <- unique(as.character(labels))
+  labels <- labels[!is.na(labels)]
+  integer_like <- grepl("^-?[0-9]+$", labels)
+
+  numeric_labels <- labels[integer_like]
+  if (length(numeric_labels) > 0L) {
+    numeric_labels <- numeric_labels[order(
+      suppressWarnings(as.numeric(numeric_labels)),
+      numeric_labels,
+      method = "radix"
+    )]
+  }
+
+  nonnumeric_labels <- sort(labels[!integer_like], method = "radix")
+  c(numeric_labels, nonnumeric_labels)
+}
+
+
 plot_clusters <- function(cells, title, x_col = umap1, y_col = umap2, cluster_col = clust,
                           subtitle = NULL) {
   #' Plot UMAP embedding coloured by clusters
@@ -168,18 +195,33 @@ plot_clusters <- function(cells, title, x_col = umap1, y_col = umap2, cluster_co
   #' 
   #' @return A ggplot2 object
   
-  # substitute is necessary to transition from the unquoted name to string
-  n_clusters <- length(unique(cells[, eval(substitute(cluster_col))]))
-  p <- ggplot2::ggplot(cells) +
+  # Work on a copy so display ordering never changes persisted cluster IDs.
+  cluster_col_name <- as.character(substitute(cluster_col))
+  plot_cells <- data.table::copy(cells)
+  cluster_levels <- natural_cluster_order(plot_cells[[cluster_col_name]])
+  plot_cells[[cluster_col_name]] <- factor(
+    as.character(plot_cells[[cluster_col_name]]),
+    levels = cluster_levels
+  )
+  cluster_colors <- stats::setNames(
+    randomcoloR::distinctColorPalette(length(cluster_levels)),
+    cluster_levels
+  )
+
+  p <- ggplot2::ggplot(plot_cells) +
     ggplot2::geom_point(ggplot2::aes(
       x = {{ x_col }},
       y = {{ y_col }},
       colour = {{ cluster_col }}
     )) +
-    ggplot2::scale_colour_manual(values = randomcoloR::distinctColorPalette(n_clusters)) +
+    ggplot2::scale_colour_manual(
+      values = cluster_colors,
+      breaks = cluster_levels,
+      drop = FALSE
+    ) +
     cowplot::theme_half_open() +
     ggplot2::guides(colour = ggplot2::guide_legend(override.aes = list(size = 3.5))) +
-    ggplot2::labs(title = title, subtitle = subtitle) +
+    ggplot2::labs(title = title, subtitle = subtitle, colour = cluster_col_name) +
     ggplot2::theme(
       plot.title = ggplot2::element_text(hjust = 0.5),
       plot.background = ggplot2::element_rect(fill = 'white', color = NA)
@@ -229,7 +271,7 @@ match_marker_genes <- function(de, marker_gene_sets, de_parameters) {
   #' @return List of data tables with de genes and their matched marker genes for each gene set.
   
   col_name <- de_parameters$col_name
-  unique_names <- unique(de[, get(col_name)])
+  unique_names <- natural_cluster_order(de[, get(col_name)])
   de_clusters_list <- list()
   for (i in seq_along(unique_names)) {
     curr_name <- as.character(unique_names[i])
@@ -380,6 +422,11 @@ stacked_gene_match_count_plot <- function(marker_genes_count, de_parameters, res
                                 id.vars = 'clusters',
                                 variable.name = 'cell_type',
                                 value.name = 'count')
+  cluster_levels <- natural_cluster_order(long_cell_type_counts$clusters)
+  long_cell_type_counts[, clusters := factor(
+    as.character(clusters),
+    levels = cluster_levels
+  )]
   
   plot_title <- paste0('Marker genes found per ', cluster_name, '; Top ', n_top_genes, 
                        ' genes; Res: ', res)

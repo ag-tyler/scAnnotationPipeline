@@ -640,7 +640,7 @@ single_de_analysis <- function(sample_idx, paths_list, dataset_config, selected_
   }
   # Set differential expression analysis parameters
   de_parameters <- list(
-    clusters = unique(cells_filt$clust),
+    clusters = natural_cluster_order(cells_filt$clust),
     col_name = 'clust',
     marker_cell_type_col_name = 'cell_type',
     cluster_type_name = 'cluster' # Name of the type of clusters used (e.g. cluster or cell type)
@@ -716,7 +716,10 @@ single_de_analysis <- function(sample_idx, paths_list, dataset_config, selected_
   }
   all_matches_path <- file.path(de_plots_dir_path, 'all_marker_matches.csv')
   all_matches <- data.table::rbindlist(de_clusters_list)
-  data.table::setorder(all_matches, clust)
+  cluster_levels <- natural_cluster_order(all_matches$clust)
+  all_matches[, cluster_display_order := match(as.character(clust), cluster_levels)]
+  data.table::setorder(all_matches, cluster_display_order)
+  all_matches[, cluster_display_order := NULL]
   data.table::fwrite(all_matches, file = all_matches_path)
   
   message('Finished ', sample_name)

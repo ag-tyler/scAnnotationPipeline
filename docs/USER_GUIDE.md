@@ -511,6 +511,12 @@ work). The console prints matching sample boundaries, elapsed time, and a final
 batch summary. The operation remains synchronous and intentionally has no
 misleading Cancel control.
 
+Cluster labels are displayed in natural numeric order throughout resolution
+plots, DE summaries, and manual annotation. For example, a 13-cluster result is
+shown as `0, 1, 2, ..., 10, 11, 12`, while nonnumeric labels use a stable lexical
+order. This is display-only: saved cluster identifiers are not rewritten, and
+plot colours are explicitly keyed to their labels.
+
 ### Resolution selection
 
 Choose one resolution per sample. The selected resolutions are stored in `selected_config.yaml` and used by downstream DE/annotation/CNA workflows.
@@ -670,6 +676,7 @@ Some tests deliberately exercise validation/error/warning paths. Those condition
 | `test-m0-cna-characterization.R` | Regression coverage for formerly exposed CNA numerical/cache failures |
 | `test-m5-cna-batch.R` | Mixed-validity batch isolation, subsets, progress, and retry behavior |
 | `test-f07-batch-progress.R` | Shared clustering/DE progress contract, monotonic fractions, Shiny formatting, and failure-stage reporting |
+| `test-f08-natural-cluster-ordering.R` | Numeric-aware 13-cluster ordering across UMAP legends/colours, DE axes/lists, and annotation controls |
 | `test-regression_clustering.R` | Preprocessing → PCA → UMAP → Louvain integration/regression behavior |
 | `test-regression_cna_cache.R` | CNA compute/cache/load round trip and missing-cache behavior |
 | `test-standardize-general-template.R` | General-template safety, alignment, duplicate-gene preservation, and checklist contract |
