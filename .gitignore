@@ -29,3 +29,6 @@ resources/mt_genes.txt
 resources/cancer_cell_map.json
 
 # Untracked docs
+
+# vscode
+.vscode/
