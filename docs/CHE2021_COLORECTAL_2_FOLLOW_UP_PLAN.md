@@ -528,6 +528,10 @@ Required tests:
 
 **Acceptance result:** Complete in implementation and automated coverage. The Start Menu now renders a read-only summary from the session's validated `pipeline_state`, with responsive stage cards, an expandable sample table, actionable reasons, and per-sample next actions. CNA omission remains visibly skipped rather than appearing incomplete. The summarizer is pure, performs no filesystem or cache reads, and recomputes only when the reactive pipeline-state value changes. Tests cover mixed/stale/skipped states, every accessible status presentation, in-session revisions, zero/one/many samples, non-mutation, and the no-I/O architecture constraint.
 
+**Addendum — aggregate-status sample tooltips:** Make each aggregate status badge reveal which samples contribute to that count. The sample list must appear on hover and keyboard focus rather than relying on pointer interaction alone. Keep badges read-only, retain the expandable detail table as the complete source of truth, and cap very large tooltip lists at 15 names followed by an explicit remaining count.
+
+**Addendum acceptance result:** Complete. Aggregate summaries now retain their contributing sample names and expose them through native focusable tooltips. Long lists show the first 15 samples and direct users to the complete sample-detail table for the remainder; no additional state reads or filesystem work are introduced.
+
 ### F11 — CNA threshold guidance and equal Y-threshold support
 
 Allow the malignant and non-malignant Y thresholds to use the same value while continuing to prevent the malignant threshold from falling below the non-malignant threshold:
@@ -773,6 +777,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | 2026-10-21 | F13 planning | Added publication of the finalized long CNA values table as a reusable CSV result with provenance and safe re-export | Required schema is `gene`, `chr`, `start_pos`, `cell_name`, `cna`; current matrix caches are 22 MB and 75 MB compressed, so chunked compressed CSV is proposed |
 | 2026-10-21 | F11 follow-up | Added concise helper text for the threshold sliders explaining eligible malignant assignment, safely non-malignant retention, and the Unassigned/NA gray zone | Wording derived from the current `apply_cna_thresholds()` comparison and eligibility rules; implementation pending |
 | 2026-10-28 | F10 | Added the combined Start Menu pipeline overview with accessible aggregate cards, collapsible sample details, reasons, CNA-aware next actions, and no rendering-time I/O | Focused regressions and the full suite passed with no failures/warnings and one restricted-browser skip |
+| 2026-10-28 | F10 addendum | Added hover- and keyboard-focus tooltips listing the samples represented by every aggregate status badge | Lists are capped at 15 names with an explicit remainder count; the full table remains available below |
 
 ## 12. Progress notes and additional information — living section
 

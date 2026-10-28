@@ -149,6 +149,10 @@ summarize_pipeline_overview <- function(state) {
 
   stage_summaries <- lapply(names(PIPELINE_OVERVIEW_STAGES), function(stage) {
     counts <- stats::setNames(integer(length(PIPELINE_STEP_STATUSES)), PIPELINE_STEP_STATUSES)
+    samples_by_status <- stats::setNames(
+      lapply(PIPELINE_STEP_STATUSES, function(status) character()),
+      PIPELINE_STEP_STATUSES
+    )
     if (length(sample_summaries) > 0L) {
       statuses <- vapply(
         sample_summaries,
@@ -156,11 +160,15 @@ summarize_pipeline_overview <- function(state) {
         character(1)
       )
       counts <- counts + table(factor(statuses, levels = PIPELINE_STEP_STATUSES))
+      for (status in PIPELINE_STEP_STATUSES) {
+        samples_by_status[[status]] <- sample_names[statuses == status]
+      }
     }
     list(
       key = stage,
       label = PIPELINE_OVERVIEW_STAGES[[stage]]$label,
-      counts = as.integer(counts) |> stats::setNames(names(counts))
+      counts = as.integer(counts) |> stats::setNames(names(counts)),
+      samples_by_status = samples_by_status
     )
   })
   names(stage_summaries) <- names(PIPELINE_OVERVIEW_STAGES)

@@ -68,6 +68,14 @@ test_that("F10 aggregate counts preserve mixed, stale, and skipped CNA states", 
   expect_identical(summary$stages$cna_configuration$counts[["skipped"]], 1L)
   expect_identical(summary$stages$cna_analysis$counts[["completed"]], 1L)
   expect_identical(summary$stages$cna_analysis$counts[["skipped"]], 1L)
+  expect_identical(
+    summary$stages$clustering$samples_by_status$failed,
+    "failed"
+  )
+  expect_identical(
+    summary$stages$cna_analysis$samples_by_status$skipped,
+    "cna_omitted"
+  )
   expect_match(summary$samples$failed$next_action$label, "Retry: Run clustering", fixed = TRUE)
 })
 
@@ -98,6 +106,21 @@ test_that("F10 renders distinct accessible presentations for every status", {
     expect_match(html, expected_labels[[index]], fixed = TRUE)
   }
   expect_match(html, "Reason for stale", fixed = TRUE)
+  expect_match(html, "Samples in this status", fixed = TRUE)
+  expect_match(html, 'tabindex="0"', fixed = TRUE)
+})
+
+
+test_that("F10 aggregate tooltips cap long lists and report the remainder", {
+  sample_names <- paste0("long_sample_", seq_len(20L))
+  html <- as.character(pipeline_overview_sample_tooltip(sample_names))
+
+  expect_match(html, "Samples in this status (20)", fixed = TRUE)
+  expect_match(html, "long_sample_1", fixed = TRUE)
+  expect_match(html, "long_sample_15", fixed = TRUE)
+  expect_false(grepl(">long_sample_16<", html, fixed = TRUE))
+  expect_match(html, "and 5 more", fixed = TRUE)
+  expect_match(html, "full list", fixed = TRUE)
 })
 
 

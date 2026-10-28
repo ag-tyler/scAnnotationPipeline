@@ -1,20 +1,46 @@
 # Dashboard and reference-data UI.
 
 
-pipeline_overview_status_badge <- function(record, count = NULL) {
+pipeline_overview_sample_tooltip <- function(sample_names, max_names = 15L) {
+  sample_names <- as.character(sample_names)
+  shown_names <- utils::head(sample_names, max_names)
+  omitted_count <- length(sample_names) - length(shown_names)
+  tags$div(
+    strong(paste0("Samples in this status (", length(sample_names), ")")),
+    tags$ul(
+      class = "list-unstyled mb-0 mt-1",
+      lapply(shown_names, tags$li)
+    ),
+    if (omitted_count > 0L) {
+      div(class = "mt-1", paste0("… and ", omitted_count, " more. See sample details for the full list."))
+    }
+  )
+}
+
+
+pipeline_overview_status_badge <- function(record, count = NULL, sample_names = NULL) {
   presentation <- pipeline_status_presentation(record)
   label <- if (is.null(count)) {
     presentation$label
   } else {
     paste(count, presentation$label)
   }
-  span(
+  badge <- span(
     class = paste0(
       "badge text-bg-", presentation$class,
       " pipeline-status-badge pipeline-status-", presentation$status
     ),
+    tabindex = if (!is.null(sample_names)) "0" else NULL,
     icon(presentation$icon, class = "me-1", `aria-hidden` = "true"),
     label
+  )
+  if (is.null(sample_names)) {
+    return(badge)
+  }
+  bslib::tooltip(
+    badge,
+    pipeline_overview_sample_tooltip(sample_names),
+    placement = "top"
   )
 }
 
@@ -47,7 +73,8 @@ pipeline_status_overview_ui <- function(summary) {
               status <- names(stage$counts)[[index]]
               pipeline_overview_status_badge(
                 new_pipeline_overview_record(status),
-                stage$counts[[index]]
+                stage$counts[[index]],
+                stage$samples_by_status[[status]]
               )
             })
           )
