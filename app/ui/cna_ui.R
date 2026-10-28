@@ -1,5 +1,32 @@
 # Copy-number alteration analysis UI.
 
+
+cna_threshold_guidance_ui <- function() {
+  tags$div(
+    class = "alert alert-info small cna-threshold-guidance",
+    strong("How the four thresholds classify tested cells"),
+    tags$ul(
+      class = "mb-2 mt-2 ps-3",
+      tags$li(
+        strong("Above both Malignant lines (m_x and m_y): "),
+        "eligible potentially malignant cell types—and cells already Unassigned/NA—can become Malignant."
+      ),
+      tags$li(
+        strong("Below both Non-Malignant lines (nm_x and nm_y): "),
+        "cells retain their prior annotation. With multiple subclones, a cell must be below both lines for every tested subclone."
+      ),
+      tags$li(
+        strong("Between or mixed across the lines: "),
+        "tested cells that are neither Malignant nor safely non-malignant become Unassigned/NA for review."
+      )
+    ),
+    tags$div(
+      class = "mb-0",
+      "Comparisons are strict (> for Malignant and < for Non-Malignant). Equal Y thresholds are allowed; a cell exactly on their shared boundary is in the Unassigned/NA gray zone."
+    )
+  )
+}
+
 cna_panel <- function(sample_choices) {
   nav_panel(
     title = "CNA Analysis",

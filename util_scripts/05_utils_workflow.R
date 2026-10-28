@@ -1398,6 +1398,72 @@ compute_signal_cor_cna <- function(sample_name, subclone_i, ref_cells, selected_
 }
 
 
+normalize_cna_y_threshold_pair <- function(m_y, nm_y, changed = c("m_y", "nm_y")) {
+  changed <- match.arg(changed)
+  raw_values <- unlist(list(m_y = m_y, nm_y = nm_y), use.names = FALSE)
+  if (length(raw_values) != 2L) {
+    stop("CNA Y thresholds must be two finite numeric values.", call. = FALSE)
+  }
+  values <- stats::setNames(
+    suppressWarnings(as.numeric(raw_values)),
+    c("m_y", "nm_y")
+  )
+  if (any(!is.finite(values))) {
+    stop("CNA Y thresholds must be two finite numeric values.", call. = FALSE)
+  }
+  if (identical(changed, "nm_y") && values[["m_y"]] < values[["nm_y"]]) {
+    values[["m_y"]] <- values[["nm_y"]]
+  }
+  if (identical(changed, "m_y") && values[["nm_y"]] > values[["m_y"]]) {
+    values[["nm_y"]] <- values[["m_y"]]
+  }
+  as.list(values)
+}
+
+
+validate_cna_threshold_pair <- function(m_x, m_y, nm_x, nm_y) {
+  raw_values <- unlist(
+    list(m_x = m_x, m_y = m_y, nm_x = nm_x, nm_y = nm_y),
+    use.names = FALSE
+  )
+  if (length(raw_values) != 4L) {
+    return(list(
+      valid = FALSE,
+      reason = "All four CNA thresholds must be finite numeric values."
+    ))
+  }
+  values <- stats::setNames(
+    suppressWarnings(as.numeric(raw_values)),
+    c("m_x", "m_y", "nm_x", "nm_y")
+  )
+  if (any(!is.finite(values))) {
+    return(list(
+      valid = FALSE,
+      reason = "All four CNA thresholds must be finite numeric values."
+    ))
+  }
+  if (values[["m_x"]] <= values[["nm_x"]]) {
+    return(list(
+      valid = FALSE,
+      reason = paste0(
+        "Malignant X must be greater than Non-Malignant X (m_x > nm_x); ",
+        "the X thresholds require strict separation."
+      )
+    ))
+  }
+  if (values[["m_y"]] < values[["nm_y"]]) {
+    return(list(
+      valid = FALSE,
+      reason = paste0(
+        "Malignant Y must be greater than or equal to Non-Malignant Y ",
+        "(m_y >= nm_y); equal Y thresholds are allowed."
+      )
+    ))
+  }
+  list(valid = TRUE, reason = NULL)
+}
+
+
 cna_signal_axis_summary <- function(
   signal_tables,
   saved_thresholds = NULL,

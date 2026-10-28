@@ -92,6 +92,7 @@ register_cna_threshold_server <- function(input, output, session, state, context
                    card_header(paste("Set Thresholds - Subclone", i, "—", cluster_label)),
                    card_body(
                      helpText("Y thresholds use fixed 0.01 precision. The shared axis above changes only the visible range."),
+                     cna_threshold_guidance_ui(),
                      sliderInput(paste0("cna_thresh_mx_", i), "Malignant X (m_x):", min = -1, max = 1, value = def_mx, step = 0.05),
                      sliderInput(paste0("cna_thresh_my_", i), "Malignant Y (m_y):", min = 0, max = axis$control_max, value = def_my, step = 0.01),
                      sliderInput(paste0("cna_thresh_nmx_", i), "Non-Malignant X (nm_x):", min = -1, max = 1, value = def_nmx, step = 0.05),
@@ -190,18 +191,34 @@ register_cna_threshold_server <- function(input, output, session, state, context
 
     # As Non-Malignant Y moves, push the floor of Malignant Y up
     observeEvent(input[[paste0("cna_thresh_nmy_", i)]], {
-      req(input[[paste0("cna_thresh_nmy_", i)]])
-      step_val <- 0.01
-      updateSliderInput(session, paste0("cna_thresh_my_", i),
-                        min = input[[paste0("cna_thresh_nmy_", i)]] + step_val)
+      nm_y <- input[[paste0("cna_thresh_nmy_", i)]]
+      m_y <- input[[paste0("cna_thresh_my_", i)]]
+      req(!is.null(nm_y), !is.null(m_y))
+      normalized <- normalize_cna_y_threshold_pair(m_y, nm_y, changed = "nm_y")
+      if (normalized$m_y > m_y) {
+        updateSliderInput(
+          session, paste0("cna_thresh_my_", i),
+          min = nm_y, value = normalized$m_y
+        )
+      } else {
+        updateSliderInput(session, paste0("cna_thresh_my_", i), min = nm_y)
+      }
     })
 
     # As Malignant Y moves, push the ceiling of Non-Malignant Y down
     observeEvent(input[[paste0("cna_thresh_my_", i)]], {
-      req(input[[paste0("cna_thresh_my_", i)]])
-      step_val <- 0.01
-      updateSliderInput(session, paste0("cna_thresh_nmy_", i),
-                        max = input[[paste0("cna_thresh_my_", i)]] - step_val)
+      m_y <- input[[paste0("cna_thresh_my_", i)]]
+      nm_y <- input[[paste0("cna_thresh_nmy_", i)]]
+      req(!is.null(m_y), !is.null(nm_y))
+      normalized <- normalize_cna_y_threshold_pair(m_y, nm_y, changed = "m_y")
+      if (normalized$nm_y < nm_y) {
+        updateSliderInput(
+          session, paste0("cna_thresh_nmy_", i),
+          max = m_y, value = normalized$nm_y
+        )
+      } else {
+        updateSliderInput(session, paste0("cna_thresh_nmy_", i), max = m_y)
+      }
     })
   })
 
@@ -246,10 +263,12 @@ register_cna_threshold_server <- function(input, output, session, state, context
       nm_x <- input[[paste0("cna_thresh_nmx_", i)]]
       nm_y <- input[[paste0("cna_thresh_nmy_", i)]]
 
-      # Safety Check
-      if (is.null(m_x) || m_x < nm_x || m_y < nm_y) {
-        showNotification(paste("Error in Subclone", i, ": Malignant thresholds (m_x, m_y) must be >= Non-Malignant thresholds (nm_x, nm_y)."),
-                         type = "error", duration = 8)
+      validation <- validate_cna_threshold_pair(m_x, m_y, nm_x, nm_y)
+      if (!validation$valid) {
+        showNotification(
+          paste("Error in Subclone", i, ":", validation$reason),
+          type = "error", duration = 8
+        )
         has_error <- TRUE
       }
 
@@ -267,10 +286,7 @@ register_cna_threshold_server <- function(input, output, session, state, context
         persist_threshold_state(
           s_name,
           "failed",
-          reason = paste0(
-            "At least one subclone had malignant thresholds below its ",
-            "non-malignant thresholds."
-          )
+          reason = "At least one subclone violated m_x > nm_x or m_y >= nm_y."
         ),
         silent = TRUE
       )
@@ -280,10 +296,7 @@ register_cna_threshold_server <- function(input, output, session, state, context
         event_type = "cna_thresholds_saved",
         outcome = "failed",
         sample = s_name,
-        reason = paste0(
-          "At least one subclone had malignant thresholds below its ",
-          "non-malignant thresholds."
-        )
+        reason = "At least one subclone violated m_x > nm_x or m_y >= nm_y."
       )
       return()
     }

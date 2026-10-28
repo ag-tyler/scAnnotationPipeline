@@ -573,6 +573,8 @@ Required tests:
 
 **Acceptance:** Users understand what the four thresholds do before saving them, can set identical Y thresholds without fighting the linked sliders, can never save `m_y < nm_y`, and see consistent preview, persisted, and final-assignment behavior.
 
+**Acceptance result:** Complete in implementation and automated coverage. The linked Y controls now allow equality and clamp only the invalid counterpart in the direction the user moved, without changing valid equal or unequal pairs. Save validation explicitly enforces strict X separation (`m_x > nm_x`) and inclusive Y ordering (`m_y >= nm_y`). Every subclone threshold card explains eligibility, safe non-malignant retention, multi-subclone handling, the gray zone, and the strict comparison behavior at a shared Y boundary. Tests cover clamping in both directions, independent subclone pairs, saved equal values, preview/final/reloaded assignments, eligible and ineligible cells, exact-boundary classification, guidance wording, and unchanged CNA progress/navigation behavior.
+
 ### F12 — High-count CNA subtree selection
 
 Preserve the current analytical concept: the user chooses `k`, the hierarchical tree is cut into `k` subtrees, and one or more of those subtrees are selected as potentially malignant. Redesign only how the cut-tree clusters are identified and selected when many clusters make colour matching unreliable.
@@ -742,7 +744,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | F08 | Natural cluster ordering and DE score-plot layout | Complete | 2026-10-28 | Natural ordering is consistent; long sample identifiers are hard-wrapped above a compact metadata subtitle and score PNGs use an explicit 9 x 7 inch, 300-DPI export contract |
 | F09 | Single-sample clustering design and implementation | Complete | 2026-10-28 | Secondary Start Menu clustering action plus shared targeted-DE actions in Resolution Selection and Manual Annotation, with sample-scoped invalidation, guards, and direct recovery navigation |
 | F10 | Main-menu pipeline status overview | Complete | 2026-10-28 | Read-only responsive stage cards and collapsible per-sample details derived solely from reactive pipeline state |
-| F11 | CNA threshold guidance and equal Y-threshold support | Not started | — | Low-priority control refinement; helper must match actual classification and save validation already permits equality |
+| F11 | CNA threshold guidance and equal Y-threshold support | Complete | 2026-10-28 | Equal Y values, directional clamping, explicit X/Y validation, and classification guidance added |
 | F12 | High-count CNA subtree selection | Not started | — | Low-priority usability feature; compare spatial and ordered fallback prototypes first |
 | F13 | CNA values-table results export | Not started | — | Low-priority reusable long-format output; compressed CSV default due potentially large files |
 | F14 | Residual performance optimization | Not started | — | — |
@@ -778,6 +780,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | 2026-10-21 | F11 follow-up | Added concise helper text for the threshold sliders explaining eligible malignant assignment, safely non-malignant retention, and the Unassigned/NA gray zone | Wording derived from the current `apply_cna_thresholds()` comparison and eligibility rules; implementation pending |
 | 2026-10-28 | F10 | Added the combined Start Menu pipeline overview with accessible aggregate cards, collapsible sample details, reasons, CNA-aware next actions, and no rendering-time I/O | Focused regressions and the full suite passed with no failures/warnings and one restricted-browser skip |
 | 2026-10-28 | F10 addendum | Added hover- and keyboard-focus tooltips listing the samples represented by every aggregate status badge | Lists are capped at 15 names with an explicit remainder count; the full table remains available below |
+| 2026-10-28 | F11 | Allowed equal CNA Y thresholds, retained strict X separation, added directional slider clamping and per-subclone classification guidance | Focused regressions and the full suite passed with no failures/warnings and one restricted-browser skip |
 
 ## 12. Progress notes and additional information — living section
 
