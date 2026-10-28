@@ -538,6 +538,12 @@ matching, scoring/plot generation, and output writing. If either bulk workflow
 fails, the notification and structured event identify the sample and last real
 stage reached; processing remains fail-fast.
 
+Each per-cluster signature-score PNG displays the complete sample identifier in
+a dedicated title, hard-wrapped every 60 characters when needed. Cluster,
+resolution, and cell count are kept together in a separate subtitle. These
+plots are exported at an explicit 9 x 7 inches and 300 DPI; their existing
+`<cluster>.png` filenames remain unchanged for Manual Annotation.
+
 ### Manual annotation
 
 The annotation interface loads cached clustered cells together with DE marker matches/signature scores so clusters can be assigned final cell types.
@@ -676,7 +682,7 @@ Some tests deliberately exercise validation/error/warning paths. Those condition
 | `test-m0-cna-characterization.R` | Regression coverage for formerly exposed CNA numerical/cache failures |
 | `test-m5-cna-batch.R` | Mixed-validity batch isolation, subsets, progress, and retry behavior |
 | `test-f07-batch-progress.R` | Shared clustering/DE progress contract, monotonic fractions, Shiny formatting, and failure-stage reporting |
-| `test-f08-natural-cluster-ordering.R` | Numeric-aware 13-cluster ordering across UMAP legends/colours, DE axes/lists, and annotation controls |
+| `test-f08-natural-cluster-ordering.R` | Numeric-aware 13-cluster ordering across UMAP legends/colours, DE axes/lists, and annotation controls; long DE score-plot titles and explicit export dimensions |
 | `test-regression_clustering.R` | Preprocessing → PCA → UMAP → Louvain integration/regression behavior |
 | `test-regression_cna_cache.R` | CNA compute/cache/load round trip and missing-cache behavior |
 | `test-standardize-general-template.R` | General-template safety, alignment, duplicate-gene preservation, and checklist contract |

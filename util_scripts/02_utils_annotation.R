@@ -449,6 +449,57 @@ stacked_gene_match_count_plot <- function(marker_genes_count, de_parameters, res
     ggplot2::scale_fill_manual(values = plot_colors)
 }
 
+format_signature_score_plot_labels <- function(sample_name, cluster_name, resolution, n_cells,
+                                               wrap_width = 60) {
+  #' Format readable labels for a per-cluster signature-score plot
+  #'
+  #' The sample identifier gets its own hard-wrapped title so even identifiers
+  #' without spaces remain complete. Compact run metadata stays on one subtitle.
+  #'
+  #' @return Named list with `title` and `subtitle` strings.
+
+  sample_name <- as.character(sample_name)
+  character_count <- nchar(sample_name)
+  line_starts <- seq.int(1L, max(1L, character_count), by = wrap_width)
+  wrapped_sample_name <- paste(
+    substring(
+      sample_name,
+      first = line_starts,
+      last = pmin(line_starts + wrap_width - 1L, character_count)
+    ),
+    collapse = "\n"
+  )
+
+  list(
+    title = wrapped_sample_name,
+    subtitle = paste0(
+      "Cluster ", cluster_name, " scores | Resolution: ", resolution,
+      " | Cells: ", n_cells
+    )
+  )
+}
+
+
+save_signature_score_plot <- function(plot, filename, width = 9, height = 7,
+                                      units = "in", dpi = 300) {
+  #' Save a signature-score plot with a device-independent output contract
+  #'
+  #' The 9 x 7 inch canvas leaves room for wrapped sample identifiers while
+  #' preserving enough height for the score distributions and rotated labels.
+
+  ggplot2::ggsave(
+    filename = filename,
+    plot = plot,
+    width = width,
+    height = height,
+    units = units,
+    dpi = dpi
+  )
+
+  invisible(filename)
+}
+
+
 sig_scores_cluster_boxplot <- function(cells, marker_cell_types, marker_genes_found, cluster_name, 
                                        sample_name, resolution, seed = 3988) {
   #' Plot the signature scores for each cell type for a cluster
@@ -496,6 +547,12 @@ sig_scores_cluster_boxplot <- function(cells, marker_cell_types, marker_genes_fo
   
   n_cell_types <- length(marker_cell_types)
   n_clust_cells <- nrow(cells[clust == cluster_name])
+  plot_labels <- format_signature_score_plot_labels(
+    sample_name,
+    cluster_name,
+    resolution,
+    n_clust_cells
+  )
   
   set.seed(seed)
   plot_colors <- randomcoloR::distinctColorPalette(n_cell_types)
@@ -536,13 +593,15 @@ sig_scores_cluster_boxplot <- function(cells, marker_cell_types, marker_genes_fo
     ggplot2::theme(
       axis.text.x = ggplot2::element_text(angle = 45, hjust = 1, vjust = 1),
       plot.background = ggplot2::element_rect(fill = "white", color = NA),
+      plot.title = ggplot2::element_text(lineheight = 1.1, margin = ggplot2::margin(b = 4)),
+      plot.subtitle = ggplot2::element_text(margin = ggplot2::margin(b = 8)),
       legend.position = 'none',
       panel.grid.major.y = ggplot2::element_line(color = "grey85", linetype = "dashed")
     ) +
     
     ggplot2::labs(
-      title = paste0(sample_name, ': Cluster ', cluster_name, ' scores; Res: ', resolution, 
-                     '; Cells: ', n_clust_cells),
+      title = plot_labels$title,
+      subtitle = plot_labels$subtitle,
       x = 'Marker Set',
       y = 'Score'
     ) +

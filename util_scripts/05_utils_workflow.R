@@ -703,7 +703,7 @@ single_de_analysis <- function(sample_idx, paths_list, dataset_config, selected_
                                              selected_config$resolutions[[sample_name]])
     
     score_plot_path <- file.path(de_plots_dir_path, paste0(curr_cluster, '.png'))
-    ggplot2::ggsave(filename = score_plot_path, plot = score_plot, dpi = 300)
+    save_signature_score_plot(score_plot, score_plot_path)
   }
   
   # Save the marker match tables as csv per cluster

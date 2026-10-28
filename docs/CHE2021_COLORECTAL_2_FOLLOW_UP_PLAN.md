@@ -396,6 +396,15 @@ cluster label, resolution, and cell count with no title clipping. The same PNG
 loads in Manual Annotation, short-name plots remain readable, and a regression
 checks both the title/subtitle layout and explicit export dimensions.
 
+**Addendum acceptance result:** Complete. The full sample identifier now has a
+dedicated title that hard-wraps every 60 characters, including identifiers with
+no whitespace. Cluster, resolution, and cell count remain together in a compact
+subtitle. A shared exporter fixes these PNGs at 9 x 7 inches and 300 DPI while
+preserving the existing `<cluster>.png` filename and Manual Annotation loading
+contract. Automated coverage uses an unbroken identifier longer than 100
+characters, verifies the complete title and subtitle, confirms short names stay
+on one line, and checks the export dimensions.
+
 ### F09 — Single-sample clustering: GUI design and implementation
 
 The app currently offers only bulk clustering across every sample. Add an optional way to rerun clustering for one sample across all configured resolutions. Because this is a convenience feature rather than a blocker, first resolve the P0 cache/state defects and then choose its GUI placement deliberately instead of simply adding another dashboard button.
@@ -677,7 +686,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | F05 | Stale-annotation recovery and annotation/CNA save sequence | Complete | 2026-10-21 | Same-sample readiness retry, safe saved-label reuse, independent annotation save, and reversible explicit CNA omission implemented |
 | F06 | Standardization onboarding | Complete | 2026-10-21 | Pre-load guide, reusable metadata prompt, local documentation links, and path-specific creation handoff added |
 | F07 | Bulk progress output | Complete | 2026-10-28 | Shared monotonic contract, clustering/DE overlays, stage-aware failures, console boundaries, elapsed time, and final summaries added |
-| F08 | Natural cluster ordering and DE score-plot layout | Addendum pending | 2026-10-28 (ordering) | Ordering is complete; long sample names can clip score-plot title metadata and need a wrapped multi-line layout plus explicit export dimensions |
+| F08 | Natural cluster ordering and DE score-plot layout | Complete | 2026-10-28 | Natural ordering is consistent; long sample identifiers are hard-wrapped above a compact metadata subtitle and score PNGs use an explicit 9 x 7 inch, 300-DPI export contract |
 | F09 | Single-sample clustering design and implementation | Not started | — | Low-priority convenience feature; GUI placement must be evaluated first |
 | F10 | Main-menu pipeline status overview | Not started | — | Low-priority visibility feature; summary/detail design must be evaluated first |
 | F11 | CNA threshold guidance and equal Y-threshold support | Not started | — | Low-priority control refinement; helper must match actual classification and save validation already permits equality |
@@ -708,6 +717,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | 2026-10-28 | F07 | Added one monotonic clustering/DE progress contract, CNA-style Shiny overlays, real stage/sample failure context, console boundaries, elapsed time, and fail-fast batch summaries | Focused regressions and the full suite passed (984 assertions, 0 failures/warnings, 1 restricted-browser skip) |
 | 2026-10-28 | F08 | Added one display-only natural cluster-order helper and applied it to UMAP legends/colours, DE lists/axes/traversal, and annotation selection/advancement | Focused regressions and the full suite passed (995 assertions, 0 failures/warnings, 1 restricted-browser skip) |
 | 2026-10-28 | F08 addendum planning | Recorded that long sample names clip the resolution/cell-count suffix from DE signature-score boxplot titles | Source inspection found one unwrapped concatenated title and implicit `ggsave()` dimensions; implementation and long-name regression pending |
+| 2026-10-28 | F08 addendum | Separated the complete, hard-wrapped sample identifier from compact cluster/resolution/cell metadata and centralized score-plot export at 9 x 7 inches and 300 DPI without changing annotation filenames | Long unbroken/short-name and PNG-dimension regressions passed; full suite passed (1006 assertions, 0 failures/warnings, 1 restricted-browser skip) |
 | 2026-10-21 | F12 planning | Added brainstorming and prototyping for high-count CNA subtree selection while preserving hierarchical-tree cutting | Requires canonical leaf-order mapping, redundant non-colour identity cues, synchronized selection, and membership-level regression tests |
 | 2026-10-21 | F13 planning | Added publication of the finalized long CNA values table as a reusable CSV result with provenance and safe re-export | Required schema is `gene`, `chr`, `start_pos`, `cell_name`, `cna`; current matrix caches are 22 MB and 75 MB compressed, so chunked compressed CSV is proposed |
 | 2026-10-21 | F11 follow-up | Added concise helper text for the threshold sliders explaining eligible malignant assignment, safely non-malignant retention, and the Unassigned/NA gray zone | Wording derived from the current `apply_cna_thresholds()` comparison and eligibility rules; implementation pending |

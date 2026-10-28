@@ -11,6 +11,66 @@ test_that("F08 helper orders 13 integer-like clusters naturally", {
   )
 })
 
+test_that("F08 score plots preserve long sample identifiers and compact metadata", {
+  skip_if_not_installed("randomcoloR")
+  skip_if_not_installed("cowplot")
+
+  long_sample_name <- paste0("Sample_", paste(rep("LongIdentifier", 9), collapse = ""))
+  cells <- data.table::data.table(
+    cell_name = paste0("cell", 1:3),
+    clust = "10",
+    TypeA = c(0.1, 0.3, 0.2),
+    TypeB = c(0.7, 0.8, 0.6)
+  )
+  marker_genes_found <- data.table::data.table(
+    cell_types = c("TypeA", "TypeB"),
+    gene_count = c(12L, 8L),
+    n_gene_pass = c(TRUE, FALSE)
+  )
+
+  long_plot <- sig_scores_cluster_boxplot(
+    cells,
+    c("TypeA", "TypeB"),
+    marker_genes_found,
+    cluster_name = "10",
+    sample_name = long_sample_name,
+    resolution = 1.25
+  )
+
+  expect_gt(nchar(long_sample_name), 100)
+  expect_match(long_plot$labels$title, "\n", fixed = TRUE)
+  expect_identical(gsub("\n", "", long_plot$labels$title, fixed = TRUE), long_sample_name)
+  expect_identical(
+    long_plot$labels$subtitle,
+    "Cluster 10 scores | Resolution: 1.25 | Cells: 3"
+  )
+
+  short_labels <- format_signature_score_plot_labels("Sample_1", "2", 0.5, 18)
+  expect_false(grepl("\n", short_labels$title, fixed = TRUE))
+  expect_identical(short_labels$title, "Sample_1")
+})
+
+test_that("F08 score plot exports use explicit dimensions", {
+  skip_if_not_installed("png")
+
+  export_formals <- formals(save_signature_score_plot)
+  expect_identical(export_formals$width, 9)
+  expect_identical(export_formals$height, 7)
+  expect_identical(export_formals$units, "in")
+  expect_identical(export_formals$dpi, 300)
+
+  output_path <- withr::local_tempfile(fileext = ".png")
+  save_signature_score_plot(
+    ggplot2::ggplot(data.frame(x = 1, y = 1), ggplot2::aes(x, y)) +
+      ggplot2::geom_point(),
+    output_path,
+    dpi = 10
+  )
+  image <- png::readPNG(output_path)
+
+  expect_identical(dim(image)[1:2], c(70L, 90L))
+})
+
 test_that("F08 UMAP legends use natural labels with label-stable colours", {
   skip_if_not_installed("randomcoloR")
   skip_if_not_installed("cowplot")
