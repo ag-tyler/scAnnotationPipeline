@@ -4,7 +4,7 @@
 
 **Initial plan date:** 2026-10-21  
 **Last progress update:** 2026-10-28
-**Current phase:** Milestones 0–3 complete; Milestone 4 in progress through F13
+**Current phase:** Milestones 0–3 complete; Milestone 4 in progress, with F16 next and F14 afterward
 **Basis:** Manual test notes, follow-up console-launch testing, current source inspection, file-size inventory, `pipeline.log`, and `pipeline_state.yaml` from `Che2021_Colorectal_2`.
 
 ---
@@ -62,7 +62,7 @@ These findings guide task order. Items labelled **hypothesis** still require the
 | 1 | **Stable development runtime** | F02–F03 | Positron launch no longer reloads on pipeline writes; navigation is single-shot | Long computations and saves remain in the same session |
 | 2 | **Cache loading, correctness, and save semantics** | F04–F05 | Stale annotation is made re-enterable first; dataset loading avoids eager deep cache reads; annotation persists without invalidating clustering; CNA decisions follow a coherent sequence | Stale samples can be annotated; fast load and saved-annotation reload tests pass; CNA can be tested |
 | 3 | **Onboarding and progress** | F06–F07 | New users can find standardization instructions; batch work has clear progress | Creation-to-standardization path and bulk output tests pass |
-| 4 | **Presentation, optional workflow controls, exports, cleanup, and residual performance** | F08–F14, F16 | Numeric cluster order, optional single-sample clustering, a main-menu status overview, flexible CNA Y thresholds, unambiguous CNA subtree selection, reusable CNA values-table exports, safe finished-dataset cleanup, and responsive ordinary interactions | New controls, exports, cleanup lifecycle, and measured interaction targets pass with autoreload disabled |
+| 4 | **Presentation, optional workflow controls, exports, cleanup, and residual performance** | F08–F13, F16, F14 | Numeric cluster order, optional single-sample clustering, a main-menu status overview, flexible CNA Y thresholds, unambiguous CNA subtree selection, reusable CNA values-table exports, safe finished-dataset cleanup, and responsive ordinary interactions | New controls, exports, cleanup lifecycle, and measured interaction targets pass with autoreload disabled |
 | 5 | **Integration and resumed CNA test** | F15 | End-to-end workflow, including CNA, is verified | All acceptance scenarios pass |
 
 Performance work is split deliberately: F04 addresses the now-confirmed dataset-load/cache-validation bottleneck on the critical path, while F14 remains limited to residual interactive latency after autoreload and eager cache validation are fixed.
@@ -84,9 +84,9 @@ flowchart TD
     K["F11: CNA threshold guidance and equal Y-threshold support"]
     L["F12: High-count CNA subtree selection"]
     M["F13: CNA values-table results export"]
+    P["F16: Finished-dataset cache cleanup"]
     N["F14: Residual performance optimization"]
     O["F15: End-to-end acceptance and CNA replay"]
-    P["F16: Finished-dataset cache cleanup"]
 
     A --> B
     A --> D
@@ -110,10 +110,10 @@ flowchart TD
     D --> P
     J --> P
     M --> P
-    P -.-> O
+    P --> N
 ```
 
-**Critical path:** F01 → F02 → F03, F01 → F04, and F01 → F05, converging at F15. Implement the stale-annotation re-entry slice of F05 immediately; it does not need to wait for the larger F04 performance/cache redesign. Coordinate final invalidation semantics between F04 and F05. F06–F13 and F16 can follow the critical defects; optional cleanup must not delay the fixes or CNA replay, but if F16 is implemented before release acceptance its destructive lifecycle must be included in F15 on a safe copy.
+**Critical path:** F01 → F02 → F03, F01 → F04, and F01 → F05, converging at F15. Implement the stale-annotation re-entry slice of F05 immediately; it does not need to wait for the larger F04 performance/cache redesign. Coordinate final invalidation semantics between F04 and F05. After F13, implement and review F16 before beginning the residual F14 profiling pass. F15 must include F16's destructive lifecycle on a safe copy.
 
 ## 5. Milestone 0 — Reproduction and baseline
 
@@ -355,8 +355,8 @@ behavior.
 | **F11** | P2 | S–M | Clarify CNA threshold behavior and allow equal malignant/non-malignant Y thresholds while enforcing `m_y >= nm_y` | None |
 | **F12** | P2 | M–L | Brainstorm, prototype, select, and implement an unambiguous high-count CNA subtree-selection interaction | None |
 | **F13** | P2 | M | Export the validated long-format CNA values table to sample results in a documented CSV-compatible format when CNA assignment is finalized | F04 |
-| **F14** | P1 | M–L | Profile and remove any remaining interaction latency after runtime stabilization | F01, F02, F04 |
 | **F16** | P2 | M–L | Brainstorm, design, implement, and test safe cache cleanup for a fully finished dataset without corrupting workflow status | F04, F10, F13 |
+| **F14** | P1 | M–L | Profile and remove any remaining interaction latency after runtime stabilization | F01, F02, F04, F16 |
 
 ### F08 — Natural cluster ordering
 
@@ -754,20 +754,6 @@ Required tests:
 
 **Acceptance result:** Complete in implementation and automated coverage. Final CNA assignment now publishes a gzip-compressed long table and provenance YAML under `3_cna_results`; conversion reuses the canonical cache-to-long transformation in bounded cell chunks and does not recompute CNA. Same-directory temporary files are validated before pair publication, prior complete exports are restored if publication fails, and assignment state remains completed with an actionable retry warning. The summary view shows whether the export is absent, current, or outdated and provides manual re-export. The README documents the cache relationship and an import call that preserves chromosome strings.
 
-### F14 — Performance investigation and optimization
-
-After F02, measure before optimizing:
-
-- navbar-only transitions;
-- sample changes in resolution and annotation views;
-- status badge/preflight rendering;
-- plot loading from disk;
-- broad `observe()` handlers and repeated reactive reads/writes.
-
-Likely improvements, to apply only when supported by profiling, include caching static UI, narrowing reactive dependencies, loading heavy plots lazily, and moving long computations to a future/background architecture in a separately scoped change. Dataset-load cache reconciliation belongs to F04. Do not introduce asynchronous scientific computation as an incidental optimization.
-
-**Acceptance:** Establish a hardware-specific baseline and target in F01. At minimum, navbar changes and lightweight buttons must not perform dataset-wide disk/cache work and should feel immediate; dataset/sample loads must show explicit busy feedback when they legitimately require I/O. Record before/after timings in the progress notes.
-
 ### F16 — Finished-dataset cache cleanup and archive lifecycle
 
 This feature is potentially useful for large, completed datasets because the validated cache can remain much larger than the durable tables and plots users want to retain. It is not necessary for scientific correctness, and a simple **Clear Cache** button would be unsafe: current reconciliation correctly interprets missing cache artifacts as invalid or stale work. Cleanup must instead be an explicit transition from an editable dataset to an archived-results dataset.
@@ -832,11 +818,26 @@ Required tests:
 
 **Acceptance:** A user can reclaim the displayed amount of cache storage only after the whole dataset has verified durable final outputs. Reloading the cleaned dataset clearly presents it as an archived, read-only result set rather than as broken or stale work. No retained scientific output is deleted, partial failure is recoverable, and reopening explicitly re-enters the normal recomputation lifecycle.
 
+### F14 — Performance investigation and optimization
+
+After F16, measure before optimizing:
+
+- navbar-only transitions;
+- sample changes in resolution and annotation views;
+- status badge/preflight rendering;
+- plot loading from disk;
+- storage-status/readiness rendering for active and archived datasets;
+- broad `observe()` handlers and repeated reactive reads/writes.
+
+Likely improvements, to apply only when supported by profiling, include caching static UI, narrowing reactive dependencies, loading heavy plots lazily, and moving long computations to a future/background architecture in a separately scoped change. Dataset-load cache reconciliation belongs to F04. Do not introduce asynchronous scientific computation as an incidental optimization.
+
+**Acceptance:** Establish a hardware-specific baseline and target in F01. At minimum, navbar changes and lightweight buttons must not perform dataset-wide disk/cache work and should feel immediate; dataset/sample loads must show explicit busy feedback when they legitimately require I/O. F16 storage readiness must remain metadata-only during ordinary rendering. Record before/after timings in the progress notes.
+
 ## 10. Milestone 5 — Integration and release acceptance
 
 | ID | Priority | Complexity | Task | Dependencies |
 | --- | --- | --- | --- | --- |
-| **F15** | P0 | L | Run automated regression plus a manual end-to-end replay through CNA on `Che2021_Colorectal_2` or a safe copy | F02–F14; include F16 if implemented |
+| **F15** | P0 | L | Run automated regression plus a manual end-to-end replay through CNA on `Che2021_Colorectal_2` or a safe copy | F02–F13, F16, F14 |
 
 ### Acceptance scenario matrix
 
@@ -904,9 +905,9 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | F11 | CNA threshold guidance and equal Y-threshold support | Complete | 2026-10-28 | Equal Y values, directional clamping, explicit X/Y validation, and classification guidance added |
 | F12 | High-count CNA subtree selection | Complete | 2026-10-28 | Lightweight top-to-bottom navigator accepted without main-heatmap highlighting; saved PNG retains its full cluster legend |
 | F13 | CNA values-table results export | Complete | 2026-10-28 | Atomic chunked gzip CSV plus provenance, automatic finalization export, current/outdated status, and manual re-export without CNA recomputation |
-| F14 | Residual performance optimization | Not started | — | — |
-| F15 | Integration and CNA replay | Not started | — | — |
 | F16 | Finished-dataset cache cleanup and archive lifecycle | Planned | — | Dataset-level first; separate storage status, durable-output gate, recoverable retirement, and explicit reopen path |
+| F14 | Residual performance optimization | Not started | — | Begins after F16 manual review |
+| F15 | Integration and CNA replay | Not started | — | — |
 
 ### 11.3 Progress history
 
