@@ -66,6 +66,7 @@ format_batch_failure <- function(operation_label, progress_context, error) {
 
 register_dashboard_server <- function(input, output, session, state, context) {
   rv <- state
+  single_clustering_completed_index <- reactiveVal(NULL)
 
   persist_sample_step <- function(step, sample_name, status, reason = NULL, details = NULL) {
     current <- get_pipeline_step(rv$pipeline_state, step, sample_name)
@@ -135,6 +136,26 @@ register_dashboard_server <- function(input, output, session, state, context) {
     )
     updateNavbarPage(session, "main_nav", selected = "res_tab")
   })
+  observeEvent(input$btn_after_single_clustering_res, {
+    if (!claim_app_confirmation(rv, "after_single_clustering_navigation")) return()
+    selected_index <- single_clustering_completed_index()
+    removeModal()
+    if (!is.null(selected_index)) {
+      updateSelectInput(session, "res_sample_idx", selected = selected_index)
+    }
+    record_state_event(
+      rv,
+      stage = "navigation",
+      event_type = "completion_navigation",
+      outcome = "selected",
+      parameters = list(
+        source = "single_clustering_complete",
+        target = "res_tab",
+        sample_index = selected_index
+      )
+    )
+    updateNavbarPage(session, "main_nav", selected = "res_tab")
+  })
   observeEvent(input$btn_after_de_anno, {
     if (!claim_app_confirmation(rv, "after_de_navigation")) return()
     removeModal()
@@ -181,6 +202,166 @@ register_dashboard_server <- function(input, output, session, state, context) {
         )
       )
     ))
+  })
+
+  observeEvent(input$btn_run_single_clustering, {
+    req(rv$paths_list, rv$pipeline_state)
+    standardization <- get_pipeline_step(rv$pipeline_state, "standardization")
+    if (!identical(standardization$status, "completed")) {
+      showNotification(
+        paste0(
+          "Cannot run clustering: standardization is ", standardization$status,
+          if (!is.null(standardization$reason)) paste0(" (", standardization$reason, ")") else "."
+        ),
+        type = "error",
+        duration = 10
+      )
+      return()
+    }
+
+    sample_names <- basename(rv$paths_list$sample_dir_paths)
+    sample_choices <- stats::setNames(seq_along(sample_names), sample_names)
+    arm_app_confirmation(rv, "single_sample_clustering")
+    showModal(modalDialog(
+      title = "Run Clustering for One Sample",
+      selectInput(
+        "single_clustering_sample",
+        "Sample:",
+        choices = sample_choices,
+        selected = sample_choices[[1]]
+      ),
+      tags$div(
+        class = "alert alert-warning mt-3",
+        icon("exclamation-triangle"),
+        " Rerunning clustering will make this sample's saved resolution, DE, annotation, and CNA work stale. Other samples are not changed."
+      ),
+      p(
+        "All configured clustering resolutions will be recomputed. The application remains locked until this sample finishes.",
+        class = "text-muted"
+      ),
+      easyClose = TRUE,
+      footer = tagList(
+        modalButton("Cancel"),
+        actionButton(
+          "confirm_run_single_clustering",
+          "Yes, Cluster This Sample",
+          class = "btn-danger",
+          onclick = "this.disabled = true;"
+        )
+      )
+    ))
+  })
+
+  observeEvent(input$confirm_run_single_clustering, {
+    req(rv$paths_list, rv$dataset_config)
+    selected_index <- suppressWarnings(as.integer(input$single_clustering_sample))
+    sample_names <- basename(rv$paths_list$sample_dir_paths)
+    if (
+      length(selected_index) != 1L || is.na(selected_index) ||
+        selected_index < 1L || selected_index > length(sample_names)
+    ) {
+      showNotification("Select a valid sample to cluster.", type = "error")
+      return()
+    }
+    if (!claim_app_confirmation(rv, "single_sample_clustering")) return()
+    if (!begin_app_action(rv, "single_sample_clustering")) return()
+
+    sample_name <- sample_names[[selected_index]]
+    shinyjs::disable("btn_run_single_clustering")
+    shinyjs::disable("btn_run_clustering")
+    on.exit({
+      finish_app_action(rv, "single_sample_clustering")
+      shinyjs::enable("btn_run_single_clustering")
+      shinyjs::enable("btn_run_clustering")
+    }, add = TRUE)
+    removeModal()
+
+    id <- showNotification(
+      paste("Running clustering for", sample_name, "..."),
+      duration = NULL,
+      type = "warning"
+    )
+    on.exit(removeNotification(id), add = TRUE)
+    record_state_event(
+      rv,
+      stage = "clustering",
+      event_type = "single_sample_clustering",
+      outcome = "started",
+      sample = sample_name,
+      parameters = list(
+        sample_index = selected_index,
+        resolutions = rv$dataset_config$params$resolutions
+      )
+    )
+
+    progress_context <- new.env(parent = emptyenv())
+    tryCatch({
+      withProgress(message = paste("Clustering", sample_name), value = 0, {
+        cluster_all_samples(
+          rv$paths_list,
+          rv$dataset_config,
+          rv$results_dir_path,
+          rv$dataset_dir_path,
+          state_callback = function(sample_name, status, reason = NULL, details = NULL) {
+            persist_sample_step(
+              "clustering",
+              sample_name,
+              status,
+              reason,
+              details
+            )
+          },
+          progress_callback = make_shiny_batch_progress_callback(progress_context),
+          sample_indices = selected_index
+        )
+      })
+      invalidated_cache <- cache_invalidate_sample(sample_name, rv$dataset_dir_path)
+      single_clustering_completed_index(selected_index)
+      record_state_event(
+        rv,
+        stage = "clustering",
+        event_type = "single_sample_clustering",
+        outcome = "completed",
+        sample = sample_name,
+        parameters = list(
+          sample_index = selected_index,
+          invalidated_cache_files = length(invalidated_cache)
+        )
+      )
+      arm_app_confirmation(rv, "after_single_clustering_navigation")
+      showModal(modalDialog(
+        title = "Sample clustering complete",
+        paste0(
+          "Clustering is complete for '", sample_name,
+          "'. Review every resolution and save the selected resolution again before rerunning DE."
+        ),
+        easyClose = TRUE,
+        footer = tagList(
+          modalButton("Stay on Start Menu"),
+          actionButton(
+            "btn_after_single_clustering_res",
+            "Review This Sample's Resolutions",
+            class = "btn-primary",
+            onclick = "this.disabled = true;"
+          )
+        )
+      ))
+    }, error = function(error) {
+      failure_message <- format_batch_failure("Clustering", progress_context, error)
+      record_state_event(
+        rv,
+        stage = "clustering",
+        event_type = "single_sample_clustering",
+        outcome = "failed",
+        sample = sample_name,
+        reason = failure_message,
+        parameters = list(
+          sample_index = selected_index,
+          failed_stage = progress_context$stage
+        )
+      )
+      showNotification(failure_message, type = "error", duration = 10)
+    })
   })
 
   observeEvent(input$confirm_run_clustering, {

@@ -151,7 +151,7 @@ test_that("F07 DE failure identifies the sample and last real stage", {
   expect_identical(states[[length(states)]]$status, "failed")
 })
 
-test_that("F07 both bulk handlers use the shared Shiny progress callback", {
+test_that("F07 clustering and DE handlers use the shared Shiny progress callback", {
   app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
   server_text <- paste(
     readLines(file.path(app_dir, "app/server/dashboard_server.R"), warn = FALSE),
@@ -173,6 +173,6 @@ test_that("F07 both bulk handlers use the shared Shiny progress callback", {
         fixed = TRUE
       )
     )),
-    2L
+    3L
   )
 })

@@ -358,7 +358,8 @@ cluster_all_samples <- function(
   results_dir_path,
   dataset_dir_path,
   state_callback = NULL,
-  progress_callback = NULL
+  progress_callback = NULL,
+  sample_indices = NULL
 ) {
   #' Batch Process and Cluster Multiple Single-Cell Samples
   #'
@@ -381,6 +382,8 @@ cluster_all_samples <- function(
   #' @param progress_callback Optional function receiving the shared batch-progress contract:
   #'   operation, sample identity and position, stage/detail, terminal outcome, overall fraction,
   #'   and elapsed seconds.
+  #' @param sample_indices Optional integer indices into `paths_list`. Defaults to every sample;
+  #'   use one index for a targeted single-sample rerun.
   #'
   #' @return None. This function is evaluated for its side effects (disk I/O).
   #'
@@ -396,8 +399,20 @@ cluster_all_samples <- function(
   cell_file_paths <- paths_list$cell_file_paths
   expmat_file_paths <- paths_list$expmat_file_paths
   genes_file_paths <- paths_list$genes_file_paths
+
+  if (is.null(sample_indices)) {
+    sample_indices <- seq_along(sample_dir_paths)
+  }
+  sample_indices <- as.integer(sample_indices)
+  if (
+    length(sample_indices) == 0L || anyNA(sample_indices) ||
+      any(sample_indices < 1L | sample_indices > length(sample_dir_paths)) ||
+      anyDuplicated(sample_indices)
+  ) {
+    stop("sample_indices must contain unique valid indices into paths_list.", call. = FALSE)
+  }
   
-  sample_total <- length(sample_dir_paths)
+  sample_total <- length(sample_indices)
   batch_started_at <- proc.time()[["elapsed"]]
   completed_count <- 0L
   failed_count <- 0L
@@ -411,13 +426,14 @@ cluster_all_samples <- function(
     )
   }, add = TRUE)
 
-  for (i in seq_along(sample_dir_paths)) {
+  for (batch_index in seq_along(sample_indices)) {
+    i <- sample_indices[[batch_index]]
     sample_name <- basename(sample_dir_paths[[i]])
     sample_started_at <- proc.time()[["elapsed"]]
     sample_fraction <- 0
     sample_stage <- "starting"
     message(strrep("#", 80))
-    message("[", i, "/", sample_total, "] Starting sample ", sample_name)
+    message("[", batch_index, "/", sample_total, "] Starting sample ", sample_name)
     report <- function(stage, detail, fraction, outcome = NULL) {
       sample_fraction <<- fraction
       sample_stage <<- stage
@@ -425,7 +441,7 @@ cluster_all_samples <- function(
         progress_callback = progress_callback,
         operation = "clustering",
         sample_name = sample_name,
-        sample_index = i,
+        sample_index = batch_index,
         sample_total = sample_total,
         stage = stage,
         detail = detail,
@@ -437,13 +453,13 @@ cluster_all_samples <- function(
 
     tryCatch({
       report("loading_filtering", "Loading and filtering standardized inputs", 0.05)
+      if (is.function(state_callback)) {
+        state_callback(sample_name, "in_progress")
+      }
       cells <- load_cells(cell_file_paths[i])
       loaded_sample_name <- unique(cells$sample)
       if (length(loaded_sample_name) == 1L && !is.na(loaded_sample_name)) {
         sample_name <- loaded_sample_name
-      }
-      if (is.function(state_callback)) {
-        state_callback(sample_name, "in_progress")
       }
       results_list <- load_filter_cells_expmat(cell_file_paths[i], expmat_file_paths[i],
                                                genes_file_paths[i], config)

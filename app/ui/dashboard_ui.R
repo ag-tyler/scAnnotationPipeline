@@ -35,6 +35,12 @@ dashboard_panel <- function() {
             "Run Clustering for all Resolutions",
             icon = icon("cogs"),
             class = "btn-primary btn-lg w-100"
+          ),
+          actionButton(
+            "btn_run_single_clustering",
+            "Run Clustering for One Sample",
+            icon = icon("sync"),
+            class = "btn-outline-primary w-100 mt-2"
           )
         )
       ),

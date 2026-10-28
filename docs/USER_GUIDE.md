@@ -517,6 +517,14 @@ shown as `0, 1, 2, ..., 10, 11, 12`, while nonnumeric labels use a stable lexica
 order. This is display-only: saved cluster identifiers are not rewritten, and
 plot colours are explicitly keyed to their labels.
 
+The Start Menu also provides a secondary **Run Clustering for One Sample**
+action for intentional targeted reruns. Select the sample in the confirmation
+dialog; the app recomputes all configured resolutions using the same workflow
+and progress display as bulk clustering. The selected sample's saved resolution,
+DE, annotation, and CNA stages become stale, while other samples remain
+unchanged. After completion, continue directly to Resolution Selection with the
+processed sample preselected and save its resolution again.
+
 ### Resolution selection
 
 Choose one resolution per sample. The selected resolutions are stored in `selected_config.yaml` and used by downstream DE/annotation/CNA workflows.
@@ -683,6 +691,7 @@ Some tests deliberately exercise validation/error/warning paths. Those condition
 | `test-m5-cna-batch.R` | Mixed-validity batch isolation, subsets, progress, and retry behavior |
 | `test-f07-batch-progress.R` | Shared clustering/DE progress contract, monotonic fractions, Shiny formatting, and failure-stage reporting |
 | `test-f08-natural-cluster-ordering.R` | Numeric-aware 13-cluster ordering across UMAP legends/colours, DE axes/lists, and annotation controls; long DE score-plot titles and explicit export dimensions |
+| `test-f09-single-sample-clustering.R` | Targeted clustering index/resolution coverage, sample-scoped state and cache invalidation, failure isolation, duplicate guards, and completion navigation |
 | `test-regression_clustering.R` | Preprocessing → PCA → UMAP → Louvain integration/regression behavior |
 | `test-regression_cna_cache.R` | CNA compute/cache/load round trip and missing-cache behavior |
 | `test-standardize-general-template.R` | General-template safety, alignment, duplicate-gene preservation, and checklist contract |

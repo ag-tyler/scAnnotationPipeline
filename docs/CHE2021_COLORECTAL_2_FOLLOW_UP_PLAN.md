@@ -417,6 +417,17 @@ The task begins with a short design exercise comparing at least these placements
 
 Evaluate discoverability, accidental-rerun risk, consistency with the existing single-sample DE action, and whether the user has enough sample context before confirming. Record the selected design and rationale in the progress notes before implementation.
 
+**Selected design:** Use a secondary **Run Clustering for One Sample** button in
+the Start Menu clustering card. This keeps clustering controls together and is
+discoverable before resolution plots exist, while the outlined secondary style
+does not compete with the normal bulk action. A sample-selection modal provides
+the missing context, names the downstream stages that become stale, and requires
+explicit confirmation. Resolution Selection remains focused on reviewing
+outputs; successful targeted clustering offers direct navigation there with the
+processed sample preselected. A shared all-or-one dialog was rejected because it
+would add mode selection to the common bulk path, while placing the trigger only
+in Resolution Selection would hide it until the user visits a downstream screen.
+
 Implementation requirements:
 
 - reuse the same scientific clustering function, parameters, cache writers, logging, and progress format as bulk clustering;
@@ -437,6 +448,16 @@ Required tests:
 - duplicate clicks cannot start two runs.
 
 **Acceptance:** A user can intentionally select and cluster one sample from a clearly justified GUI location, understand which downstream work will become stale, and continue directly to resolution review. Other samples' caches, selections, workflow states, and results remain byte-for-byte or semantically unchanged as applicable.
+
+**Acceptance result:** Complete in implementation and automated coverage. The
+secondary Start Menu action runs the existing clustering workflow with one
+validated source index, producing every configured resolution with the shared
+progress and state callbacks. Only that sample's downstream state and CNA cache
+artifacts are invalidated; its saved resolution value is retained but marked
+stale for explicit review. Completion can open Resolution Selection with the
+sample preselected. Single-shot confirmation/action guards prevent duplicate
+runs, and early failures transition only the selected sample to `failed` while
+leaving prior atomic artifacts and every other sample unchanged.
 
 ### F10 — Main-menu pipeline status overview
 
@@ -687,7 +708,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | F06 | Standardization onboarding | Complete | 2026-10-21 | Pre-load guide, reusable metadata prompt, local documentation links, and path-specific creation handoff added |
 | F07 | Bulk progress output | Complete | 2026-10-28 | Shared monotonic contract, clustering/DE overlays, stage-aware failures, console boundaries, elapsed time, and final summaries added |
 | F08 | Natural cluster ordering and DE score-plot layout | Complete | 2026-10-28 | Natural ordering is consistent; long sample identifiers are hard-wrapped above a compact metadata subtitle and score PNGs use an explicit 9 x 7 inch, 300-DPI export contract |
-| F09 | Single-sample clustering design and implementation | Not started | — | Low-priority convenience feature; GUI placement must be evaluated first |
+| F09 | Single-sample clustering design and implementation | Complete | 2026-10-28 | Secondary Start Menu action with sample/invalidation confirmation, shared clustering/progress path, sample-scoped state/cache invalidation, and direct resolution-review navigation |
 | F10 | Main-menu pipeline status overview | Not started | — | Low-priority visibility feature; summary/detail design must be evaluated first |
 | F11 | CNA threshold guidance and equal Y-threshold support | Not started | — | Low-priority control refinement; helper must match actual classification and save validation already permits equality |
 | F12 | High-count CNA subtree selection | Not started | — | Low-priority usability feature; compare spatial and ordered fallback prototypes first |
@@ -718,6 +739,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | 2026-10-28 | F08 | Added one display-only natural cluster-order helper and applied it to UMAP legends/colours, DE lists/axes/traversal, and annotation selection/advancement | Focused regressions and the full suite passed (995 assertions, 0 failures/warnings, 1 restricted-browser skip) |
 | 2026-10-28 | F08 addendum planning | Recorded that long sample names clip the resolution/cell-count suffix from DE signature-score boxplot titles | Source inspection found one unwrapped concatenated title and implicit `ggsave()` dimensions; implementation and long-name regression pending |
 | 2026-10-28 | F08 addendum | Separated the complete, hard-wrapped sample identifier from compact cluster/resolution/cell metadata and centralized score-plot export at 9 x 7 inches and 300 DPI without changing annotation filenames | Long unbroken/short-name and PNG-dimension regressions passed; full suite passed (1006 assertions, 0 failures/warnings, 1 restricted-browser skip) |
+| 2026-10-28 | F09 | Added a subordinate Start Menu single-sample clustering action, explicit downstream-impact confirmation, indexed reuse of the full clustering workflow, sample-scoped invalidation, duplicate guards, and preselected resolution-review navigation | Focused regressions and the full suite passed (1038 assertions, 0 failures/warnings, 1 restricted-browser skip) |
 | 2026-10-21 | F12 planning | Added brainstorming and prototyping for high-count CNA subtree selection while preserving hierarchical-tree cutting | Requires canonical leaf-order mapping, redundant non-colour identity cues, synchronized selection, and membership-level regression tests |
 | 2026-10-21 | F13 planning | Added publication of the finalized long CNA values table as a reusable CSV result with provenance and safe re-export | Required schema is `gene`, `chr`, `start_pos`, `cell_name`, `cna`; current matrix caches are 22 MB and 75 MB compressed, so chunked compressed CSV is proposed |
 | 2026-10-21 | F11 follow-up | Added concise helper text for the threshold sliders explaining eligible malignant assignment, safely non-malignant retention, and the Unassigned/NA gray zone | Wording derived from the current `apply_cna_thresholds()` comparison and eligibility rules; implementation pending |
