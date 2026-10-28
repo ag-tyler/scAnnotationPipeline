@@ -1,5 +1,69 @@
 # Dashboard navigation and pipeline trigger handlers.
 
+format_batch_progress_detail <- function(
+  sample_name,
+  sample_index,
+  sample_total,
+  stage,
+  detail,
+  outcome = NULL
+) {
+  stage_label <- gsub("_", " ", stage, fixed = TRUE)
+  paste0(
+    "Sample ", sample_index, " of ", sample_total, ": ", sample_name,
+    " - ", stage_label,
+    if (!is.null(detail) && nzchar(detail)) paste0(": ", detail) else "",
+    if (!is.null(outcome)) paste0(" [", outcome, "]") else ""
+  )
+}
+
+make_shiny_batch_progress_callback <- function(progress_context) {
+  force(progress_context)
+  function(
+    operation,
+    sample_name,
+    sample_index,
+    sample_total,
+    stage,
+    detail = NULL,
+    outcome = NULL,
+    fraction,
+    elapsed_seconds = NULL
+  ) {
+    progress_context$operation <- operation
+    progress_context$sample_name <- sample_name
+    progress_context$sample_index <- sample_index
+    progress_context$sample_total <- sample_total
+    progress_context$stage <- stage
+    progress_context$detail <- detail
+    progress_context$outcome <- outcome
+    progress_context$elapsed_seconds <- elapsed_seconds
+    setProgress(
+      value = fraction,
+      detail = format_batch_progress_detail(
+        sample_name,
+        sample_index,
+        sample_total,
+        stage,
+        detail,
+        outcome
+      )
+    )
+  }
+}
+
+format_batch_failure <- function(operation_label, progress_context, error) {
+  if (!is.null(progress_context$sample_name)) {
+    paste0(
+      operation_label, " failed for sample ", progress_context$sample_name,
+      " during ", gsub("_", " ", progress_context$stage, fixed = TRUE),
+      ": ", conditionMessage(error)
+    )
+  } else {
+    paste0(operation_label, " failed: ", conditionMessage(error))
+  }
+}
+
 register_dashboard_server <- function(input, output, session, state, context) {
   rv <- state
 
@@ -141,22 +205,26 @@ register_dashboard_server <- function(input, output, session, state, context) {
         resolutions = rv$dataset_config$params$resolutions
       )
     )
+    progress_context <- new.env(parent = emptyenv())
     tryCatch({
-      cluster_all_samples(
-        rv$paths_list,
-        rv$dataset_config,
-        rv$results_dir_path,
-        rv$dataset_dir_path,
-        state_callback = function(sample_name, status, reason = NULL, details = NULL) {
-          persist_sample_step(
-            "clustering",
-            sample_name,
-            status,
-            reason,
-            details
-          )
-        }
-      )
+      withProgress(message = "Bulk clustering", value = 0, {
+        cluster_all_samples(
+          rv$paths_list,
+          rv$dataset_config,
+          rv$results_dir_path,
+          rv$dataset_dir_path,
+          state_callback = function(sample_name, status, reason = NULL, details = NULL) {
+            persist_sample_step(
+              "clustering",
+              sample_name,
+              status,
+              reason,
+              details
+            )
+          },
+          progress_callback = make_shiny_batch_progress_callback(progress_context)
+        )
+      })
       record_state_event(
         rv,
         stage = "clustering",
@@ -180,15 +248,20 @@ register_dashboard_server <- function(input, output, session, state, context) {
         )
       ))
     }, error = function(error) {
+      failure_message <- format_batch_failure("Clustering", progress_context, error)
       record_state_event(
         rv,
         stage = "clustering",
         event_type = "clustering_run",
         outcome = "failed",
-        reason = conditionMessage(error)
+        reason = failure_message,
+        parameters = list(
+          sample = progress_context$sample_name,
+          failed_stage = progress_context$stage
+        )
       )
       showNotification(
-        paste("Clustering failed:", conditionMessage(error)),
+        failure_message,
         type = "error",
         duration = 10
       )
@@ -264,24 +337,28 @@ register_dashboard_server <- function(input, output, session, state, context) {
       outcome = "started",
       parameters = list(sample_count = length(rv$paths_list$sample_dir_paths))
     )
+    progress_context <- new.env(parent = emptyenv())
     tryCatch({
-      de_analysis(
-        rv$paths_list,
-        rv$dataset_config,
-        rv$live_selected_config,
-        rv$complete_markers,
-        rv$results_dir_path,
-        rv$dataset_dir_path,
-        state_callback = function(sample_name, status, reason = NULL, details = NULL) {
-          persist_sample_step(
-            "differential_expression",
-            sample_name,
-            status,
-            reason,
-            details
-          )
-        }
-      )
+      withProgress(message = "Bulk differential expression", value = 0, {
+        de_analysis(
+          rv$paths_list,
+          rv$dataset_config,
+          rv$live_selected_config,
+          rv$complete_markers,
+          rv$results_dir_path,
+          rv$dataset_dir_path,
+          state_callback = function(sample_name, status, reason = NULL, details = NULL) {
+            persist_sample_step(
+              "differential_expression",
+              sample_name,
+              status,
+              reason,
+              details
+            )
+          },
+          progress_callback = make_shiny_batch_progress_callback(progress_context)
+        )
+      })
       record_state_event(
         rv,
         stage = "differential_expression",
@@ -305,15 +382,24 @@ register_dashboard_server <- function(input, output, session, state, context) {
         )
       ))
     }, error = function(error) {
+      failure_message <- format_batch_failure(
+        "Differential expression",
+        progress_context,
+        error
+      )
       record_state_event(
         rv,
         stage = "differential_expression",
         event_type = "de_run",
         outcome = "failed",
-        reason = conditionMessage(error)
+        reason = failure_message,
+        parameters = list(
+          sample = progress_context$sample_name,
+          failed_stage = progress_context$stage
+        )
       )
       showNotification(
-        paste("Differential expression failed:", conditionMessage(error)),
+        failure_message,
         type = "error",
         duration = 10
       )

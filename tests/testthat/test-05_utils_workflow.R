@@ -138,6 +138,7 @@ test_that("single_de_analysis runs from cached clustering results and writes DE 
 test_that("de_analysis sends every sample through single_de_analysis", {
   calls <- integer()
   state_events <- list()
+  progress_events <- list()
   
   test_env <- new.env(
     parent = environment(de_analysis)
@@ -150,9 +151,12 @@ test_that("de_analysis sends every sample through single_de_analysis", {
     selected_config,
     complete_markers,
     results_dir_path,
-    dataset_dir_path
+    dataset_dir_path,
+    progress_callback = NULL
   ) {
     calls <<- c(calls, sample_idx)
+    progress_callback("input_loading", "Loading inputs", 0.05)
+    progress_callback("output_writing", "Writing outputs", 0.9)
     invisible(NULL)
   }
   
@@ -176,6 +180,9 @@ test_that("de_analysis sends every sample through single_de_analysis", {
     dataset_dir_path = tempfile(),
     state_callback = function(sample_name, status, reason = NULL, details = NULL) {
       state_events[[length(state_events) + 1L]] <<- c(sample_name, status)
+    },
+    progress_callback = function(...) {
+      progress_events[[length(progress_events) + 1L]] <<- list(...)
     }
   )
   
@@ -188,6 +195,14 @@ test_that("de_analysis sends every sample through single_de_analysis", {
       c("sample3", "in_progress"), c("sample3", "completed")
     )
   )
+  expect_true(all(diff(vapply(progress_events, `[[`, numeric(1), "fraction")) >= 0))
+  expect_setequal(
+    unique(vapply(progress_events, `[[`, character(1), "operation")),
+    "differential_expression"
+  )
+  expect_identical(progress_events[[length(progress_events)]]$sample_name, "sample3")
+  expect_identical(progress_events[[length(progress_events)]]$outcome, "completed")
+  expect_identical(progress_events[[length(progress_events)]]$fraction, 1)
 })
 
 

@@ -504,6 +504,13 @@ The pipeline loads standardized expression/cell/gene data, applies filtering and
 
 Clustering results and filtered matrices are cached on disk, and UMAP plots are written to the dataset results directories.
 
+During bulk clustering, an in-app progress overlay reports the current sample
+position, sample name, and real processing stage (input filtering, PCA/UMAP,
+filtered-expression caching, or the current resolution's clustering/plot/cache
+work). The console prints matching sample boundaries, elapsed time, and a final
+batch summary. The operation remains synchronous and intentionally has no
+misleading Cancel control.
+
 ### Resolution selection
 
 Choose one resolution per sample. The selected resolutions are stored in `selected_config.yaml` and used by downstream DE/annotation/CNA workflows.
@@ -518,6 +525,12 @@ For each selected clustering result, the pipeline:
 - counts marker matches over the configured top-N DE positions;
 - calculates signature scores;
 - writes marker-match tables and diagnostic plots.
+
+Bulk differential expression uses the same progress format as clustering. Its
+stages distinguish clustered-input/cache loading, DE calculation, marker
+matching, scoring/plot generation, and output writing. If either bulk workflow
+fails, the notification and structured event identify the sample and last real
+stage reached; processing remains fail-fast.
 
 ### Manual annotation
 
@@ -656,6 +669,7 @@ Some tests deliberately exercise validation/error/warning paths. Those condition
 | `test-golden_outputs.R` | Deterministic `compute_cna()` golden regression baseline |
 | `test-m0-cna-characterization.R` | Regression coverage for formerly exposed CNA numerical/cache failures |
 | `test-m5-cna-batch.R` | Mixed-validity batch isolation, subsets, progress, and retry behavior |
+| `test-f07-batch-progress.R` | Shared clustering/DE progress contract, monotonic fractions, Shiny formatting, and failure-stage reporting |
 | `test-regression_clustering.R` | Preprocessing → PCA → UMAP → Louvain integration/regression behavior |
 | `test-regression_cna_cache.R` | CNA compute/cache/load round trip and missing-cache behavior |
 | `test-standardize-general-template.R` | General-template safety, alignment, duplicate-gene preservation, and checklist contract |

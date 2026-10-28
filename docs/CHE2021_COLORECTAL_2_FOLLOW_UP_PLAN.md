@@ -330,6 +330,15 @@ Stage: differential expression
 
 **Acceptance:** Both bulk operations show a CNA-style progress overlay containing the current sample position, name, and real stage, including the last sample. The progress value never moves backwards. Console output retains clear sample boundaries and a final batch-complete line. Successful runs still show the existing completion/navigation dialog, and failures identify the sample and stage. Tests capture callbacks and Shiny progress updates without running the full biological dataset.
 
+**Acceptance result:** Complete in implementation and automated coverage.
+Clustering and differential expression now emit one shared callback contract
+with sample position, real stage/detail, terminal outcome, elapsed time, and a
+monotonic overall fraction. Both dashboard handlers use the same formatter in
+`withProgress()`, preserve their completion/navigation dialogs, and persist a
+sample/stage-specific failure reason. Console output has sample boundaries and
+final completed/failed/skipped/not-run summaries while retaining fail-fast
+behavior.
+
 ## 9. Milestone 4 — Ordering, optional workflow controls, and residual performance
 
 | ID | Priority | Complexity | Task | Dependencies |
@@ -628,7 +637,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | F04 | Fast loading and stage-aware cache contract | Complete | 2026-10-21 | One-pass metadata reconciliation, deferred deep validation, metadata-keyed checksum reuse, legacy fallback, and accurate rerun reasons implemented |
 | F05 | Stale-annotation recovery and annotation/CNA save sequence | Complete | 2026-10-21 | Same-sample readiness retry, safe saved-label reuse, independent annotation save, and reversible explicit CNA omission implemented |
 | F06 | Standardization onboarding | Complete | 2026-10-21 | Pre-load guide, reusable metadata prompt, local documentation links, and path-specific creation handoff added |
-| F07 | Bulk progress output | Not started | — | — |
+| F07 | Bulk progress output | Complete | 2026-10-28 | Shared monotonic contract, clustering/DE overlays, stage-aware failures, console boundaries, elapsed time, and final summaries added |
 | F08 | Natural cluster ordering | Not started | — | — |
 | F09 | Single-sample clustering design and implementation | Not started | — | Low-priority convenience feature; GUI placement must be evaluated first |
 | F10 | Main-menu pipeline status overview | Not started | — | Low-priority visibility feature; summary/detail design must be evaluated first |
@@ -657,6 +666,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | 2026-10-21 | F02/F05 follow-up | Confirmed console startup prevents the reported Dataset Selection resets; recorded that successful DE rerun leaves prior annotations stale and inaccessible | Source/state inspection found completed DE with stale annotation and a likely same-sample observer retry gap; implementation pending |
 | 2026-10-21 | F02/F11 follow-up | Confirmed page and click responsiveness remains fixed with console startup; recorded positive CNA compute/status navigation feedback and requested equal Y-threshold support | Source inspection confirms sliders impose a 0.01 gap while save validation already accepts equality |
 | 2026-10-21 | F07 follow-up | Expanded bulk progress from console formatting to CNA-style Shiny progress overlays for clustering and DE | Existing CNA `withProgress()` and callback implementation provides the local pattern; implementation pending |
+| 2026-10-28 | F07 | Added one monotonic clustering/DE progress contract, CNA-style Shiny overlays, real stage/sample failure context, console boundaries, elapsed time, and fail-fast batch summaries | Focused regressions and the full suite passed (984 assertions, 0 failures/warnings, 1 restricted-browser skip) |
 | 2026-10-21 | F12 planning | Added brainstorming and prototyping for high-count CNA subtree selection while preserving hierarchical-tree cutting | Requires canonical leaf-order mapping, redundant non-colour identity cues, synchronized selection, and membership-level regression tests |
 | 2026-10-21 | F13 planning | Added publication of the finalized long CNA values table as a reusable CSV result with provenance and safe re-export | Required schema is `gene`, `chr`, `start_pos`, `cell_name`, `cna`; current matrix caches are 22 MB and 75 MB compressed, so chunked compressed CSV is proposed |
 | 2026-10-21 | F11 follow-up | Added concise helper text for the threshold sliders explaining eligible malignant assignment, safely non-malignant retention, and the Unassigned/NA gray zone | Wording derived from the current `apply_cna_thresholds()` comparison and eligibility rules; implementation pending |

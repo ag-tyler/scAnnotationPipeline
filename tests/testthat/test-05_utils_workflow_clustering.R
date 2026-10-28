@@ -65,6 +65,7 @@ test_that("cluster_all_samples writes cluster cache, expression cache, and plot"
   )
   
   state_events <- list()
+  progress_events <- list()
   cluster_all_samples(
     paths_list = paths_list,
     config = config,
@@ -72,6 +73,9 @@ test_that("cluster_all_samples writes cluster cache, expression cache, and plot"
     dataset_dir_path = dataset_dir,
     state_callback = function(sample_name, status, reason = NULL, details = NULL) {
       state_events[[length(state_events) + 1L]] <<- c(sample_name, status)
+    },
+    progress_callback = function(...) {
+      progress_events[[length(progress_events) + 1L]] <<- list(...)
     }
   )
   
@@ -126,6 +130,19 @@ test_that("cluster_all_samples writes cluster cache, expression cache, and plot"
       ) %in% names(cells_out)
     )
   )
+
+  expect_true(length(progress_events) >= 6L)
+  expect_true(all(vapply(
+    progress_events,
+    function(event) identical(event$operation, "clustering"),
+    logical(1)
+  )))
+  expect_true(all(diff(vapply(progress_events, `[[`, numeric(1), "fraction")) >= 0))
+  expect_identical(progress_events[[length(progress_events)]]$outcome, "completed")
+  expect_identical(progress_events[[length(progress_events)]]$fraction, 1)
+  expect_true(all(c(
+    "loading_filtering", "pca_umap", "filtered_cache", "resolution", "completed"
+  ) %in% vapply(progress_events, `[[`, character(1), "stage")))
   
   expect_false(
     anyNA(cells_out$umap1)

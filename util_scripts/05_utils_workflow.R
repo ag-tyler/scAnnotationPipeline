@@ -309,12 +309,56 @@ pca_umap_louvain <- function(expmat_filt, cells_filt, dataset_config, selected_c
 
 
 
+report_batch_progress <- function(
+  progress_callback,
+  operation,
+  sample_name,
+  sample_index,
+  sample_total,
+  stage,
+  detail,
+  sample_fraction,
+  outcome = NULL,
+  elapsed_seconds = NULL
+) {
+  sample_fraction <- max(0, min(1, as.numeric(sample_fraction)))
+  fraction <- ((sample_index - 1) + sample_fraction) / sample_total
+
+  message(
+    "[", sample_index, "/", sample_total, "] ", sample_name,
+    " | ", stage, " | ", detail,
+    if (!is.null(elapsed_seconds)) {
+      paste0(" | elapsed ", sprintf("%.1f", elapsed_seconds), "s")
+    } else {
+      ""
+    }
+  )
+
+  if (is.function(progress_callback)) {
+    progress_callback(
+      operation = operation,
+      sample_name = sample_name,
+      sample_index = sample_index,
+      sample_total = sample_total,
+      stage = stage,
+      detail = detail,
+      outcome = outcome,
+      fraction = fraction,
+      elapsed_seconds = elapsed_seconds
+    )
+  }
+
+  invisible(fraction)
+}
+
+
 cluster_all_samples <- function(
   paths_list,
   config,
   results_dir_path,
   dataset_dir_path,
-  state_callback = NULL
+  state_callback = NULL,
+  progress_callback = NULL
 ) {
   #' Batch Process and Cluster Multiple Single-Cell Samples
   #'
@@ -333,6 +377,10 @@ cluster_all_samples <- function(
   #'   plots, and summaries are saved for the current dataset.
   #' @param dataset_dir_path Character. The absolute path to the root directory of the current 
   #'   dataset, used primarily for locating and managing the `cache` subdirectory.
+  #' @param state_callback Optional function called when each sample enters a workflow state.
+  #' @param progress_callback Optional function receiving the shared batch-progress contract:
+  #'   operation, sample identity and position, stage/detail, terminal outcome, overall fraction,
+  #'   and elapsed seconds.
   #'
   #' @return None. This function is evaluated for its side effects (disk I/O).
   #'
@@ -349,16 +397,54 @@ cluster_all_samples <- function(
   expmat_file_paths <- paths_list$expmat_file_paths
   genes_file_paths <- paths_list$genes_file_paths
   
-  for (i in seq_along(sample_dir_paths)) {
-    # Load cells table to get current sample name
-    cells <- load_cells(cell_file_paths[i])
-    sample_name <- unique(cells$sample)
-    message('Working on sample: ', sample_name)
+  sample_total <- length(sample_dir_paths)
+  batch_started_at <- proc.time()[["elapsed"]]
+  completed_count <- 0L
+  failed_count <- 0L
+  on.exit({
+    elapsed <- proc.time()[["elapsed"]] - batch_started_at
+    message(
+      "Clustering batch finished: completed=", completed_count,
+      ", failed=", failed_count,
+      ", skipped=0, not_run=", sample_total - completed_count - failed_count,
+      ", elapsed=", sprintf("%.1f", elapsed), "s"
+    )
+  }, add = TRUE)
 
-    if (is.function(state_callback)) {
-      state_callback(sample_name, "in_progress")
+  for (i in seq_along(sample_dir_paths)) {
+    sample_name <- basename(sample_dir_paths[[i]])
+    sample_started_at <- proc.time()[["elapsed"]]
+    sample_fraction <- 0
+    sample_stage <- "starting"
+    message(strrep("#", 80))
+    message("[", i, "/", sample_total, "] Starting sample ", sample_name)
+    report <- function(stage, detail, fraction, outcome = NULL) {
+      sample_fraction <<- fraction
+      sample_stage <<- stage
+      report_batch_progress(
+        progress_callback = progress_callback,
+        operation = "clustering",
+        sample_name = sample_name,
+        sample_index = i,
+        sample_total = sample_total,
+        stage = stage,
+        detail = detail,
+        sample_fraction = fraction,
+        outcome = outcome,
+        elapsed_seconds = proc.time()[["elapsed"]] - sample_started_at
+      )
     }
+
     tryCatch({
+      report("loading_filtering", "Loading and filtering standardized inputs", 0.05)
+      cells <- load_cells(cell_file_paths[i])
+      loaded_sample_name <- unique(cells$sample)
+      if (length(loaded_sample_name) == 1L && !is.na(loaded_sample_name)) {
+        sample_name <- loaded_sample_name
+      }
+      if (is.function(state_callback)) {
+        state_callback(sample_name, "in_progress")
+      }
       results_list <- load_filter_cells_expmat(cell_file_paths[i], expmat_file_paths[i],
                                                genes_file_paths[i], config)
       cells_filt <- results_list$cells_filt
@@ -370,7 +456,7 @@ cluster_all_samples <- function(
       result_sample_dir_path <- file.path(results_dir_path, sample_name)
       dir.create(result_sample_dir_path, showWarnings = FALSE)
 
-      message('PCA + UMAP')
+      report("pca_umap", "Computing PCA and UMAP", 0.25)
       # Clustering
       exp_pca <- run_expmat_pca(expmat_filt, config$params$pca_nv)
       exp_umap <- run_expmat_umap(exp_pca, ncol(expmat_filt), config$params$umap$spread,
@@ -379,6 +465,7 @@ cluster_all_samples <- function(
       # Persist the filtered matrix before the resolution-specific artifacts.
       # Each artifact is registered only after serialization and validation.
       expmat_file_name <- paste0('expmat_filt_', sample_name, '.qs2')
+      report("filtered_cache", "Caching the filtered expression matrix", 0.45)
       message('Caching: ', expmat_file_name)
       cache_save_data(
         expmat_filt,
@@ -393,7 +480,18 @@ cluster_all_samples <- function(
       clust_plots_sample_dir_path <- file.path(result_sample_dir_path, '1_cluster_plots')
       dir.create(clust_plots_sample_dir_path, showWarnings = FALSE)
       message('Clustering')
-      for (resolution in config$params$resolutions) {
+      resolution_total <- length(config$params$resolutions)
+      for (resolution_index in seq_along(config$params$resolutions)) {
+        resolution <- config$params$resolutions[[resolution_index]]
+        resolution_start <- 0.45 + 0.5 * (resolution_index - 1) / resolution_total
+        report(
+          "resolution",
+          paste0(
+            "Clustering, plotting, and caching resolution ", resolution,
+            " (", resolution_index, " of ", resolution_total, ")"
+          ),
+          resolution_start
+        )
         cells_filt <- louvain_clustering(exp_pca, exp_umap, cells_filt, resolution,
                                          config$params$seed)
         # Plotting
@@ -415,6 +513,11 @@ cluster_all_samples <- function(
           dependencies = clustering_cache_dependencies(paths_list, i, config, resolution),
           producer = "cluster_all_samples/clustering"
         )
+        report(
+          "resolution_complete",
+          paste0("Resolution ", resolution, " complete"),
+          0.45 + 0.5 * resolution_index / resolution_total
+        )
       }
 
       if (is.function(state_callback)) {
@@ -424,11 +527,23 @@ cluster_all_samples <- function(
           details = list(resolutions = config$params$resolutions)
         )
       }
+      completed_count <- completed_count + 1L
+      report("completed", "Clustering outputs complete", 1, outcome = "completed")
       message('Finished ', sample_name)
+      message(strrep("#", 80))
     }, error = function(error) {
+      failed_count <<- failed_count + 1L
       if (is.function(state_callback)) {
         state_callback(sample_name, "failed", reason = conditionMessage(error))
       }
+      failed_stage <- sample_stage
+      report(
+        failed_stage,
+        paste0("Failed during ", failed_stage, ": ", conditionMessage(error)),
+        sample_fraction,
+        outcome = "failed"
+      )
+      message(strrep("#", 80))
       stop(error)
     })
   }
@@ -436,7 +551,8 @@ cluster_all_samples <- function(
 
 
 single_de_analysis <- function(sample_idx, paths_list, dataset_config, selected_config, 
-                               complete_markers, results_dir_path, dataset_dir_path) {
+                               complete_markers, results_dir_path, dataset_dir_path,
+                               progress_callback = NULL) {
   #' Perform Differential Expression Analysis and Marker Scoring for a Single Sample
   #'
   #' @param sample_idx Integer. The index of the sample to process within the paths_list.
@@ -450,6 +566,8 @@ single_de_analysis <- function(sample_idx, paths_list, dataset_config, selected_
   #'   plots, and summaries are saved for the current dataset.
   #' @param dataset_dir_path Character. The absolute path to the root directory of the current 
   #'   dataset, used primarily for locating and managing the `cache` subdirectory.
+  #' @param progress_callback Optional per-sample function receiving stage, detail, and the
+  #'   within-sample fraction. The batch wrapper maps this to the shared progress contract.
   #'
   #' @return None. Evaluated entirely for its side effects (disk I/O).
   
@@ -462,6 +580,13 @@ single_de_analysis <- function(sample_idx, paths_list, dataset_config, selected_
   cells <- load_cells(cell_file_path)
   sample_name <- unique(cells$sample)
   message('Working on sample: ', sample_name)
+  if (is.function(progress_callback)) {
+    progress_callback(
+      "input_loading",
+      "Loading validated clustered inputs and caches",
+      0.05
+    )
+  }
   
   cells_filt_file_name <- paste0('cells_filt_clust_res_', selected_config$resolutions[[sample_name]], 
                                  '_', sample_name, '.qs2')
@@ -506,6 +631,13 @@ single_de_analysis <- function(sample_idx, paths_list, dataset_config, selected_
   dir.create(result_sample_dir_path, showWarnings = FALSE)
   
   message('Starting differential expression analysis')
+  if (is.function(progress_callback)) {
+    progress_callback(
+      "differential_expression",
+      "Calculating cluster differential expression",
+      0.25
+    )
+  }
   # Set differential expression analysis parameters
   de_parameters <- list(
     clusters = unique(cells_filt$clust),
@@ -518,6 +650,13 @@ single_de_analysis <- function(sample_idx, paths_list, dataset_config, selected_
   de_clust <- mean_diff_exp(expmat_filt, cells_filt, de_parameters)
   
   # Get list of data tables with matched marker genes per cluster
+  if (is.function(progress_callback)) {
+    progress_callback(
+      "marker_matching",
+      "Matching differential-expression genes to marker sets",
+      0.5
+    )
+  }
   de_clusters_list <- match_marker_genes(de_clust, complete_markers, de_parameters)
   
   # Build counts data table of marker genes found per cell
@@ -526,6 +665,13 @@ single_de_analysis <- function(sample_idx, paths_list, dataset_config, selected_
   
   # Plot de clusters
   # Plot stacked bar chart of counts
+  if (is.function(progress_callback)) {
+    progress_callback(
+      "scoring_plotting",
+      "Scoring cells and generating marker plots",
+      0.7
+    )
+  }
   gene_count_plot <- stacked_gene_match_count_plot(clusters_marker_counts, de_parameters, 
                                                    selected_config$resolutions[[sample_name]])
   
@@ -561,6 +707,13 @@ single_de_analysis <- function(sample_idx, paths_list, dataset_config, selected_
   }
   
   # Save the marker match tables as csv per cluster
+  if (is.function(progress_callback)) {
+    progress_callback(
+      "output_writing",
+      "Writing marker-match tables and final outputs",
+      0.9
+    )
+  }
   all_matches_path <- file.path(de_plots_dir_path, 'all_marker_matches.csv')
   all_matches <- data.table::rbindlist(de_clusters_list)
   data.table::setorder(all_matches, clust)
@@ -577,7 +730,8 @@ de_analysis <- function(
   complete_markers,
   results_dir_path,
   dataset_dir_path,
-  state_callback = NULL
+  state_callback = NULL,
+  progress_callback = NULL
 ) {
   #' Perform Differential Expression Analysis and Marker Scoring
   #'
@@ -599,15 +753,54 @@ de_analysis <- function(
   #'   plots, and summaries are saved for the current dataset.
   #' @param dataset_dir_path Character. The absolute path to the root directory of the current 
   #'   dataset, used primarily for locating and managing the `cache` subdirectory.
+  #' @param state_callback Optional function called when each sample enters a workflow state.
+  #' @param progress_callback Optional function receiving the shared batch-progress contract:
+  #'   operation, sample identity and position, stage/detail, terminal outcome, overall fraction,
+  #'   and elapsed seconds.
   #'
   #' @return None. This function is evaluated entirely for its side effects (disk I/O).
   
   #'   in the parent/global environment, as they are not explicitly passed as arguments.
   sample_dir_paths <- paths_list$sample_dir_paths
   
+  sample_total <- length(sample_dir_paths)
+  batch_started_at <- proc.time()[["elapsed"]]
+  completed_count <- 0L
+  failed_count <- 0L
+  on.exit({
+    elapsed <- proc.time()[["elapsed"]] - batch_started_at
+    message(
+      "Differential-expression batch finished: completed=", completed_count,
+      ", failed=", failed_count,
+      ", skipped=0, not_run=", sample_total - completed_count - failed_count,
+      ", elapsed=", sprintf("%.1f", elapsed), "s"
+    )
+  }, add = TRUE)
+
   # Iterate over all samples and route them to the single analysis workflow
   for (i in seq_along(sample_dir_paths)) {
     sample_name <- basename(sample_dir_paths[[i]])
+    sample_started_at <- proc.time()[["elapsed"]]
+    sample_fraction <- 0
+    sample_stage <- "starting"
+    message(strrep("#", 80))
+    message("[", i, "/", sample_total, "] Starting sample ", sample_name)
+    report <- function(stage, detail, fraction, outcome = NULL) {
+      sample_fraction <<- fraction
+      sample_stage <<- stage
+      report_batch_progress(
+        progress_callback = progress_callback,
+        operation = "differential_expression",
+        sample_name = sample_name,
+        sample_index = i,
+        sample_total = sample_total,
+        stage = stage,
+        detail = detail,
+        sample_fraction = fraction,
+        outcome = outcome,
+        elapsed_seconds = proc.time()[["elapsed"]] - sample_started_at
+      )
+    }
     if (is.function(state_callback)) state_callback(sample_name, "in_progress")
     tryCatch({
       single_de_analysis(
@@ -617,7 +810,8 @@ de_analysis <- function(
         selected_config = selected_config,
         complete_markers = complete_markers,
         results_dir_path = results_dir_path,
-        dataset_dir_path = dataset_dir_path
+        dataset_dir_path = dataset_dir_path,
+        progress_callback = report
       )
       if (is.function(state_callback)) {
         state_callback(
@@ -626,10 +820,22 @@ de_analysis <- function(
           details = list(resolution = selected_config$resolutions[[sample_name]])
         )
       }
+      completed_count <- completed_count + 1L
+      report("completed", "Differential-expression outputs complete", 1, outcome = "completed")
+      message(strrep("#", 80))
     }, error = function(error) {
+      failed_count <<- failed_count + 1L
       if (is.function(state_callback)) {
         state_callback(sample_name, "failed", reason = conditionMessage(error))
       }
+      failed_stage <- sample_stage
+      report(
+        failed_stage,
+        paste0("Failed during ", failed_stage, ": ", conditionMessage(error)),
+        sample_fraction,
+        outcome = "failed"
+      )
+      message(strrep("#", 80))
       stop(error)
     })
   }
