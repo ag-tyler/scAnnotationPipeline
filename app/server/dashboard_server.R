@@ -68,6 +68,15 @@ register_dashboard_server <- function(input, output, session, state, context) {
   rv <- state
   single_clustering_completed_index <- reactiveVal(NULL)
 
+  pipeline_overview_summary <- reactive({
+    req(rv$pipeline_state)
+    summarize_pipeline_overview(rv$pipeline_state)
+  })
+
+  output$pipeline_status_overview <- renderUI({
+    pipeline_status_overview_ui(pipeline_overview_summary())
+  })
+
   persist_sample_step <- function(step, sample_name, status, reason = NULL, details = NULL) {
     current <- get_pipeline_step(rv$pipeline_state, step, sample_name)
     invalidate <- identical(status, "in_progress") &&

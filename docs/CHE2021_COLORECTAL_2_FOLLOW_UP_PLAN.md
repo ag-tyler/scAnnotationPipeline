@@ -495,6 +495,8 @@ Begin with a small UI-design exercise comparing:
 
 The preferred direction is a compact summary followed by collapsible details, but confirm that it remains readable for datasets with many samples and all current workflow stages. Record the selected design and rationale before implementation.
 
+**Selected design:** Use the combined design. Six compact, responsive stage cards provide an immediate dataset-level count of every status currently present. A native collapsible details section contains the exact sample-by-stage table, concise reasons, and each sample's next sensible action. The table is horizontally scrollable on narrow screens, while keeping large datasets collapsed by default avoids turning the Start Menu into a long matrix. Status cells are intentionally not navigation links: the overview remains read-only and cannot bypass existing workflow or unsaved-edit guards.
+
 Display requirements:
 
 - show the loaded dataset name and dataset-level standardization status;
@@ -523,6 +525,8 @@ Required tests:
 - any optional navigation opens the appropriate existing view without bypassing guards.
 
 **Acceptance:** Immediately after dataset load, the Start Menu clearly communicates overall progress and which samples or stages require attention. The overview stays synchronized with persisted state during the session and adds negligible rendering cost and no cache-validation work.
+
+**Acceptance result:** Complete in implementation and automated coverage. The Start Menu now renders a read-only summary from the session's validated `pipeline_state`, with responsive stage cards, an expandable sample table, actionable reasons, and per-sample next actions. CNA omission remains visibly skipped rather than appearing incomplete. The summarizer is pure, performs no filesystem or cache reads, and recomputes only when the reactive pipeline-state value changes. Tests cover mixed/stale/skipped states, every accessible status presentation, in-session revisions, zero/one/many samples, non-mutation, and the no-I/O architecture constraint.
 
 ### F11 — CNA threshold guidance and equal Y-threshold support
 
@@ -733,7 +737,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | F07 | Bulk progress output | Complete | 2026-10-28 | Shared monotonic contract, clustering/DE overlays, stage-aware failures, console boundaries, elapsed time, and final summaries added |
 | F08 | Natural cluster ordering and DE score-plot layout | Complete | 2026-10-28 | Natural ordering is consistent; long sample identifiers are hard-wrapped above a compact metadata subtitle and score PNGs use an explicit 9 x 7 inch, 300-DPI export contract |
 | F09 | Single-sample clustering design and implementation | Complete | 2026-10-28 | Secondary Start Menu clustering action plus shared targeted-DE actions in Resolution Selection and Manual Annotation, with sample-scoped invalidation, guards, and direct recovery navigation |
-| F10 | Main-menu pipeline status overview | Not started | — | Low-priority visibility feature; summary/detail design must be evaluated first |
+| F10 | Main-menu pipeline status overview | Complete | 2026-10-28 | Read-only responsive stage cards and collapsible per-sample details derived solely from reactive pipeline state |
 | F11 | CNA threshold guidance and equal Y-threshold support | Not started | — | Low-priority control refinement; helper must match actual classification and save validation already permits equality |
 | F12 | High-count CNA subtree selection | Not started | — | Low-priority usability feature; compare spatial and ordered fallback prototypes first |
 | F13 | CNA values-table results export | Not started | — | Low-priority reusable long-format output; compressed CSV default due potentially large files |
@@ -768,6 +772,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | 2026-10-21 | F12 planning | Added brainstorming and prototyping for high-count CNA subtree selection while preserving hierarchical-tree cutting | Requires canonical leaf-order mapping, redundant non-colour identity cues, synchronized selection, and membership-level regression tests |
 | 2026-10-21 | F13 planning | Added publication of the finalized long CNA values table as a reusable CSV result with provenance and safe re-export | Required schema is `gene`, `chr`, `start_pos`, `cell_name`, `cna`; current matrix caches are 22 MB and 75 MB compressed, so chunked compressed CSV is proposed |
 | 2026-10-21 | F11 follow-up | Added concise helper text for the threshold sliders explaining eligible malignant assignment, safely non-malignant retention, and the Unassigned/NA gray zone | Wording derived from the current `apply_cna_thresholds()` comparison and eligibility rules; implementation pending |
+| 2026-10-28 | F10 | Added the combined Start Menu pipeline overview with accessible aggregate cards, collapsible sample details, reasons, CNA-aware next actions, and no rendering-time I/O | Focused regressions and the full suite passed with no failures/warnings and one restricted-browser skip |
 
 ## 12. Progress notes and additional information — living section
 

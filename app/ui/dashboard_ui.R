@@ -1,5 +1,135 @@
 # Dashboard and reference-data UI.
 
+
+pipeline_overview_status_badge <- function(record, count = NULL) {
+  presentation <- pipeline_status_presentation(record)
+  label <- if (is.null(count)) {
+    presentation$label
+  } else {
+    paste(count, presentation$label)
+  }
+  span(
+    class = paste0(
+      "badge text-bg-", presentation$class,
+      " pipeline-status-badge pipeline-status-", presentation$status
+    ),
+    icon(presentation$icon, class = "me-1", `aria-hidden` = "true"),
+    label
+  )
+}
+
+
+pipeline_overview_status_cell <- function(record) {
+  div(
+    class = paste0("pipeline-status-cell pipeline-status-", record$status),
+    pipeline_overview_status_badge(record),
+    if (!is.null(record$reason) && nzchar(record$reason)) {
+      div(class = "small text-body-secondary mt-1", record$reason)
+    }
+  )
+}
+
+
+pipeline_status_overview_ui <- function(summary) {
+  standardization <- pipeline_status_presentation(summary$standardization)
+  stage_cards <- lapply(summary$stages, function(stage) {
+    nonzero <- which(stage$counts > 0L)
+    card(
+      class = "h-100 pipeline-overview-stage-card",
+      card_header(strong(stage$label)),
+      card_body(
+        if (length(nonzero) == 0L) {
+          span(class = "text-body-secondary", "No samples")
+        } else {
+          tags$div(
+            class = "d-flex flex-wrap gap-1",
+            lapply(nonzero, function(index) {
+              status <- names(stage$counts)[[index]]
+              pipeline_overview_status_badge(
+                new_pipeline_overview_record(status),
+                stage$counts[[index]]
+              )
+            })
+          )
+        }
+      )
+    )
+  })
+
+  details_content <- if (summary$sample_count == 0L) {
+    div(class = "alert alert-secondary mt-3 mb-0", "No samples are configured for this dataset.")
+  } else {
+    tags$div(
+      class = "table-responsive mt-3",
+      tags$table(
+        class = "table table-sm table-striped align-middle pipeline-overview-table",
+        tags$thead(tags$tr(
+          tags$th(scope = "col", "Sample"),
+          lapply(summary$stages, function(stage) tags$th(scope = "col", stage$label)),
+          tags$th(scope = "col", "Next action")
+        )),
+        tags$tbody(lapply(summary$samples, function(sample_summary) {
+          tags$tr(
+            tags$th(scope = "row", sample_summary$name),
+            lapply(sample_summary$records, function(record) {
+              tags$td(pipeline_overview_status_cell(record))
+            }),
+            tags$td(class = "pipeline-next-action", sample_summary$next_action$label)
+          )
+        }))
+      )
+    )
+  }
+
+  card(
+    class = "mb-4 pipeline-status-overview",
+    card_header(
+      div(
+        class = "d-flex flex-wrap justify-content-between align-items-center gap-2",
+        h4("Pipeline Status", class = "mb-0"),
+        span(
+          class = paste0("badge text-bg-", standardization$class),
+          icon(standardization$icon, class = "me-1", `aria-hidden` = "true"),
+          paste0("Standardization: ", standardization$label)
+        )
+      )
+    ),
+    card_body(
+      div(
+        class = "mb-3",
+        strong(summary$dataset_id),
+        span(
+          class = "text-body-secondary ms-2",
+          paste0(summary$sample_count, if (summary$sample_count == 1L) " sample" else " samples")
+        )
+      ),
+      if (!is.null(summary$standardization$reason) && nzchar(summary$standardization$reason)) {
+        div(class = "small text-body-secondary mb-3", summary$standardization$reason)
+      },
+      if (!is.null(summary$attention)) {
+        div(
+          class = "alert alert-light border py-2",
+          strong("Next attention: "),
+          summary$attention$name,
+          " — ",
+          summary$attention$next_action$label
+        )
+      } else if (summary$sample_count > 0L) {
+        div(class = "alert alert-success py-2", "All samples have completed or intentionally skipped their remaining steps.")
+      },
+      div(
+        class = "row row-cols-1 row-cols-md-2 row-cols-xl-3 g-2",
+        lapply(stage_cards, function(stage_card) div(class = "col", stage_card))
+      ),
+      tags$details(
+        class = "mt-3 pipeline-overview-details",
+        tags$summary(class = "btn btn-outline-secondary", "Show sample details"),
+        details_content
+      )
+    )
+  )
+}
+
 dashboard_panel <- function() {
   nav_panel(
     title = "Start Menu",
@@ -14,6 +144,7 @@ dashboard_panel <- function() {
         icon = icon("exchange-alt"),
         class = "btn-outline-primary btn-lg w-100 mb-4"
       ),
+      uiOutput("pipeline_status_overview"),
       card(
         card_header(h4("Utilities", class = "mb-0")),
         card_body(
