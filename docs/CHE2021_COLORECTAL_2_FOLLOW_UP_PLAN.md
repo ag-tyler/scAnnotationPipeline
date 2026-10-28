@@ -4,7 +4,7 @@
 
 **Initial plan date:** 2026-10-21  
 **Last progress update:** 2026-10-28
-**Current phase:** Milestones 0–3 complete; Milestone 4 in progress, with F16 complete and F14 next
+**Current phase:** Milestones 0–4 complete; F15 integration and final full-dataset replay are next
 **Basis:** Manual test notes, follow-up console-launch testing, current source inspection, file-size inventory, `pipeline.log`, and `pipeline_state.yaml` from `Che2021_Colorectal_2`.
 
 ---
@@ -835,6 +835,8 @@ Likely improvements, to apply only when supported by profiling, include caching 
 
 **Acceptance:** Establish a hardware-specific baseline and target in F01. At minimum, navbar changes and lightweight buttons must not perform dataset-wide disk/cache work and should feel immediate; dataset/sample loads must show explicit busy feedback when they legitimately require I/O. F16 storage readiness must remain metadata-only during ordinary rendering. Record before/after timings in the progress notes.
 
+**Acceptance result:** Complete in implementation, profiling, and automated coverage. A reusable read-only profiler now measures Start Menu summary/UI rendering, storage readiness, CNA status preflight, and Manual Annotation sample loading against any dataset. On `Che2021_Colorectal_2` (15 samples, 156 cache files, 592.2 MB), Manual Annotation sample loading fell from a 2.26 s median (3.30 s maximum) to 0.22 s (0.91 s maximum) by loading only the validated clustered-cell cache once instead of validating and deserializing both cells and the unused expression matrix twice. CNA status preflight fell from a 0.19 s median (0.93 s maximum) to 0.09 s (0.28 s maximum) by using manifest metadata for the expression cache, loading cells once, and sharing one reactive preflight between UI consumers. Threshold plots now load each signal table once per sample/state context and perform no cache reads on slider-only rerenders; the CNA static heatmap also avoids a duplicate hierarchy-cache validation read. Start Menu pipeline summary/UI medians remain 0.01/0.05 s, storage UI construction is below timer resolution, and the 0.33 s whole-dataset cleanup readiness check is metadata-only and reactively cached. Navbar handlers themselves perform no dataset-wide I/O. Final perceived-response review remains part of F15's complete-dataset replay.
+
 ## 10. Milestone 5 — Integration and release acceptance
 
 | ID | Priority | Complexity | Task | Dependencies |
@@ -887,7 +889,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | 1 — Stable runtime and navigation | Complete | No write-triggered restart or unintended Dataset Selection transition |
 | 2 — Cache loading and save correctness | Complete | Fast load, valid annotation reload, and coherent CNA decisions |
 | 3 — Onboarding and progress | Complete | Standardization guide and batch output accepted |
-| 4 — Ordering, optional controls, status, cleanup, and performance | In progress | Natural ordering, safe single-sample clustering, clear status overview, flexible CNA Y thresholds, unambiguous subtree selection, safe archive cleanup, and responsiveness targets met |
+| 4 — Ordering, optional controls, status, cleanup, and performance | Complete | Natural ordering, safe single-sample clustering, clear status overview, flexible CNA Y thresholds, unambiguous subtree selection, safe archive cleanup, and responsiveness targets met |
 | 5 — Integration and CNA replay | Not started | Automated gate and manual end-to-end replay pass |
 
 ### 11.2 Task status
@@ -908,7 +910,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | F12 | High-count CNA subtree selection | Complete | 2026-10-28 | Lightweight top-to-bottom navigator accepted without main-heatmap highlighting; saved PNG retains its full cluster legend |
 | F13 | CNA values-table results export | Complete | 2026-10-28 | Atomic chunked gzip CSV plus provenance, automatic finalization export, current/outdated status, and manual re-export without CNA recomputation |
 | F16 | Finished-dataset cache cleanup and archive lifecycle | Complete | 2026-10-28 | Dataset-level archive card, durable-output/F13 gate, atomic journal, recoverable retirement/deletion retry, archive audit, and explicit stale-on-reopen path |
-| F14 | Residual performance optimization | Not started | — | Begins after F16 manual review |
+| F14 | Residual performance optimization | Complete | 2026-10-28 | Reproducible interaction profiler; redundant annotation/CNA deserialization removed; CNA preflight and threshold data shared reactively |
 | F15 | Integration and CNA replay | Not started | — | — |
 
 ### 11.3 Progress history
@@ -947,6 +949,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | 2026-10-28 | F13 | Added canonical chunked CNA cache-to-long conversion, atomic gzip CSV/provenance publication, automatic post-assignment export, explicit current/outdated status, and manual re-export | Focused tests cover exact round-trip values/ordering, CSV quoting and typed import, provenance invalidation, no recomputation, publication rollback, invalid identifiers, and preview/finalization lifecycle ordering; full suite passed 1,358 assertions with 0 failures/warnings and the known restricted-browser skip |
 | 2026-10-28 | F16 planning | Added a finished-dataset cleanup/archive lifecycle and compared per-sample with dataset-level scope | Recommended dataset-level cleanup only after every sample is terminal and durable outputs—including current F13 exports—are verified; scientific statuses remain intact while a separate storage lifecycle prevents intentional cache retirement from appearing stale |
 | 2026-10-28 | F16 | Implemented whole-dataset cache cleanup as a separate archive lifecycle with exact preview, typed confirmation, output/F13 validation, recoverable directory retirement, retry, read-only reload, retained-output audit, and explicit reopen | Focused lifecycle/component tests and the full suite passed (1,438 assertions, 0 failures/warnings, 1 restricted-browser skip) |
+| 2026-10-28 | F14 | Profiled residual Start Menu, annotation, and CNA interaction paths and removed measured redundant cache work | On the 15-sample Che dataset, annotation sample-load median improved 2.26 s → 0.22 s and CNA status preflight 0.19 s → 0.09 s; threshold slider rerenders now do zero cache reads after initial reactive loading; full suite passed 1,456 assertions with no failures/warnings and the known restricted-browser skip |
 
 ## 12. Progress notes and additional information — living section
 

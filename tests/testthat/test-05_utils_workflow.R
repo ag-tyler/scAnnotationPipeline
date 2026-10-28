@@ -273,6 +273,23 @@ test_that("cell_type_annotation_setup loads cached cells and marker matches", {
     cell_type = c("TypeA", "TypeB"),
     symbol = c("GENE01", "GENE02")
   )
+
+  workflow_env <- environment(cell_type_annotation_setup)
+  original_cache_loader <- get("cache_load_data", envir = workflow_env)
+  withr::defer(assign(
+    "cache_load_data",
+    original_cache_loader,
+    envir = workflow_env
+  ))
+  loaded_files <- character()
+  assign(
+    "cache_load_data",
+    function(data_file_name, ...) {
+      loaded_files <<- c(loaded_files, data_file_name)
+      original_cache_loader(data_file_name, ...)
+    },
+    envir = workflow_env
+  )
   
   res <- cell_type_annotation_setup(
     i = 1,
@@ -308,9 +325,13 @@ test_that("cell_type_annotation_setup loads cached cells and marker matches", {
     res$all_matches$TypeA,
     expected_matches$TypeA
   )
+  expect_identical(
+    loaded_files,
+    "cells_filt_clust_res_0.5_sample1.qs2"
+  )
 })
 
-test_that("cell_type_annotation_setup uses dataset parameters on a cache miss", {
+test_that("cell_type_annotation_setup rejects a missing clustering cache without recomputing", {
   dataset_dir <- withr::local_tempdir()
   processed_dir <- file.path(dataset_dir, "processed_data")
   results_dir <- file.path(dataset_dir, "results")
@@ -347,12 +368,12 @@ test_that("cell_type_annotation_setup uses dataset parameters on a cache miss", 
     original_loader,
     envir = workflow_env
   ))
-  received_config <- NULL
+  fallback_called <- FALSE
   assign(
     "load_filter_cells_expmat",
     function(cells_path, expmat_path, genes_path, config) {
-      received_config <<- config
-      stop("cache-miss boundary reached", call. = FALSE)
+      fallback_called <<- TRUE
+      stop("unexpected clustering recomputation", call. = FALSE)
     },
     envir = workflow_env
   )
@@ -370,9 +391,9 @@ test_that("cell_type_annotation_setup uses dataset parameters on a cache miss", 
       dataset_config = dataset_config,
       selected_config = selected_config
     ),
-    "cache-miss boundary reached"
+    "Expected cached file not found"
   )
-  expect_identical(received_config, dataset_config)
+  expect_false(fallback_called)
 })
 
 test_that("load_filter_cells_expmat rejects incomplete dataset parameters early", {

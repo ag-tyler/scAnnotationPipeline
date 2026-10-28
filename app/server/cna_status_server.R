@@ -8,7 +8,7 @@ register_cna_status_server <- function(input, output, session, state, context) {
     if (is.null(value) || length(value) == 0L || is.na(value)) "—" else value
   }
 
-  output$cna_eligibility_ui <- renderUI({
+  cna_status_preflight <- reactive({
     req(
       rv$paths_list,
       input$cna_sample_idx,
@@ -17,7 +17,7 @@ register_cna_status_server <- function(input, output, session, state, context) {
     )
     idx <- as.numeric(input$cna_sample_idx)
     sample_name <- basename(rv$paths_list$sample_dir_paths)[idx]
-    result <- cna_sample_preflight(
+    cna_sample_preflight(
       sample_name,
       rv$live_selected_config,
       rv$dataset_dir_path,
@@ -25,6 +25,10 @@ register_cna_status_server <- function(input, output, session, state, context) {
       pipeline_state = rv$pipeline_state,
       validate_expression = FALSE
     )
+  })
+
+  output$cna_eligibility_ui <- renderUI({
+    result <- cna_status_preflight()
     status_view <- switch(
       result$status,
       eligible = list(class = "success", label = "Eligible for CNA"),
@@ -167,14 +171,7 @@ register_cna_status_server <- function(input, output, session, state, context) {
     output$cna_preview_umap <- renderPlot({ NULL })
     output$cna_preview_heatmap <- renderPlot({ NULL })
 
-    preflight <- cna_sample_preflight(
-      s_name,
-      rv$live_selected_config,
-      rv$dataset_dir_path,
-      gene_positions = context$resources$gene_positions,
-      pipeline_state = rv$pipeline_state,
-      validate_expression = FALSE
-    )
+    preflight <- cna_status_preflight()
     if (isTRUE(preflight$eligible)) {
       shinyjs::enable("btn_cna_compute_heatmaps")
     }

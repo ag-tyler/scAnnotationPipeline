@@ -48,8 +48,6 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
 
     hclust_file_name <- paste0('hclust_', s_name, '.qs2')
     cells_file_name <- paste0('cells_filt_clust_res_', cfg$resolutions[[s_name]], '_', s_name, '.qs2')
-    req(cache_check_valid(hclust_file_name, rv$dataset_dir_path))
-
     clust_hclust <- cache_load_data(hclust_file_name, rv$dataset_dir_path)
     cells_filt <- cache_load_data(cells_file_name, rv$dataset_dir_path)
 

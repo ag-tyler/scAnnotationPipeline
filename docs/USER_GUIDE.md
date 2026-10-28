@@ -694,6 +694,19 @@ A clean test run should finish with zero failures and zero unexpected warnings/s
 
 Some tests deliberately exercise validation/error/warning paths. Those conditions are captured by expectations and therefore should not appear as uncaught suite warnings.
 
+### Profiling interactive paths
+
+To collect read-only, hardware-specific timings for a standardized dataset, run:
+
+```bash
+Rscript scripts/profile_interactions.R Che2021_Colorectal_2 5
+```
+
+The optional first argument is a dataset ID or path and the second is the
+iteration count. The profiler measures Start Menu summary and storage rendering,
+CNA status preflight, and Manual Annotation sample loading. It does not write
+configuration, state, results, or cache files.
+
 ### Test structure
 
 | Test file | Main responsibility |

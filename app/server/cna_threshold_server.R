@@ -25,17 +25,29 @@ register_cna_threshold_server <- function(input, output, session, state, context
     invisible(rv$pipeline_state)
   }
 
+  cna_signal_tables <- reactive({
+    req(
+      input$cna_sample_idx,
+      rv$paths_list,
+      rv$live_selected_config,
+      rv$pipeline_state
+    )
+    s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
+    ward_refs <- rv$live_selected_config$cna_ward_ref_cluster[[s_name]]
+    lapply(seq_along(ward_refs), function(i) {
+      cache_name <- paste0('cna_sig_cor_', s_name, '_subclone_', i, '.qs2')
+      tryCatch(
+        cache_load_data(cache_name, rv$dataset_dir_path, recover = FALSE),
+        error = function(error) NULL
+      )
+    })
+  })
+
   cna_signal_axis <- reactive({
     req(input$cna_sample_idx, rv$paths_list, rv$live_selected_config)
     s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
-    ward_refs <- rv$live_selected_config$cna_ward_ref_cluster[[s_name]]
-    signal_tables <- lapply(seq_along(ward_refs), function(i) {
-      cache_name <- paste0('cna_sig_cor_', s_name, '_subclone_', i, '.qs2')
-      if (!cache_check_valid(cache_name, rv$dataset_dir_path)) return(NULL)
-      cache_load_data(cache_name, rv$dataset_dir_path)
-    })
     cna_signal_axis_summary(
-      signal_tables,
+      cna_signal_tables(),
       saved_thresholds = rv$live_selected_config$cna_thresholds[[s_name]]
     )
   })
@@ -145,10 +157,8 @@ register_cna_threshold_server <- function(input, output, session, state, context
           # Only render if sliders have initialized (added ymax check)
           req(!is.null(mx), !is.null(my), !is.null(nmx), !is.null(nmy), !is.null(ymax))
 
-          sig_cor_file <- paste0('cna_sig_cor_', s_name, '_subclone_', i, '.qs2')
-          if (!cache_check_valid(sig_cor_file, rv$dataset_dir_path)) return(NULL)
-
-          cna_sig_cor <- cache_load_data(sig_cor_file, rv$dataset_dir_path)
+          cna_sig_cor <- cna_signal_tables()[[i]]
+          if (is.null(cna_sig_cor)) return(NULL)
 
           malig_thresh <- list()
           malig_thresh[[s_name]] <- list(c(m_x = mx, m_y = my, nm_x = nmx, nm_y = nmy))

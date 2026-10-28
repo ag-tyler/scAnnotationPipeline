@@ -54,6 +54,18 @@ make_cna_preflight_fixture <- function(
 test_that("CNA preflight reports an eligible sample with useful counts", {
   skip_if_not_installed("qs2")
   fx <- make_cna_preflight_fixture()
+  workflow_env <- environment(cna_sample_preflight)
+  original_cache_loader <- get("cache_load_data", envir = workflow_env)
+  withr::defer(assign("cache_load_data", original_cache_loader, envir = workflow_env))
+  loaded_files <- character()
+  assign(
+    "cache_load_data",
+    function(data_file_name, ...) {
+      loaded_files <<- c(loaded_files, data_file_name)
+      original_cache_loader(data_file_name, ...)
+    },
+    envir = workflow_env
+  )
 
   result <- cna_sample_preflight(
     fx$sample_name,
@@ -70,12 +82,28 @@ test_that("CNA preflight reports an eligible sample with useful counts", {
   expect_identical(result$counts$unassigned, 0L)
   expect_identical(result$counts$positioned_genes, 30L)
   expect_equal(nrow(result$ref_cells), 2L)
+  expect_identical(
+    loaded_files,
+    c("cells_filt_clust_res_0.5_sample1.qs2", "expmat_filt_sample1.qs2")
+  )
 })
 
 
 test_that("CNA preflight rejects all-NA annotations because references are absent", {
   skip_if_not_installed("qs2")
   fx <- make_cna_preflight_fixture(rep(NA_character_, 4))
+  workflow_env <- environment(cna_sample_preflight)
+  original_cache_loader <- get("cache_load_data", envir = workflow_env)
+  withr::defer(assign("cache_load_data", original_cache_loader, envir = workflow_env))
+  loaded_files <- character()
+  assign(
+    "cache_load_data",
+    function(data_file_name, ...) {
+      loaded_files <<- c(loaded_files, data_file_name)
+      original_cache_loader(data_file_name, ...)
+    },
+    envir = workflow_env
+  )
 
   result <- cna_sample_preflight(
     fx$sample_name,
@@ -90,6 +118,7 @@ test_that("CNA preflight rejects all-NA annotations because references are absen
   expect_identical(result$counts$reference, 0L)
   expect_identical(result$counts$unassigned, 4L)
   expect_match(result$reason, "reference cells")
+  expect_identical(loaded_files, "cells_filt_clust_res_0.5_sample1.qs2")
 })
 
 
