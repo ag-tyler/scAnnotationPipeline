@@ -3,6 +3,18 @@
 register_annotation_server <- function(input, output, session, state, context) {
   rv <- state
 
+  register_single_sample_de_handlers(
+    input = input,
+    session = session,
+    state = rv,
+    sample_input_id = "sample_idx",
+    trigger_button_id = "btn_rerun_anno_single_de",
+    confirm_button_id = "confirm_run_anno_single_de",
+    action_key = "annotation_single_sample_de",
+    source = "manual_annotation",
+    protect_unsaved_annotation = TRUE
+  )
+
   persist_annotation_step <- function(
     step,
     status,

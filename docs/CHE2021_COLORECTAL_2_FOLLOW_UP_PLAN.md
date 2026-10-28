@@ -459,6 +459,30 @@ sample preselected. Single-shot confirmation/action guards prevent duplicate
 runs, and early failures transition only the selected sample to `failed` while
 leaving prior atomic artifacts and every other sample unchanged.
 
+#### F09 addendum — Targeted DE from Manual Annotation
+
+Expose the existing **Rerun DE for Sample** capability in Manual Annotation as
+well as Resolution Selection. Place **Rerun DE for Selected Sample** at the
+bottom of the annotation sidebar, immediately above **Back to Menu**, so a user
+who reaches a sample with stale DE after targeted clustering does not need to
+navigate back to its Resolution Selection view.
+
+Both entry points must share the same readiness checks, confirmation, duplicate
+guard, state transitions, `single_de_analysis()` call, and success/failure
+feedback. The annotation entry point uses the sample currently selected there,
+blocks while unsaved annotation edits exist, leaves the selection in place, and
+allows the existing readiness-reactive loader to reopen the sample immediately
+after DE completes. Starting DE also rebases any older clustering-derived stale
+annotation reason to the current DE rerun, so completion presents the actionable
+annotation-review message.
+
+**Addendum acceptance result:** Complete in implementation and automated
+coverage. A shared targeted-DE server component now serves both screens with
+screen-specific controls and action guards. Tests cover selection of the second
+sample, no changes to the first sample, stale-reason replacement, unsaved-edit
+protection, duplicate confirmation rejection, shared registration, and the
+requested button placement.
+
 ### F10 — Main-menu pipeline status overview
 
 Add a read-only overview to the Start Menu so users can immediately see the dataset's current pipeline state after loading it. This is a convenience and orientation feature, not a new source of workflow truth: it must render from the existing validated `pipeline_state.yaml` model already held in reactive state.
@@ -708,7 +732,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | F06 | Standardization onboarding | Complete | 2026-10-21 | Pre-load guide, reusable metadata prompt, local documentation links, and path-specific creation handoff added |
 | F07 | Bulk progress output | Complete | 2026-10-28 | Shared monotonic contract, clustering/DE overlays, stage-aware failures, console boundaries, elapsed time, and final summaries added |
 | F08 | Natural cluster ordering and DE score-plot layout | Complete | 2026-10-28 | Natural ordering is consistent; long sample identifiers are hard-wrapped above a compact metadata subtitle and score PNGs use an explicit 9 x 7 inch, 300-DPI export contract |
-| F09 | Single-sample clustering design and implementation | Complete | 2026-10-28 | Secondary Start Menu action with sample/invalidation confirmation, shared clustering/progress path, sample-scoped state/cache invalidation, and direct resolution-review navigation |
+| F09 | Single-sample clustering design and implementation | Complete | 2026-10-28 | Secondary Start Menu clustering action plus shared targeted-DE actions in Resolution Selection and Manual Annotation, with sample-scoped invalidation, guards, and direct recovery navigation |
 | F10 | Main-menu pipeline status overview | Not started | — | Low-priority visibility feature; summary/detail design must be evaluated first |
 | F11 | CNA threshold guidance and equal Y-threshold support | Not started | — | Low-priority control refinement; helper must match actual classification and save validation already permits equality |
 | F12 | High-count CNA subtree selection | Not started | — | Low-priority usability feature; compare spatial and ordered fallback prototypes first |
@@ -740,6 +764,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | 2026-10-28 | F08 addendum planning | Recorded that long sample names clip the resolution/cell-count suffix from DE signature-score boxplot titles | Source inspection found one unwrapped concatenated title and implicit `ggsave()` dimensions; implementation and long-name regression pending |
 | 2026-10-28 | F08 addendum | Separated the complete, hard-wrapped sample identifier from compact cluster/resolution/cell metadata and centralized score-plot export at 9 x 7 inches and 300 DPI without changing annotation filenames | Long unbroken/short-name and PNG-dimension regressions passed; full suite passed (1006 assertions, 0 failures/warnings, 1 restricted-browser skip) |
 | 2026-10-28 | F09 | Added a subordinate Start Menu single-sample clustering action, explicit downstream-impact confirmation, indexed reuse of the full clustering workflow, sample-scoped invalidation, duplicate guards, and preselected resolution-review navigation | Focused regressions and the full suite passed (1038 assertions, 0 failures/warnings, 1 restricted-browser skip) |
+| 2026-10-28 | F09 addendum | Added targeted DE for the Manual Annotation sample above Back to Menu and extracted both targeted-DE entry points to one guarded server path; DE start now rebases older clustering-derived stale reasons | Focused regressions and the full suite passed (1058 assertions, 0 failures/warnings, 1 restricted-browser skip) |
 | 2026-10-21 | F12 planning | Added brainstorming and prototyping for high-count CNA subtree selection while preserving hierarchical-tree cutting | Requires canonical leaf-order mapping, redundant non-colour identity cues, synchronized selection, and membership-level regression tests |
 | 2026-10-21 | F13 planning | Added publication of the finalized long CNA values table as a reusable CSV result with provenance and safe re-export | Required schema is `gene`, `chr`, `start_pos`, `cell_name`, `cna`; current matrix caches are 22 MB and 75 MB compressed, so chunked compressed CSV is proposed |
 | 2026-10-21 | F11 follow-up | Added concise helper text for the threshold sliders explaining eligible malignant assignment, safely non-malignant retention, and the Unassigned/NA gray zone | Wording derived from the current `apply_cna_thresholds()` comparison and eligibility rules; implementation pending |

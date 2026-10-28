@@ -9,6 +9,7 @@ component_paths <- c(
   "app/ui/app_ui.R",
   "app/server/dataset_server.R",
   "app/server/dashboard_server.R",
+  "app/server/single_de_server.R",
   "app/server/resolution_server.R",
   "app/server/annotation_server.R",
   "app/server/cna_status_server.R",
@@ -224,7 +225,8 @@ test_that("pipeline persistence boundaries emit structured events", {
       "workspace_created", "app_session_started", "dataset_load", "change_dataset"
     ),
     "app/server/dashboard_server.R" = c("clustering_run", "de_run"),
-    "app/server/resolution_server.R" = c("resolution_saved", "single_sample_de"),
+    "app/server/single_de_server.R" = "single_sample_de",
+    "app/server/resolution_server.R" = "resolution_saved",
     "app/server/annotation_server.R" = c(
       "annotation_changed", "annotations_saved", "cna_configuration_saved"
     ),

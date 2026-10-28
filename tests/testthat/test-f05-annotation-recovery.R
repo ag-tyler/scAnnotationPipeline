@@ -46,6 +46,10 @@ test_that("F05 retries the selected sample when DE becomes ready", {
   test_env$showNotification <- function(...) "notification"
   test_env$removeNotification <- function(...) invisible(NULL)
   sys.source(
+    file.path(app_dir, "app/server/single_de_server.R"),
+    envir = test_env
+  )
+  sys.source(
     file.path(app_dir, "app/server/annotation_server.R"),
     envir = test_env
   )

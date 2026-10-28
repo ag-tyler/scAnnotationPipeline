@@ -304,3 +304,189 @@ test_that("F09 single-sample action is visually secondary and explains invalidat
   expect_match(server_text, "sample_indices = selected_index", fixed = TRUE)
   expect_match(server_text, 'updateSelectInput(session, "res_sample_idx"', fixed = TRUE)
 })
+
+
+test_that("F09 addendum reruns DE for the sample selected in Manual Annotation", {
+  app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
+  test_env <- new.env(parent = globalenv())
+  sys.source(file.path(app_dir, "app/state.R"), envir = test_env)
+
+  test_env$observeEvent <- shiny::observeEvent
+  test_env$req <- shiny::req
+  test_env$modalDialog <- shiny::modalDialog
+  test_env$modalButton <- shiny::modalButton
+  test_env$actionButton <- shiny::actionButton
+  test_env$tagList <- shiny::tagList
+  test_env$showModal <- function(ui, ...) {
+    modal_count <<- modal_count + 1L
+    invisible(NULL)
+  }
+  test_env$removeModal <- function(...) invisible(NULL)
+  notifications <- character()
+  test_env$showNotification <- function(message, ...) {
+    notifications <<- c(notifications, as.character(message))
+    "notification-id"
+  }
+  test_env$removeNotification <- function(...) invisible(NULL)
+  test_env$get_pipeline_step <- get_pipeline_step
+  test_env$pipeline_step_readiness <- pipeline_step_readiness
+  test_env$persist_pipeline_step_update <- persist_pipeline_step_update
+  test_env$transition_pipeline_step <- transition_pipeline_step
+  test_env$PIPELINE_STALE_DEPENDENCIES <- PIPELINE_STALE_DEPENDENCIES
+  events <- list()
+  test_env$record_state_event <- function(
+    state,
+    stage,
+    event_type,
+    outcome,
+    sample = NULL,
+    parameters = NULL,
+    reason = NULL,
+    ...
+  ) {
+    events[[length(events) + 1L]] <<- list(
+      event_type = event_type,
+      outcome = outcome,
+      sample = sample,
+      parameters = parameters,
+      reason = reason
+    )
+    invisible(NULL)
+  }
+  de_indices <- integer()
+  test_env$single_de_analysis <- function(sample_idx, ...) {
+    de_indices <<- c(de_indices, sample_idx)
+    invisible(NULL)
+  }
+  sys.source(file.path(app_dir, "app/server/single_de_server.R"), envir = test_env)
+
+  sample_names <- c("sample1", "sample2")
+  pipeline_state <- new_pipeline_state("F09_Addendum", sample_names)
+  pipeline_state <- transition_pipeline_step(
+    pipeline_state,
+    "standardization",
+    "completed"
+  )
+  for (sample_name in sample_names) {
+    pipeline_state <- transition_pipeline_step(
+      pipeline_state,
+      "clustering",
+      "completed",
+      sample = sample_name,
+      force = TRUE
+    )
+    pipeline_state <- transition_pipeline_step(
+      pipeline_state,
+      "resolution",
+      "completed",
+      sample = sample_name,
+      force = TRUE
+    )
+  }
+  pipeline_state <- transition_pipeline_step(
+    pipeline_state,
+    "differential_expression",
+    "stale",
+    sample = "sample2",
+    reason = "Clustering was rerun; rerun differential expression.",
+    force = TRUE
+  )
+  pipeline_state <- transition_pipeline_step(
+    pipeline_state,
+    "annotation",
+    "stale",
+    sample = "sample2",
+    reason = "Differential expression must be rerun.",
+    force = TRUE
+  )
+
+  state_dir <- withr::local_tempdir()
+  state <- test_env$create_app_state(list(), session_id = "f09-addendum")
+  shiny::isolate({
+    state$paths_list <- list(
+      sample_dir_paths = file.path(state_dir, "processed_data", sample_names)
+    )
+    state$dataset_config <- list(params = list())
+    state$complete_markers <- data.table::data.table(cell_type = "TypeA", symbol = "GENE1")
+    state$results_dir_path <- file.path(state_dir, "results")
+    state$dataset_dir_path <- state_dir
+    state$pipeline_state_path <- file.path(state_dir, "pipeline_state.yaml")
+    state$pipeline_state <- pipeline_state
+    state$live_selected_config <- setup_selected_config(sample_names)
+    state$live_selected_config$resolutions$sample1 <- 0.5
+    state$live_selected_config$resolutions$sample2 <- 1
+  })
+  sample1_before <- serialize(pipeline_state$samples$sample1, NULL)
+  modal_count <- 0L
+
+  server <- function(input, output, session) {
+    test_env$register_single_sample_de_handlers(
+      input = input,
+      session = session,
+      state = state,
+      sample_input_id = "sample_idx",
+      trigger_button_id = "btn_rerun_anno_single_de",
+      confirm_button_id = "confirm_run_anno_single_de",
+      action_key = "annotation_single_sample_de",
+      source = "manual_annotation",
+      protect_unsaved_annotation = TRUE
+    )
+  }
+
+  shiny::testServer(server, {
+    state$annotation_dirty <- TRUE
+    session$setInputs(sample_idx = "2", btn_rerun_anno_single_de = 1)
+    expect_identical(modal_count, 0L)
+    expect_match(notifications[[length(notifications)]], "Save or discard")
+
+    state$annotation_dirty <- FALSE
+    session$setInputs(btn_rerun_anno_single_de = 2)
+    expect_identical(modal_count, 1L)
+    session$setInputs(confirm_run_anno_single_de = 1)
+
+    expect_identical(de_indices, 2L)
+    expect_identical(
+      get_pipeline_step(state$pipeline_state, "differential_expression", "sample2")$status,
+      "completed"
+    )
+    expect_identical(
+      get_pipeline_step(state$pipeline_state, "annotation", "sample2")$reason,
+      "Differential expression was rerun; review and save annotations again."
+    )
+    expect_identical(serialize(state$pipeline_state$samples$sample1, NULL), sample1_before)
+    expect_true(any(vapply(
+      events,
+      function(event) identical(event$parameters$source, "manual_annotation"),
+      logical(1)
+    )))
+
+    session$setInputs(confirm_run_anno_single_de = 2)
+    expect_identical(de_indices, 2L)
+  })
+})
+
+
+test_that("F09 addendum places targeted DE above the Manual Annotation back button", {
+  app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
+  ui_text <- paste(
+    readLines(file.path(app_dir, "app/ui/annotation_ui.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  annotation_server <- paste(
+    readLines(file.path(app_dir, "app/server/annotation_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  resolution_server <- paste(
+    readLines(file.path(app_dir, "app/server/resolution_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  de_position <- regexpr('"btn_rerun_anno_single_de"', ui_text, fixed = TRUE)[[1]]
+  back_position <- regexpr('"btn_back_menu_2"', ui_text, fixed = TRUE)[[1]]
+  expect_gt(de_position, 0L)
+  expect_lt(de_position, back_position)
+  expect_match(ui_text, '"Rerun DE for Selected Sample"', fixed = TRUE)
+  expect_match(annotation_server, "register_single_sample_de_handlers", fixed = TRUE)
+  expect_match(annotation_server, "protect_unsaved_annotation = TRUE", fixed = TRUE)
+  expect_match(resolution_server, "register_single_sample_de_handlers", fixed = TRUE)
+})

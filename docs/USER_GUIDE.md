@@ -569,6 +569,12 @@ Saved labels are reused only when their cell identifiers align with the current
 clustering cache. CNA configuration and omission are blocked while annotation
 edits remain unsaved.
 
+If the selected sample still needs DE after a targeted clustering rerun, use
+**Rerun DE for Selected Sample** at the bottom of the Manual Annotation sidebar.
+It runs the same guarded single-sample DE workflow available in Resolution
+Selection and keeps the current sample selected, allowing annotation to load as
+soon as DE completes. Save or discard any unsaved annotation edits first.
+
 ### CNA analysis
 
 The CNA workflow is guarded by the persisted pipeline state and a shared
@@ -691,7 +697,7 @@ Some tests deliberately exercise validation/error/warning paths. Those condition
 | `test-m5-cna-batch.R` | Mixed-validity batch isolation, subsets, progress, and retry behavior |
 | `test-f07-batch-progress.R` | Shared clustering/DE progress contract, monotonic fractions, Shiny formatting, and failure-stage reporting |
 | `test-f08-natural-cluster-ordering.R` | Numeric-aware 13-cluster ordering across UMAP legends/colours, DE axes/lists, and annotation controls; long DE score-plot titles and explicit export dimensions |
-| `test-f09-single-sample-clustering.R` | Targeted clustering index/resolution coverage, sample-scoped state and cache invalidation, failure isolation, duplicate guards, and completion navigation |
+| `test-f09-single-sample-clustering.R` | Targeted clustering index/resolution coverage, sample-scoped state/cache invalidation, failure isolation, duplicate guards, completion navigation, and shared targeted-DE recovery from Manual Annotation |
 | `test-regression_clustering.R` | Preprocessing → PCA → UMAP → Louvain integration/regression behavior |
 | `test-regression_cna_cache.R` | CNA compute/cache/load round trip and missing-cache behavior |
 | `test-standardize-general-template.R` | General-template safety, alignment, duplicate-gene preservation, and checklist contract |

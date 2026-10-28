@@ -95,7 +95,6 @@ test_that("F03 long-running confirmation handlers use shared guards", {
     "app/server/dashboard_server.R" = "bulk_clustering",
     "app/server/dashboard_server.R" = "bulk_de",
     "app/server/dataset_server.R" = "create_dataset",
-    "app/server/resolution_server.R" = "single_sample_de",
     "app/server/cna_compute_server.R" = "cna_batch_compute",
     "app/server/cna_reset_server.R" = "cna_reset"
   )
@@ -126,6 +125,28 @@ test_that("F03 long-running confirmation handlers use shared guards", {
       info = paste(relative_path, key)
     )
   }
+
+  shared_de_text <- paste(
+    readLines(file.path(app_dir, "app/server/single_de_server.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  for (guard_function in c(
+    "arm_app_confirmation(rv, action_key)",
+    "claim_app_confirmation(rv, action_key)",
+    "begin_app_action(rv, action_key)"
+  )) {
+    expect_match(shared_de_text, guard_function, fixed = TRUE)
+  }
+  expect_match(
+    paste(readLines(file.path(app_dir, "app/server/resolution_server.R")), collapse = "\n"),
+    'action_key = "single_sample_de"',
+    fixed = TRUE
+  )
+  expect_match(
+    paste(readLines(file.path(app_dir, "app/server/annotation_server.R")), collapse = "\n"),
+    'action_key = "annotation_single_sample_de"',
+    fixed = TRUE
+  )
 })
 
 

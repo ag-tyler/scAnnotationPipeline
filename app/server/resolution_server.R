@@ -3,6 +3,17 @@
 register_resolution_server <- function(input, output, session, state, context) {
   rv <- state
 
+  register_single_sample_de_handlers(
+    input = input,
+    session = session,
+    state = rv,
+    sample_input_id = "res_sample_idx",
+    trigger_button_id = "btn_rerun_single_de",
+    confirm_button_id = "confirm_run_single_de",
+    action_key = "single_sample_de",
+    source = "resolution_selection"
+  )
+
   observe({
     req(rv$paths_list, input$res_sample_idx, rv$live_selected_config)
     idx <- as.numeric(input$res_sample_idx)
@@ -36,30 +47,6 @@ register_resolution_server <- function(input, output, session, state, context) {
     )
     showNotification(paste("Notes saved for", sample_name), type = "message")
   })
-
-  persist_de_state <- function(sample_name, status, reason = NULL, details = NULL) {
-    current <- get_pipeline_step(
-      rv$pipeline_state,
-      "differential_expression",
-      sample_name
-    )
-    invalidate <- identical(status, "in_progress") &&
-      current$status %in% c("completed", "skipped")
-    rv$pipeline_state <- persist_pipeline_step_update(
-      rv$pipeline_state,
-      rv$pipeline_state_path,
-      step = "differential_expression",
-      status = status,
-      sample = sample_name,
-      reason = reason,
-      details = details,
-      invalidate_downstream = invalidate,
-      invalidation_reason = if (invalidate) {
-        "Differential expression is being rerun for this sample."
-      } else NULL
-    )
-    invisible(rv$pipeline_state)
-  }
 
   output$res_status_badge <- renderUI({
     req(rv$paths_list, input$res_sample_idx, rv$pipeline_state)
@@ -255,149 +242,4 @@ register_resolution_server <- function(input, output, session, state, context) {
     }
   })
 
-  observeEvent(input$btn_rerun_single_de, {
-    req(rv$paths_list, input$res_sample_idx)
-    idx <- as.numeric(input$res_sample_idx)
-    s_name <- basename(rv$paths_list$sample_dir_paths)[idx]
-
-    current_val <- rv$live_selected_config$resolutions[[s_name]]
-
-    if (is.null(current_val) || current_val == 0 || current_val == 0.0) {
-      record_state_event(
-        rv,
-        stage = "differential_expression",
-        event_type = "single_sample_de",
-        outcome = "incomplete",
-        sample = s_name,
-        reason = "No clustering resolution has been saved for this sample."
-      )
-      showNotification(paste("Cannot run DE! Please save a resolution for", s_name, "first."), type = "error")
-    } else {
-      readiness <- pipeline_step_readiness(
-        rv$pipeline_state,
-        "differential_expression",
-        s_name
-      )
-      if (!readiness$ready) {
-        record_state_event(
-          rv,
-          stage = "differential_expression",
-          event_type = "single_sample_de",
-          outcome = "incomplete",
-          sample = s_name,
-          reason = paste(readiness$reasons, collapse = "; ")
-        )
-        showNotification(
-          paste("Cannot run DE:", paste(readiness$reasons, collapse = "; ")),
-          type = "error",
-          duration = 10
-        )
-        return()
-      }
-      arm_app_confirmation(rv, "single_sample_de")
-      showModal(modalDialog(
-        title = "Confirm Single Sample DE",
-        paste0("Are you sure you want to rerun the Differential Expression analysis for '", s_name, "'? This will lock the application until finished."),
-        easyClose = TRUE,
-        footer = tagList(
-          modalButton("Cancel"),
-          actionButton(
-            "confirm_run_single_de",
-            "Yes, Rerun DE",
-            class = "btn-danger",
-            onclick = "this.disabled = true;"
-          )
-        )
-      ))
-    }
-  })
-
-  observeEvent(input$confirm_run_single_de, {
-    if (!claim_app_confirmation(rv, "single_sample_de")) return()
-    if (!begin_app_action(rv, "single_sample_de")) return()
-    shinyjs::disable("btn_rerun_single_de")
-    on.exit({
-      finish_app_action(rv, "single_sample_de")
-      shinyjs::enable("btn_rerun_single_de")
-    }, add = TRUE)
-    removeModal()
-    req(rv$paths_list, rv$dataset_config, rv$complete_markers)
-    idx <- as.numeric(input$res_sample_idx)
-    s_name <- basename(rv$paths_list$sample_dir_paths)[idx]
-
-    id <- showNotification(paste("Running DE analysis for", s_name, "- Check R console..."), duration = NULL, type = "warning")
-
-    record_state_event(
-      rv,
-      stage = "differential_expression",
-      event_type = "single_sample_de",
-      outcome = "started",
-      sample = s_name,
-      parameters = list(resolution = rv$live_selected_config$resolutions[[s_name]])
-    )
-
-    state_started <- tryCatch(
-      persist_de_state(
-        s_name,
-        "in_progress",
-        details = list(resolution = rv$live_selected_config$resolutions[[s_name]])
-      ),
-      error = identity
-    )
-    if (inherits(state_started, "error")) {
-      record_state_event(
-        rv,
-        stage = "state",
-        event_type = "differential_expression_state",
-        outcome = "failed",
-        sample = s_name,
-        reason = conditionMessage(state_started)
-      )
-      showNotification(
-        paste("DE could not start because workflow state failed:", conditionMessage(state_started)),
-        type = "error",
-        duration = 10
-      )
-      removeNotification(id)
-      return()
-    }
-
-    tryCatch({
-      single_de_analysis(
-        sample_idx = idx,
-        paths_list = rv$paths_list,
-        dataset_config = rv$dataset_config,
-        selected_config = rv$live_selected_config,
-        complete_markers = rv$complete_markers,
-        results_dir_path = rv$results_dir_path,
-        dataset_dir_path = rv$dataset_dir_path
-      )
-      persist_de_state(
-        s_name,
-        "completed",
-        details = list(resolution = rv$live_selected_config$resolutions[[s_name]])
-      )
-      record_state_event(
-        rv,
-        stage = "differential_expression",
-        event_type = "single_sample_de",
-        outcome = "completed",
-        sample = s_name
-      )
-      showNotification(paste("Differential Expression Analysis complete for", s_name, "!"), type = "message")
-    }, error = function(e) {
-      try(persist_de_state(s_name, "failed", reason = conditionMessage(e)), silent = TRUE)
-      record_state_event(
-        rv,
-        stage = "differential_expression",
-        event_type = "single_sample_de",
-        outcome = "failed",
-        sample = s_name,
-        reason = conditionMessage(e)
-      )
-      showNotification(paste("Error running DE:", e$message), type = "error", duration = 10)
-    }, finally = {
-      removeNotification(id)
-    })
-  })
 }

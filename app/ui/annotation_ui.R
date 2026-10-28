@@ -78,6 +78,14 @@ annotation_panel <- function(sample_choices) {
           class = "btn-outline-warning w-100 mt-2"
         ),
         hr(),
+        h6("Targeted Reanalysis", class = "mt-2"),
+        actionButton(
+          "btn_rerun_anno_single_de",
+          "Rerun DE for Selected Sample",
+          icon = icon("sync"),
+          class = "btn-warning w-100"
+        ),
+        hr(),
         actionButton(
           "btn_back_menu_2",
           "Back to Menu",
