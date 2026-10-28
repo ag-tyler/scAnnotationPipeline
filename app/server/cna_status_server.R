@@ -228,15 +228,8 @@ register_cna_status_server <- function(input, output, session, state, context) {
       shinyjs::enable("btn_cna_compute_sig_cor")
 
       saved_k <- ward_refs[[1]]$k
-      saved_clusters <- sapply(ward_refs, function(x) as.character(x$cluster))
 
       updateSliderInput(session, "cna_k_clusters", value = saved_k)
-      updateSelectizeInput(session, "cna_selected_clusters",
-                           choices = cna_cluster_choices(saved_k),
-                           selected = saved_clusters)
-
-    } else {
-      updateSelectizeInput(session, "cna_selected_clusters", selected = character(0))
     }
     status_html <- c(
       status_html,

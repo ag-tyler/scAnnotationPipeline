@@ -27,6 +27,82 @@ cna_threshold_guidance_ui <- function() {
   )
 }
 
+
+cna_cluster_navigator_ui <- function(identity_map, selected = character()) {
+  clusters <- identity_map$clusters
+  selected <- intersect(as.character(selected), as.character(clusters$cluster_id))
+  choice_names <- lapply(seq_len(nrow(clusters)), function(index) {
+    cluster <- clusters[index, ]
+    tags$span(
+      class = "d-flex align-items-center gap-2 cna-cluster-choice-label",
+      tags$span(
+        class = "d-inline-block flex-shrink-0",
+        style = paste0(
+          "width: 0.9rem; height: 1.8rem; border: 1px solid #212529; ",
+          "background-color: ", cluster$color, ";"
+        ),
+        `aria-hidden` = "true"
+      ),
+      tags$span(
+        strong(sprintf("Position %02d", cluster$display_position)),
+        " · ", cluster$label,
+        " · ", cluster$cell_count,
+        if (cluster$cell_count == 1L) " cell" else " cells"
+      )
+    )
+  })
+
+  tags$div(
+    class = "cna-cluster-navigator",
+    tags$p(
+      "Ordered from the top to the bottom of the heatmap cluster bar. Select by position and stable cluster ID; colour is only a secondary cue.",
+      class = "small text-body-secondary"
+    ),
+    tags$div(
+      class = "border rounded p-2 overflow-auto",
+      style = "max-height: 430px;",
+      checkboxGroupInput(
+        "cna_selected_clusters",
+        label = "Potentially malignant subtrees:",
+        selected = selected,
+        choiceNames = choice_names,
+        choiceValues = as.character(clusters$cluster_id)
+      )
+    )
+  )
+}
+
+
+cna_cluster_selection_summary_ui <- function(identity_map, selected = character()) {
+  selected <- as.character(selected)
+  clusters <- identity_map$clusters[
+    as.character(identity_map$clusters$cluster_id) %in% selected,
+    , drop = FALSE
+  ]
+  if (nrow(clusters) == 0L) {
+    return(tags$div(
+      class = "alert alert-secondary py-2 mt-3 mb-0",
+      "No subtrees selected."
+    ))
+  }
+  tags$div(
+    class = "alert alert-info py-2 mt-3 mb-0 cna-cluster-selection-summary",
+    strong("Selection to save:"),
+    tags$ul(
+      class = "mb-0 mt-1 ps-3",
+      lapply(seq_len(nrow(clusters)), function(index) {
+        cluster <- clusters[index, ]
+        tags$li(paste0(
+          sprintf("Position %02d", cluster$display_position),
+          " / ", cluster$label,
+          " / ", cluster$cell_count,
+          if (cluster$cell_count == 1L) " cell" else " cells"
+        ))
+      })
+    )
+  )
+}
+
 cna_panel <- function(sample_choices) {
   nav_panel(
     title = "CNA Analysis",
@@ -135,14 +211,9 @@ cna_panel <- function(sample_choices) {
                     step = 1
                   ),
                   hr(),
-                  helpText("Cluster IDs are identical in the heatmap legend, selector, saved configuration, and later threshold views. Select one or more clusters with clear malignant copy-number alterations."),
-                  selectizeInput(
-                    "cna_selected_clusters",
-                    label = "Select Malignant Subclones:",
-                    choices = NULL,
-                    multiple = TRUE,
-                    options = list(placeholder = "e.g., Cluster 02, Cluster 04")
-                  ),
+                  helpText("Stable Cluster IDs are used in the saved configuration and later threshold views. The navigator orders them by their actual position in the heatmap bar."),
+                  uiOutput("cna_cluster_navigator_ui"),
+                  uiOutput("cna_cluster_selection_summary"),
                   hr(),
                   actionButton(
                     "btn_cna_save_malignant",

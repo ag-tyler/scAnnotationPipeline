@@ -2,6 +2,7 @@
 
 register_cna_cluster_server <- function(input, output, session, state, context) {
   rv <- state
+  cluster_ui_context <- reactiveVal(NULL)
 
   persist_cna_step <- function(
     step,
@@ -28,16 +29,7 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
 
   # --- STEP 2: MALIGNANT CLUSTER SELECTION (CUTREE METHOD) ---
 
-  # 1. Update the dropdown choices automatically based on the k-slider
-  observeEvent(input$cna_k_clusters, {
-    updateSelectizeInput(
-      session,
-      "cna_selected_clusters",
-      choices = cna_cluster_choices(input$cna_k_clusters)
-    )
-  })
-
-  # 2. Debounce the slider so it only triggers 800ms AFTER the user stops dragging
+  # Debounce the slider so it only triggers 800ms AFTER the user stops dragging.
   k_debounced <- debounce(reactive({ input$cna_k_clusters }), millis = 800)
 
   # 3. Cache the heavy static plots (Only runs ONCE per sample)
@@ -125,18 +117,69 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
     ))
   })
 
+  # One lightweight identity/order mapping feeds the plot bar, navigator, save
+  # confirmation, and persisted selection for each debounced sample/k context.
+  cna_cluster_identity <- reactive({
+    k_val <- k_debounced()
+    static <- cna_static_plots()
+    req(k_val, static)
+    cna_cluster_identity_map(static$hc, k_val)
+  })
+
+  cluster_ui_model <- reactive({
+    identity <- cna_cluster_identity()
+    req(input$cna_sample_idx, rv$paths_list)
+    sample_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
+    previous <- isolate(cluster_ui_context())
+
+    saved_refs <- isolate(rv$live_selected_config$cna_ward_ref_cluster[[sample_name]])
+    saved_record <- isolate(get_pipeline_step(
+      rv$pipeline_state, "cna_cluster_selection", sample_name
+    ))
+    reconciled <- reconcile_cna_cluster_selection(
+      current_selection = isolate(input$cna_selected_clusters),
+      previous_context = previous,
+      sample_name = sample_name,
+      k = identity$k,
+      saved_refs = saved_refs,
+      saved_completed = identical(saved_record$status, "completed")
+    )
+    selected <- reconciled$selected
+    selected <- intersect(
+      as.character(selected),
+      as.character(identity$clusters$cluster_id)
+    )
+
+    cluster_ui_context(reconciled$context)
+    list(identity = identity, selected = selected)
+  })
+
+  output$cna_cluster_navigator_ui <- renderUI({
+    model <- cluster_ui_model()
+    cna_cluster_navigator_ui(model$identity, model$selected)
+  })
+
+  output$cna_cluster_selection_summary <- renderUI({
+    identity <- cna_cluster_identity()
+    selected <- input$cna_selected_clusters
+    if (is.null(selected)) selected <- character()
+    cna_cluster_selection_summary_ui(
+      identity,
+      selected
+    )
+  })
+
   # 4. Fast Plot Renderer (Only triggers when the debounced slider updates)
   output$cna_combined_heatmap_plot <- renderPlot({
-    # Use the debounced value instead of the raw input!
-    k_val <- k_debounced()
-    req(k_val)
+    identity <- cna_cluster_identity()
+    k_val <- identity$k
 
     # Grab the pre-computed static plots
     static <- cna_static_plots()
     req(static)
 
-    # 1. Cut the tree instantly
-    cell_clusters <- cutree(static$hc, k = k_val)
+    # Reuse the canonical cut rather than recomputing cluster identities.
+    cell_clusters <- identity$membership
 
     # 2. Update the cluster assignments
     # We MUST use copy() here so we don't permanently modify the cached reactive data
@@ -158,15 +201,13 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
       custom_colors = k_colors
     )
 
-    # 4. Extract its legend and convert to grob
-    clust_leg <- cowplot::get_legend(clust_p)
+    # The ordered HTML navigator replaces the expensive high-k cluster legend.
     remove_leg <- ggplot2::theme(legend.position = "none")
     clust_grob <- ggplot2::ggplotGrob(clust_p + remove_leg)
 
-    # 5. Stack legends vertically
+    # Stack only the static legends vertically.
     stacked_legends <- cowplot::plot_grid(
       static$cell_type_leg,
-      clust_leg,
       static$htmp_leg,
       ncol = 1, align = "v"
     )
@@ -185,6 +226,16 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
 
   # 5. Save Selection
   observeEvent(input$btn_cna_save_malignant, {
+    req(input$cna_k_clusters)
+    identity <- isolate(cna_cluster_identity())
+    if (!identical(as.integer(input$cna_k_clusters), identity$k)) {
+      showNotification(
+        "Please wait for the selected cluster count and navigator to finish updating before saving.",
+        type = "warning", duration = 5
+      )
+      return()
+    }
+
     # 1. Provide an explicit, visible warning if no clusters are selected
     if (is.null(input$cna_selected_clusters) || length(input$cna_selected_clusters) == 0) {
       if (!is.null(input$cna_sample_idx) && !is.null(rv$paths_list)) {
@@ -198,7 +249,7 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
           reason = "No malignant subclone was selected."
         )
       }
-      showNotification("Please select at least one Malignant Subclone from the dropdown before saving.",
+      showNotification("Please select at least one potentially malignant subtree in the navigator before saving.",
                        type = "warning", duration = 5)
       return()
     }
@@ -227,9 +278,9 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
       cluster_id <- as.numeric(cl)
       list(
         method = 'cutree',
-        k = as.numeric(input$cna_k_clusters),
+        k = identity$k,
         cluster = cluster_id,
-        label = cna_cluster_labels(cluster_id, input$cna_k_clusters)
+        label = cna_cluster_labels(cluster_id, identity$k)
       )
     })
 
@@ -252,12 +303,15 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
         s_name,
         "completed",
         details = list(
-          k = as.numeric(input$cna_k_clusters),
+          k = identity$k,
           clusters = as.numeric(input$cna_selected_clusters),
           cluster_labels = cna_cluster_labels(
             input$cna_selected_clusters,
-            input$cna_k_clusters
-          )
+            identity$k
+          ),
+          display_positions = identity$clusters$display_position[
+            match(as.numeric(input$cna_selected_clusters), identity$clusters$cluster_id)
+          ]
         ),
         invalidate_downstream = selection_changed,
         invalidation_reason = if (selection_changed) {
@@ -311,12 +365,15 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
       outcome = "saved",
       sample = s_name,
       parameters = list(
-        k = as.numeric(input$cna_k_clusters),
+        k = identity$k,
         clusters = as.numeric(input$cna_selected_clusters),
         cluster_labels = cna_cluster_labels(
           input$cna_selected_clusters,
-          input$cna_k_clusters
-        )
+          identity$k
+        ),
+        display_positions = identity$clusters$display_position[
+          match(as.numeric(input$cna_selected_clusters), identity$clusters$cluster_id)
+        ]
       )
     )
     if (length(old_cache) > 0L) {
@@ -334,12 +391,12 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
     id_plot <- showNotification("Saving k-clusters plot to disk...", duration = NULL, type = "message")
 
     # Define k_val right here so it is always available to cutree()
-    k_val <- as.numeric(input$cna_k_clusters)
+    k_val <- identity$k
 
     # Grab the cached static grobs and rebuild the exact plot from the UI
     static <- isolate(cna_static_plots())
     if (!is.null(static)) {
-      cell_clusters <- cutree(static$hc, k = k_val)
+      cell_clusters <- identity$membership
       hdata_cells_k <- data.table::copy(static$hdata_cells)
       cluster_levels <- cna_cluster_labels(seq_len(k_val), k_val)
       hdata_cells_k[, k_cluster := factor(

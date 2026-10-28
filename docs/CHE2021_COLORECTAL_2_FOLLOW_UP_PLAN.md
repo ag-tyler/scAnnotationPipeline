@@ -589,6 +589,80 @@ Begin with a focused brainstorming and prototype phase. Compare at least these a
 
 Prototype at least one direct/spatial interaction and one noninteractive fallback. Evaluate them at representative `k` values such as 7, 12, and 20, including very small adjacent subtrees. Record the chosen design and rationale before implementation. A likely robust combination is direct bar selection plus stable embedded IDs and a synchronized left-to-right selector, with an ordered selector/labels fallback if interactive plotting proves too fragile.
 
+#### F12 design exploration and selected first implementation
+
+Current implementation findings:
+
+- `cutree()` cluster IDs are stable analytical identities and are already persisted as `{method, k, cluster, label}`; downstream signal/correlation and threshold tabs resolve cell membership from `k` plus that numeric cluster ID.
+- the selector is generated in numeric ID order (`Cluster 01`, `Cluster 02`, ...), while the heatmap bar is displayed in dendrogram leaf order. Those orders need not match, which creates the reported ambiguity;
+- the cluster bar is a very narrow component inside a five-part static `cowplot` composition. Mapping clicks against the full combined image would depend on plot-device dimensions and internal panel offsets, making it possible but unnecessarily fragile;
+- changing `k` currently replaces selector choices but does not present a spatial identity mapping or an explicit live confirmation of which cell membership will be saved.
+
+Concept A — click the existing combined heatmap bar:
+
+- make the narrow cluster strip inside the combined plot clickable and translate plot coordinates back to dendrogram leaf positions;
+- toggle the matching stable cluster and draw a strong outline/dimming overlay;
+- advantage: selection happens exactly where the user is already looking;
+- drawback: the composed plot makes hit testing fragile, the strip is a small target, and tiny clusters at `k = 20` would be difficult to select accurately.
+
+Concept B — dedicated synchronized cluster navigator:
+
+- add a separate, wider segmented strip beside the controls that uses the exact dendrogram leaf order and proportions of the main heatmap bar;
+- clicking any segment toggles its stable cluster; selected segments receive a black outline and selection marker while unselected segments are visually de-emphasized;
+- place stable IDs beside segments where space permits and expose ID, top-to-bottom display position, cell count, and leaf range on focus/hover;
+- advantage: direct spatial selection remains available, coordinate mapping is simple and testable, and the main scientific plot remains static and fast;
+- drawback: the navigator partially duplicates the existing bar and very small segments still need the textual fallback for reliable keyboard selection.
+
+Concept C — ordered selector rows/cards:
+
+- replace or supplement the numeric-order selectize control with keyboard-accessible checkbox rows ordered by first dendrogram leaf position;
+- each row shows `Position 01 · Cluster 04 · 183 cells`, a matching swatch, and optionally dominant prior cell types;
+- selecting a row synchronizes the navigator and highlights the same segment in the main cluster bar;
+- advantage: unambiguous at `k = 7`, `12`, and `20`, works without colour or pointer input, and naturally provides a confirmation list;
+- drawback: it uses more vertical space, so the list should be scrollable at high `k`.
+
+Concept D — labels only on the existing bar:
+
+- add stable IDs at segment midpoints with leader lines for narrow segments;
+- advantage: minimal interaction change;
+- drawback: labels overlap for small adjacent clusters and still require visual translation to a separate selector, so this is useful only as a secondary cue.
+
+Concept E — cluster profile cards/small multiples:
+
+- show a miniature CNA profile and metadata for every subtree;
+- advantage: richer biological comparison before selection;
+- drawback: substantially more screen space and rendering work, and it broadens F12 beyond fixing identity ambiguity.
+
+**Selected first implementation:** combine Concepts B and C as one lightweight ordered navigator, without highlighting directly inside the main heatmap during this trial. Build one canonical mapping from stable `cutree()` ID to top-to-bottom heatmap position, cell membership/count, and leaf range. Use it for keyboard-accessible checkbox rows, colour swatches as a secondary cue, the live confirmation summary, the existing cluster bar, saving, reload, and logs. Keep the existing saved configuration shape and derive display position on demand. On a genuine `k` change, clear the live selection and require explicit reselection so an old ID cannot silently refer to a different cut. Restore a persisted selection only when first loading its exact saved sample/`k`. Manual review on a real high-count sample will determine whether this is sufficient or direct main-plot highlighting is still needed.
+
+Performance refinement following user feedback:
+
+- do not implement the navigator as another `ggplot`, `plotly` widget, or recomposed `cowplot`; render it as lightweight HTML/CSS segments and ordered rows;
+- compute `cutree()` and the canonical identity/order mapping once in a shared reactive per debounced `(sample, k)` change, then reuse that result for the existing cluster bar, navigator, selector, and confirmation summary;
+- do not reload the hclust, cell table, CNA matrix, or static plot components for navigator/selector updates;
+- selecting or deselecting clusters must update only the HTML navigator, rows, and confirmation summary. It must not invalidate or rebuild the combined heatmap plot;
+- changing `k` may continue to rebuild the existing cluster bar once, but must not add a second plot render or duplicate legend/grob construction;
+- benchmark replacing the repeatedly extracted cluster legend with the ordered HTML navigator. The current `cowplot::get_legend(clust_p)` and large high-`k` legend are rebuilt on every `k` update; removing that work may offset the navigator cost or improve update time while retaining the separate cell-type and CNA legends;
+- benchmark the current and proposed `k = 7`, `12`, and `20` update paths using the same loaded sample. Treat a visible/material regression as a design failure; target negligible orchestration overhead (approximately no more than 100 ms outside the existing combined-plot render), while recording timings rather than relying only on perception;
+- preserve the existing longest first-load optimization: static dendrogram, cell-type bar, heatmap, and legends remain cached per sample.
+
+Proposed layout:
+
+```text
+Cluster Settings             Cluster navigator             CNA heatmap
+----------------             -----------------             -----------
+k: 12                        [01 | Cluster 04 | 183]        dendrogram
+                             [02 | Cluster 11 |  24]  ✓     cell types
+Selected subtrees            [03 | Cluster 02 | 106]        cluster bar
+[✓] Pos 02 · Cluster 11      [04 | Cluster 08 |   9]  ✓     CNA values
+[✓] Pos 04 · Cluster 08      ...
+
+Selection to save: Position 02 / Cluster 11 / 24 cells;
+                   Position 04 / Cluster 08 / 9 cells
+```
+
+Implementation decision: use the lightweight ordered navigator, defer dominant prior cell types, clear selection on user-initiated `k` changes, and restore a persisted selection only during initial loading of its exact saved `k`. Direct highlighting inside the main heatmap is deferred pending manual usability review.
+
 Identity and ordering requirements:
 
 - define one canonical cluster identity mapping from `cutree()` membership and dendrogram leaf order;
@@ -607,6 +681,13 @@ Interaction requirements:
 - show a confirmation summary before saving, including stable ID, left-to-right position, and cell count for each selected subtree;
 - retain the current saved configuration shape unless a versioned migration is genuinely required.
 
+Performance requirements:
+
+- no extra CNA/cache loads and no second scientific plot solely for selection;
+- selection toggles must not rerender the combined heatmap;
+- one shared canonical mapping per debounced `k` update must feed every identity display;
+- retain the existing static-grob reuse and measure representative `k` update timings before and after implementation.
+
 Required tests:
 
 - for `k = 7`, `12`, and `20`, every displayed/interactive identity maps to the correct `cutree()` cell membership;
@@ -618,6 +699,8 @@ Required tests:
 - existing CNA computation progress and return-to-status navigation remain unchanged.
 
 **Acceptance:** At high cluster counts, a user can select one or more intended subtrees and verify their identities without relying on subtle colour differences or mentally translating between conflicting orders. The saved selection resolves to exactly the cells highlighted in the heatmap and used downstream.
+
+**Implementation result — manual acceptance pending:** The selector is now ordered by the cluster bar's actual top-to-bottom dendrogram position and shows position, stable cluster ID, cell count, checkbox state, and a redundant colour swatch. One shared `cutree()` identity map feeds the live bar, navigator, confirmation, persistence details, and saved plot. Changing `k` clears the selection after the existing debounce; saving is blocked until the navigator and raw slider agree. Selection toggles update only lightweight HTML and do not rerender the combined heatmap. The live update no longer rebuilds the high-`k` cluster legend, while the saved PNG retains it. Automated tests cover exact memberships and ordering at `k = 7`, `12`, and `20`, two-digit IDs, keyboard/non-colour presentation, confirmation contents, reload/clear behavior, stale-`k` save protection, no mapping I/O, and no selection dependency in the plot renderer. Final acceptance waits for manual review with a real high-count sample.
 
 ### F13 — CNA values-table results export
 
@@ -745,7 +828,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | F09 | Single-sample clustering design and implementation | Complete | 2026-10-28 | Secondary Start Menu clustering action plus shared targeted-DE actions in Resolution Selection and Manual Annotation, with sample-scoped invalidation, guards, and direct recovery navigation |
 | F10 | Main-menu pipeline status overview | Complete | 2026-10-28 | Read-only responsive stage cards and collapsible per-sample details derived solely from reactive pipeline state |
 | F11 | CNA threshold guidance and equal Y-threshold support | Complete | 2026-10-28 | Equal Y values, directional clamping, explicit X/Y validation, and classification guidance added |
-| F12 | High-count CNA subtree selection | Not started | — | Low-priority usability feature; compare spatial and ordered fallback prototypes first |
+| F12 | High-count CNA subtree selection | Manual review | 2026-10-28 | Lightweight top-to-bottom navigator implemented without main-heatmap highlighting; real high-count review pending |
 | F13 | CNA values-table results export | Not started | — | Low-priority reusable long-format output; compressed CSV default due potentially large files |
 | F14 | Residual performance optimization | Not started | — | — |
 | F15 | Integration and CNA replay | Not started | — | — |
@@ -781,6 +864,7 @@ Add a browser journey that performs safe writes in a temporary synthetic app/wor
 | 2026-10-28 | F10 | Added the combined Start Menu pipeline overview with accessible aggregate cards, collapsible sample details, reasons, CNA-aware next actions, and no rendering-time I/O | Focused regressions and the full suite passed with no failures/warnings and one restricted-browser skip |
 | 2026-10-28 | F10 addendum | Added hover- and keyboard-focus tooltips listing the samples represented by every aggregate status badge | Lists are capped at 15 names with an explicit remainder count; the full table remains available below |
 | 2026-10-28 | F11 | Allowed equal CNA Y thresholds, retained strict X separation, added directional slider clamping and per-subclone classification guidance | Focused regressions and the full suite passed with no failures/warnings and one restricted-browser skip |
+| 2026-10-28 | F12 implementation | Added one canonical cut-tree identity map, ordered checkbox navigator, live save confirmation, explicit `k` clearing/reload behavior, and stale-`k` save protection without selection-triggered plot rendering | Automated regressions and the full suite passed; manual high-count usability review remains required |
 
 ## 12. Progress notes and additional information — living section
 

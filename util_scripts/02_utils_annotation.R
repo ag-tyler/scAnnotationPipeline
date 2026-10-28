@@ -969,6 +969,88 @@ cna_cluster_choices <- function(k) {
 }
 
 
+cna_cluster_identity_map <- function(hclust_result, k) {
+  if (!inherits(hclust_result, "hclust")) {
+    stop("CNA cluster identity mapping requires an hclust object.", call. = FALSE)
+  }
+  k <- suppressWarnings(as.integer(k))
+  n_cells <- length(hclust_result$labels)
+  if (length(k) != 1L || is.na(k) || k < 2L || k > n_cells) {
+    stop("CNA cluster count must be between two and the number of clustered cells.", call. = FALSE)
+  }
+
+  membership <- stats::cutree(hclust_result, k = k)
+  if (is.null(names(membership))) names(membership) <- hclust_result$labels
+
+  # ggplot's increasing y-axis places the first hclust leaf at the bottom.
+  # Reverse it so display positions describe what users see from top to bottom.
+  cells_top_to_bottom <- rev(hclust_result$labels[hclust_result$order])
+  ids_top_to_bottom <- unname(membership[cells_top_to_bottom])
+  display_ids <- unique(ids_top_to_bottom)
+  cluster_colors <- viridis::viridis(k, option = "turbo")
+  names(cluster_colors) <- as.character(seq_len(k))
+
+  clusters <- data.frame(
+    display_position = seq_along(display_ids),
+    cluster_id = as.integer(display_ids),
+    label = cna_cluster_labels(display_ids, k),
+    cell_count = vapply(display_ids, function(id) sum(membership == id), integer(1)),
+    leaf_start = vapply(display_ids, function(id) min(which(ids_top_to_bottom == id)), integer(1)),
+    leaf_end = vapply(display_ids, function(id) max(which(ids_top_to_bottom == id)), integer(1)),
+    color = unname(cluster_colors[as.character(display_ids)]),
+    stringsAsFactors = FALSE
+  )
+  clusters$cell_names <- lapply(display_ids, function(id) names(membership)[membership == id])
+
+  list(
+    k = k,
+    membership = membership,
+    cells_top_to_bottom = cells_top_to_bottom,
+    clusters = clusters
+  )
+}
+
+
+reconcile_cna_cluster_selection <- function(
+  current_selection,
+  previous_context,
+  sample_name,
+  k,
+  saved_refs = NULL,
+  saved_completed = FALSE
+) {
+  sample_changed <- is.null(previous_context) ||
+    !identical(previous_context$sample_name, sample_name)
+  has_saved_selection <- isTRUE(saved_completed) && length(saved_refs) > 0L
+  saved_k <- if (has_saved_selection) as.integer(saved_refs[[1]]$k) else NA_integer_
+  awaiting_saved_k <- sample_changed && has_saved_selection && !identical(saved_k, k)
+  restore_saved <- has_saved_selection && identical(saved_k, k) &&
+    (sample_changed || isTRUE(previous_context$awaiting_saved_k))
+
+  selected <- if (restore_saved) {
+    as.character(vapply(saved_refs, `[[`, numeric(1), "cluster"))
+  } else if (
+    sample_changed || isTRUE(previous_context$awaiting_saved_k) ||
+      !identical(previous_context$k, k)
+  ) {
+    character()
+  } else if (is.null(current_selection)) {
+    character()
+  } else {
+    as.character(current_selection)
+  }
+
+  list(
+    selected = selected,
+    context = list(
+      sample_name = sample_name,
+      k = k,
+      awaiting_saved_k = awaiting_saved_k
+    )
+  )
+}
+
+
 cluster_or_cell_type_bar_plot <- function(hdata_cells, fill_col_name, legend_title, 
                                           custom_colors = NULL) {
   #' Create a Vertical Annotation Bar Plot for Cells
