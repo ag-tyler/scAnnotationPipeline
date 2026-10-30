@@ -3,6 +3,7 @@ test_that("F03 completion-dialog navigation is single-shot", {
   test_env <- new.env(parent = globalenv())
   test_env$observeEvent <- shiny::observeEvent
   test_env$removeModal <- function(...) invisible(NULL)
+  test_env$showNotification <- function(...) "notification"
   navigation <- character()
   test_env$updateNavbarPage <- function(session, inputId, selected) {
     navigation <<- c(navigation, selected)
@@ -39,10 +40,12 @@ test_that("F03 completion-dialog navigation is single-shot", {
 
       state_env$arm_app_confirmation(state, "after_de_navigation")
       session$setInputs(btn_after_de_anno = 1)
-      expect_identical(navigation, c("res_tab", "anno_tab"))
+      # An armed token alone is not evidence of a DE run for this dataset.
+      # R06's integrated tests cover valid completion and duplicate navigation.
+      expect_identical(navigation, "res_tab")
 
       session$setInputs(btn_after_de_anno = 2)
-      expect_identical(navigation, c("res_tab", "anno_tab"))
+      expect_identical(navigation, "res_tab")
     }
   )
 })

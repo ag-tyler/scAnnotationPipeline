@@ -67,6 +67,32 @@ format_batch_failure <- function(operation_label, progress_context, error) {
 register_dashboard_server <- function(input, output, session, state, context) {
   rv <- state
   single_clustering_completed_index <- reactiveVal(NULL)
+  de_completion_context <- reactiveVal(NULL)
+
+  de_review_message <- function(review) {
+    paste0(
+      length(review$processed_samples),
+      if (length(review$processed_samples) == 1L) " sample processed; " else " samples processed; ",
+      length(review$pending_samples), " need annotation review. ",
+      if (!is.null(review$target_sample)) {
+        paste0("Continue at ", review$target_sample, ", the first processed sample ready for review. ")
+      } else if (length(review$pending_samples)) {
+        "None of those samples are ready yet; check the pipeline overview for unmet prerequisites. Your current selection will be kept. "
+      } else {
+        "No processed samples currently need annotation review. Your current selection will be kept. "
+      },
+      "The Start Menu pipeline overview lists the status of every sample."
+    )
+  }
+
+  block_de_for_unsaved_annotation <- function() {
+    if (!isTRUE(rv$annotation_dirty)) return(FALSE)
+    showNotification(
+      "Save or discard the current annotation edits before running bulk DE. No analysis was started and your edits are unchanged.",
+      type = "warning", duration = 15
+    )
+    TRUE
+  }
 
   pipeline_overview_summary <- reactive({
     req(rv$pipeline_state)
@@ -168,12 +194,48 @@ register_dashboard_server <- function(input, output, session, state, context) {
   observeEvent(input$btn_after_de_anno, {
     if (!claim_app_confirmation(rv, "after_de_navigation")) return()
     removeModal()
+    completed <- de_completion_context()
+    if (is.null(completed) || !identical(completed$dataset_dir, rv$dataset_dir_path) ||
+        !identical(completed$dataset_id, rv$pipeline_state$dataset_id)) {
+      showNotification(
+        "This DE completion no longer matches the loaded dataset. Use its pipeline overview to choose a sample for review.",
+        type = "warning", duration = 15
+      )
+      return()
+    }
+    # Re-evaluate at click time: a prior target may already have been reviewed
+    # or may have become blocked since the completion dialog was shown.
+    review <- summarize_de_annotation_review(
+      rv$pipeline_state, completed$processed_samples,
+      basename(rv$paths_list$sample_dir_paths)
+    )
+    if (isTRUE(rv$annotation_dirty)) {
+      showNotification(
+        paste("Save or discard the current annotation edits before switching samples. Your selection and edits are unchanged.", de_review_message(review)),
+        type = "warning", duration = 15
+      )
+      return()
+    }
+    if (!is.null(review$target_index)) {
+      updateSelectInput(session, "sample_idx", selected = review$target_index)
+    } else {
+      showNotification(
+        de_review_message(review),
+        type = if (length(review$pending_samples)) "warning" else "message",
+        duration = 15
+      )
+    }
     record_state_event(
       rv,
       stage = "navigation",
       event_type = "completion_navigation",
       outcome = "selected",
-      parameters = list(source = "de_complete", target = "anno_tab")
+      parameters = list(
+        source = "de_complete", target = "anno_tab",
+        sample_index = review$target_index, sample = review$target_sample,
+        processed_samples = review$processed_samples,
+        pending_annotation_count = length(review$pending_samples)
+      )
     )
     updateNavbarPage(session, "main_nav", selected = "anno_tab")
   })
@@ -460,6 +522,7 @@ register_dashboard_server <- function(input, output, session, state, context) {
 
   observeEvent(input$btn_run_de, {
     req(rv$paths_list, rv$pipeline_state)
+    if (block_de_for_unsaved_annotation()) return()
     expected_samples <- basename(rv$paths_list$sample_dir_paths)
 
     unpicked_samples <- expected_samples[sapply(expected_samples, function(s) {
@@ -511,7 +574,16 @@ register_dashboard_server <- function(input, output, session, state, context) {
 
   observeEvent(input$confirm_run_de, {
     if (!claim_app_confirmation(rv, "bulk_de")) return()
+    if (block_de_for_unsaved_annotation()) {
+      removeModal()
+      return()
+    }
     if (!begin_app_action(rv, "bulk_de")) return()
+    # A failed/new run must not leave an earlier completion action armed.
+    de_completion_context(NULL)
+    claim_app_confirmation(rv, "after_de_navigation")
+    run_context <- list(dataset_dir = rv$dataset_dir_path, dataset_id = rv$pipeline_state$dataset_id)
+    completed_samples <- character()
     shinyjs::disable("btn_run_de")
     on.exit({
       finish_app_action(rv, "bulk_de")
@@ -545,10 +617,18 @@ register_dashboard_server <- function(input, output, session, state, context) {
               reason,
               details
             )
+            if (identical(status, "completed")) {
+              completed_samples <<- unique(c(completed_samples, sample_name))
+            }
           },
           progress_callback = make_shiny_batch_progress_callback(progress_context)
         )
       })
+      run_context$processed_samples <- completed_samples
+      de_completion_context(run_context)
+      review <- summarize_de_annotation_review(
+        rv$pipeline_state, completed_samples, basename(rv$paths_list$sample_dir_paths)
+      )
       record_state_event(
         rv,
         stage = "differential_expression",
@@ -559,7 +639,7 @@ register_dashboard_server <- function(input, output, session, state, context) {
       arm_app_confirmation(rv, "after_de_navigation")
       showModal(modalDialog(
         title = "Differential expression complete",
-        "Marker results are ready for all samples. Continue to Manual Annotation to review clusters and assign cell types.",
+        de_review_message(review),
         easyClose = TRUE,
         footer = tagList(
           modalButton("Stay on Start Menu"),

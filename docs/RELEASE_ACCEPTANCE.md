@@ -66,6 +66,7 @@ test is skipped; all non-browser release tests remain runnable.
 | Safe unannotated preview, partial Unassigned legends, preview no-write behavior, and saved-PNG consistency | `test-f15-r03-annotation-preview.R` |
 | Same-sample resolution grid/detail refresh after bulk/targeted clustering, stable tabs, and no unrelated PNG reads | `test-f15-r04-resolution-refresh.R` |
 | In-app setup documents, Markdown downloads, independent workspace checklists, preserved notes, and safe creation paths | `test-f15-r05-onboarding-documents.R`, `test-f06-standardization-onboarding.R` |
+| Explicit DE completion review selection, scoped processing order, fresh targets, and unsaved-edit/obsolete-action guards | `test-f15-r06-de-review-navigation.R`, `test-f03-navigation-hardening.R` |
 | Exact large-input metadata, legacy precision recovery, saved-label continuity across reloads and dataset switching | `test-f15-r01-cache-precision.R` |
 | Persistent explicit CNA omission, reversal, mixed batch, configured readiness, and CNA-view sample switching | `test-f15-r02-cna-omission.R`, `test-f05-annotation-recovery.R` |
 | Bounded CNA conversion, export progress, binary validation, interrupted export preservation and retry | `test-f15-r07-cna-export.R`, `test-f13-cna-values-export.R` |
@@ -217,3 +218,14 @@ visual/access confirmation is recorded for the next full review.
 The user subsequently confirmed that both document buttons open the correct
 popups. Complete R05 acceptance, including downloads and independent workspace
 checklists, remains scheduled for the next new-dataset review.
+
+F15-R06 verification on 2026-10-30 passes all 64 focused assertions and the full
+portable suite (1,934 assertions, zero failures/warnings, one known restricted-
+Chromium skip). Completion navigation selects the first processed sample ready
+for required annotation review only when the user clicks through. Tests cover
+full/non-prefix subset order, untouched unrelated work, fresh targets, retained
+selection with no ready target, unsaved-edit protection at request/confirmation/
+navigation, missing run context, failure/retry, duplicate clicks, and dataset
+switches. Selection itself leaves persisted workflow state unchanged and does
+not load scientific caches; computation scope/single-sample DE behavior are
+unchanged. Manual acceptance is recorded for the next full new-dataset review.

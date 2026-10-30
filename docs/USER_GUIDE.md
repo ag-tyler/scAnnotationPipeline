@@ -564,6 +564,20 @@ matching, scoring/plot generation, and output writing. If either bulk workflow
 fails, the notification and structured event identify the sample and last real
 stage reached; processing remains fail-fast.
 
+On successful DE completion, the dialog reports how many processed samples
+still need annotation review and names the first one ready to open, in
+processing order. **Go to Manual Annotation** selects that sample rather than
+retaining a later sample from the previous review. Completion itself and
+**Stay on Start Menu** do not change the selection. The target is checked
+again when clicked; if no processed sample currently needs/can enter review,
+the current selection is kept with a pipeline-overview cue.
+
+Save or discard unsaved annotation edits before starting bulk DE. The app
+checks again at confirmation and refuses completion-navigation jumps while
+edits are unsaved. The Start Menu overview remains the complete per-sample
+status list. Targeted single-sample DE keeps its existing selected-sample
+behavior.
+
 Each per-cluster signature-score PNG displays the complete sample identifier in
 a dedicated title, hard-wrapped every 60 characters when needed. Cluster,
 resolution, and cell count are kept together in a separate subtitle. These

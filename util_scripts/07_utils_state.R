@@ -929,6 +929,28 @@ pipeline_step_readiness <- function(state, step, sample) {
 }
 
 
+summarize_de_annotation_review <- function(state, processed_samples, sample_names = names(state$samples)) {
+  # Read-only completion navigation, in processing order. Never send users to
+  # unrelated samples or treat blocked annotation work as ready for review.
+  processed <- intersect(as.character(processed_samples), intersect(sample_names, names(state$samples)))
+  pending <- processed[vapply(processed, function(sample) {
+    !get_pipeline_step(state, "annotation", sample)$status %in% c("completed", "skipped")
+  }, logical(1))]
+  ready <- pending[vapply(pending, function(sample) {
+    pipeline_step_readiness(state, "annotation", sample)$ready
+  }, logical(1))]
+  target <- if (length(ready)) ready[[1]] else NULL
+  list(
+    processed_samples = processed,
+    pending_samples = pending,
+    ready_samples = ready,
+    blocked_samples = setdiff(pending, ready),
+    target_sample = target,
+    target_index = if (is.null(target)) NULL else match(target, sample_names)
+  )
+}
+
+
 pipeline_cna_is_omitted <- function(state, sample) {
   configuration <- get_pipeline_step(state, "cna_configuration", sample)
   identical(configuration$status, "skipped") &&

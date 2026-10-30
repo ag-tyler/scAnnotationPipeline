@@ -423,3 +423,39 @@ the appropriate documents. The complete checklist above will be tested using
 a new dataset; this confirmation does not claim downloads/copying/independence
 have all been manually reviewed yet.
 
+## Follow-up — R06 bulk-DE completion review target (2026-10-30)
+
+The chosen behavior is to preselect the first processed sample still needing
+annotation review and ready to open when **Go to Manual Annotation** is
+clicked. Completion itself and **Stay on Start Menu** do not change selection.
+The dialog reports processed/review counts and the next sample, with the main
+pipeline overview providing the complete per-sample list.
+
+The queue uses actual successful callbacks in processing order, including
+non-prefix subsets, and maps the target to the full dataset's sample index.
+It does not create a new subset-analysis UI or change scientific computation.
+Already-reviewed, skipped, unrelated, and blocked work is not selected. The
+target is recomputed on click; if none remains ready, the current sample stays
+selected with an overview cue. Single-sample DE keeps its previous behavior.
+
+Unsaved annotation edits now block bulk DE at request and confirmation and
+also prevent a later completion-navigation jump. Duplicate clicks, a failed
+new run, or loading another dataset cannot reuse obsolete completion actions.
+Synthetic tests verify these cases, preserved edits and unrelated samples, and
+unchanged persisted workflow state during navigation. No real dataset files
+were changed.
+
+Verification: all 64 focused assertions and the full portable suite pass
+(1,934 assertions, zero failures/warnings, one known restricted-browser skip).
+
+For the next new-dataset full review (not yet manually confirmed):
+
+- [ ] Leave a later annotation sample selected, run bulk DE, and confirm the
+  completion dialog identifies the first ready processed sample needing review.
+- [ ] Stay on the menu and confirm the previous selection is unchanged.
+- [ ] Use the completion action after a run and confirm the indicated sample
+  is selected, without switching away and back manually.
+- [ ] Confirm unsaved edits are preserved and block bulk rerun/navigation
+  until they are saved or discarded.
+- [ ] Use the status overview to account for all remaining annotation reviews.
+
