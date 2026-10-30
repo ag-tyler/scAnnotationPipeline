@@ -3,6 +3,31 @@
 register_resolution_server <- function(input, output, session, state, context) {
   rv <- state
 
+  resolution_view_entry <- reactiveVal(0L)
+  observeEvent(input$main_nav, {
+    if (identical(input$main_nav, "res_tab")) {
+      resolution_view_entry(isolate(resolution_view_entry()) + 1L)
+    }
+  })
+
+  # A PNG's existence/content is not reactive. Refresh images when this sample's
+  # clustering record changes or the view is reopened, without rebuilding tabs.
+  # reactiveVal suppresses identical keys, so unrelated state updates do not
+  # invalidate image outputs (a plain reactive expression would still do so).
+  resolution_plot_refresh <- reactiveVal(NULL)
+  observe({
+    req(rv$paths_list, rv$pipeline_state, input$res_sample_idx)
+    idx <- as.integer(input$res_sample_idx)
+    req(length(idx) == 1L, !is.na(idx), idx >= 1L,
+        idx <= length(rv$paths_list$sample_dir_paths))
+    sample_name <- basename(rv$paths_list$sample_dir_paths[[idx]])
+    resolution_plot_refresh(list(
+      sample = sample_name,
+      clustering = get_pipeline_step(rv$pipeline_state, "clustering", sample_name),
+      entry = resolution_view_entry()
+    ))
+  })
+
   register_single_sample_de_handlers(
     input = input,
     session = session,
@@ -103,6 +128,7 @@ register_resolution_server <- function(input, output, session, state, context) {
         local_res <- res
         local_s_name <- s_name
         output[[grid_output_id]] <- renderImage({
+          resolution_plot_refresh()
           plot_path <- file.path(rv$results_dir_path, local_s_name, '1_cluster_plots',
                                  paste0('clusters_plot_', local_s_name, '_res_', local_res, '.png'))
 
@@ -127,6 +153,7 @@ register_resolution_server <- function(input, output, session, state, context) {
         local_res <- res
         local_s_name <- s_name
         output[[tab_output_id]] <- renderImage({
+          resolution_plot_refresh()
           plot_path <- file.path(rv$results_dir_path, local_s_name, '1_cluster_plots',
                                  paste0('clusters_plot_', local_s_name, '_res_', local_res, '.png'))
 

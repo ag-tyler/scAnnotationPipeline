@@ -64,6 +64,7 @@ test is skipped; all non-browser release tests remain runnable.
 | Unsaved annotation edits, navigation, CNA omission, and notes | `test-app-components.R`, `test-03_utils_misc.R` |
 | Browser-driven annotation save and restart continuity | `test-app-ui-baseline.R` |
 | Safe unannotated preview, partial Unassigned legends, preview no-write behavior, and saved-PNG consistency | `test-f15-r03-annotation-preview.R` |
+| Same-sample resolution grid/detail refresh after bulk/targeted clustering, stable tabs, and no unrelated PNG reads | `test-f15-r04-resolution-refresh.R` |
 | Exact large-input metadata, legacy precision recovery, saved-label continuity across reloads and dataset switching | `test-f15-r01-cache-precision.R` |
 | Persistent explicit CNA omission, reversal, mixed batch, configured readiness, and CNA-view sample switching | `test-f15-r02-cna-omission.R`, `test-f05-annotation-recovery.R` |
 | Bounded CNA conversion, export progress, binary validation, interrupted export preservation and retry | `test-f15-r07-cna-export.R`, `test-f13-cna-values-export.R` |
@@ -185,3 +186,18 @@ The user subsequently restored the pre-cleanup dataset/caches and confirmed
 Unassigned appears in the new preview plot legends. Manual verification of
 the unannotated-preview crash fix is deferred to the next full run on a new
 dataset; it remains covered by the automated R03 tests.
+
+F15-R04 verification on 2026-10-30 passes all 37 focused assertions. Integrated
+dashboard/resolution server tests reproduce the stale empty/already-open PNG
+case, then verify both bulk and targeted clustering refresh the same sample's
+grid/detail image content without rebuilding tabs. Coverage includes saved
+resolution/stale-review statuses, no idle/unrelated PNG checks, view re-entry,
+removed/restored plots, and result-root changes with identical sample names.
+The clustering backend is synthetic; no real dataset/cache was changed.
+Targeted manual confirmation remains pending.
+
+The complete portable gate after R04 passes 1,793 assertions with zero
+failures/warnings and the known restricted-Chromium skip.
+
+The user deferred R04 manual confirmation to the next full app review; the
+targeted checklist remains open rather than being treated as accepted.

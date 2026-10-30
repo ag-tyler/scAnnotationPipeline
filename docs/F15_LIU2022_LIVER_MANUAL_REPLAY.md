@@ -343,3 +343,40 @@ has not been exercised manually; it is deferred to the next full app test on
 a new dataset. This does not imply that the other targeted checks above have
 all been repeated. No dataset restoration was performed by the agent.
 
+## Follow-up — R04 same-sample resolution view refresh (2026-10-30)
+
+The old grid/detail image renderers did not depend on clustering completion.
+An already-opened output could retain its cached empty/old image after the
+PNG was generated or replaced, whereas a newly opened detail output read
+the current file. Synthetic tests reproduced that behavior.
+
+Both image types now refresh when the selected sample's clustering record
+changes or Resolution Selection is reopened. The tab container is not rebuilt,
+so sample and grid/detail selection are preserved. The existing status badge
+continues to reflect workflow state: saving a resolution completes review,
+and rerunning clustering requires reviewing and saving it again.
+
+The refresh uses no polling or scientific-cache reads. Regression coverage
+checks no repeated file checks during idle flushes, unrelated annotation
+changes, or another sample's clustering update. It also covers grid/detail
+replacement after bulk/targeted clustering, re-entry, missing/restored PNGs,
+sample switching, and a changed results directory with identical sample names.
+Real dataset files were not modified.
+
+Verification: all 37 focused assertions and the full portable suite pass
+(1,793 assertions, zero failures/warnings, one restricted-browser skip).
+
+Targeted manual confirmation remains pending:
+
+- [ ] Open a sample's resolution grid before clustering; run bulk clustering
+  from the Start Menu and return to that same sample. Both grid and individual
+  plots appear without switching samples.
+- [ ] Rerun clustering for that sample and return: plots update, the saved
+  resolution is retained for review, and the status correctly requires saving
+  the resolution again.
+- [ ] Moving between the menu and resolution view preserves the chosen
+  sample and grid/detail tab while refreshing the images.
+
+The user elected to exercise these R04 checks during the next full review,
+alongside the deferred R03 crash check; they have not been marked complete.
+
