@@ -1008,8 +1008,16 @@ cna_matrix_to_long <- function(cna_mat, cell_names = NULL) {
   if (length(cell_names) == 0L || any(!cell_names %in% available_cells)) {
     stop("CNA long-table conversion requires valid cell columns.", call. = FALSE)
   }
+  # as.data.table.data.table() copies every column. Select the bounded chunk
+  # first, otherwise streamed exports copy the entire wide matrix per chunk.
+  selected_columns <- c(id_columns, cell_names)
+  selected <- if (data.table::is.data.table(cna_mat)) {
+    cna_mat[, selected_columns, with = FALSE]
+  } else {
+    data.table::as.data.table(cna_mat[, selected_columns, drop = FALSE])
+  }
   data.table::melt(
-    data.table::as.data.table(cna_mat)[, c(id_columns, cell_names), with = FALSE],
+    selected,
     id.vars = id_columns,
     measure.vars = cell_names,
     variable.name = "cell_name",
@@ -1863,16 +1871,21 @@ cna_sample_preflight <- function(
         paste0("Annotation is ", annotation_record$status, "; save annotations first.")
       )
     }
-    if (identical(configuration_record$status, "skipped")) {
-      add_reason(
-        "omitted",
-        paste0(
+    if (pipeline_cna_is_omitted(pipeline_state, sample_name)) {
+      # Omission is a saved decision, not a request to validate compute inputs.
+      # In particular, empty reference selectors and absent CNA caches are
+      # expected for these samples and should not be shown as errors.
+      reason <- paste0(
           "CNA was explicitly omitted",
           if (!is.null(configuration_record$reason)) {
             paste0(": ", configuration_record$reason)
           } else "."
-        )
       )
+      return(structure(list(
+        eligible = FALSE, status = "omitted", reasons = reason, reason = reason,
+        counts = counts, reference_types = character(), candidate_types = character(),
+        cells_file = NULL, expmat_file = NULL, cells = NULL, expmat = NULL, ref_cells = NULL
+      ), class = c("cna_preflight", "list")))
     } else if (!identical(configuration_record$status, "completed")) {
       add_reason(
         "incomplete",

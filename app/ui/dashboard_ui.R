@@ -158,6 +158,16 @@ pipeline_status_overview_ui <- function(summary) {
 }
 
 
+dataset_cleanup_export_warning_ui <- function(readiness) {
+  warnings <- unlist(readiness$warnings, use.names = FALSE)
+  if (length(warnings) == 0L) return(NULL)
+  div(class = "alert alert-warning py-2",
+    strong("Optional CNA values exports"),
+    lapply(warnings, function(warning) p(warning, class = "mb-0"))
+  )
+}
+
+
 dataset_storage_card_ui <- function(storage_state, readiness = NULL, archive_audit = NULL) {
   status <- storage_state$status
   cleanup <- storage_state$details$cleanup
@@ -234,6 +244,7 @@ dataset_storage_card_ui <- function(storage_state, readiness = NULL, archive_aud
               format_storage_bytes(if (is.null(recovered)) cache_size else recovered),
               " of reconstructible cache data was removed."
           )),
+          dataset_cleanup_export_warning_ui(cleanup),
           if (!is.null(archive_audit) && !isTRUE(archive_audit$intact)) {
             div(
               class = "alert alert-danger py-2",
@@ -252,6 +263,7 @@ dataset_storage_card_ui <- function(storage_state, readiness = NULL, archive_aud
             "Reconstructible cache: ", format_storage_bytes(cache_size),
             ". Cleanup is available only after every sample has durable final outputs."
           )),
+          dataset_cleanup_export_warning_ui(readiness),
           if (length(reasons) > 0L) {
             tags$details(
               class = "mb-3",

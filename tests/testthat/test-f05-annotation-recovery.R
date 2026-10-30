@@ -168,12 +168,21 @@ test_that("F05 retries the selected sample when DE becomes ready", {
       get_pipeline_step(state$pipeline_state, "cna_configuration", "sample1")$status,
       "skipped"
     )
+    expect_identical(
+      get_pipeline_step(state$pipeline_state, "cna_compute", "sample1")$status,
+      "skipped"
+    )
 
     session$setInputs(btn_save_refs = 2)
     session$flushReact()
     expect_identical(
       get_pipeline_step(state$pipeline_state, "cna_configuration", "sample1")$status,
       "completed"
+    )
+    expect_false(get_pipeline_step(state$pipeline_state, "cna_configuration", "sample1")$details$omitted_by_user)
+    expect_identical(
+      get_pipeline_step(state$pipeline_state, "cna_compute", "sample1")$status,
+      "not_started"
     )
   })
 })

@@ -929,11 +929,47 @@ pipeline_step_readiness <- function(state, step, sample) {
 }
 
 
+pipeline_cna_is_omitted <- function(state, sample) {
+  configuration <- get_pipeline_step(state, "cna_configuration", sample)
+  identical(configuration$status, "skipped") &&
+    isTRUE(configuration$details$omitted_by_user) &&
+    pipeline_step_readiness(state, "cna_configuration", sample)$ready
+}
+
+
+synchronize_pipeline_cna_omission <- function(state, sample, timestamp = Sys.time()) {
+  if (!pipeline_cna_is_omitted(state, sample)) return(state)
+  configuration <- get_pipeline_step(state, "cna_configuration", sample)
+  computation <- get_pipeline_step(state, "cna_compute", sample)
+  reason <- paste0("CNA was explicitly omitted: ", configuration$reason)
+  if (identical(computation$status, "in_progress") || (
+    identical(computation$status, "skipped") &&
+    identical(computation$reason, reason) &&
+    identical(computation$details$preflight_status, "omitted") &&
+    isTRUE(computation$details$omitted_by_user)
+  )) return(state)
+  transition_pipeline_step(
+    state, "cna_compute", "skipped", sample,
+    reason = reason,
+    details = list(preflight_status = "omitted", omitted_by_user = TRUE, stale_after = NULL),
+    timestamp = timestamp, force = TRUE
+  )
+}
+
+
 reconcile_pipeline_state_dependencies <- function(state, timestamp = Sys.time()) {
   validate_pipeline_state(state)
   changed <- character()
   for (sample_name in names(state$samples)) {
     for (step in PIPELINE_SAMPLE_STEPS) {
+      if (identical(step, "cna_compute") && pipeline_cna_is_omitted(state, sample_name)) {
+        before <- get_pipeline_step(state, step, sample_name)
+        state <- synchronize_pipeline_cna_omission(state, sample_name, timestamp)
+        if (!identical(before, get_pipeline_step(state, step, sample_name))) {
+          changed <- c(changed, paste(sample_name, step, sep = "/"))
+        }
+        next
+      }
       record <- get_pipeline_step(state, step, sample_name)
       if (!(record$status %in% c("completed", "skipped"))) next
       readiness <- pipeline_step_readiness(state, step, sample_name)
@@ -1039,7 +1075,7 @@ reconcile_pipeline_state_cache <- function(
     }
 
     cna_record <- get_pipeline_step(state, "cna_compute", sample_name)
-    if (cna_record$status %in% c("completed", "skipped")) {
+    if (identical(cna_record$status, "completed")) {
       cna_valid <- cache_available(paste0("cna_matrix_", sample_name, ".qs2")) &&
         cache_available(paste0("hclust_", sample_name, ".qs2"))
       if (!cna_valid) {
@@ -1053,7 +1089,7 @@ reconcile_pipeline_state_cache <- function(
     }
 
     signal_record <- get_pipeline_step(state, "cna_signal_correlation", sample_name)
-    if (signal_record$status %in% c("completed", "skipped")) {
+    if (identical(signal_record$status, "completed")) {
       subclones <- selected_config$cna_ward_ref_cluster[[sample_name]]
       signal_valid <- length(subclones) > 0L && all(vapply(
         seq_along(subclones),
@@ -1329,6 +1365,19 @@ persist_pipeline_step_update <- function(
     timestamp = timestamp,
     force = force
   )
+  if (identical(step, "cna_configuration")) {
+    computation <- get_pipeline_step(updated, "cna_compute", sample)
+    if (status %in% c("completed", "incomplete") && (
+      isTRUE(computation$details$omitted_by_user) ||
+      identical(computation$details$preflight_status, "omitted")
+    )) {
+      updated <- reset_pipeline_steps(
+        updated, c("cna_compute", PIPELINE_STALE_DEPENDENCIES$cna_compute),
+        sample, timestamp = timestamp
+      )
+    }
+    updated <- synchronize_pipeline_cna_omission(updated, sample, timestamp)
+  }
   if (!is.null(downstream_stale_reason)) {
     updated <- update_downstream_stale_reason(
       updated,

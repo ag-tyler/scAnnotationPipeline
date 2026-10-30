@@ -3,6 +3,7 @@
 register_cna_status_server <- function(input, output, session, state, context) {
   rv <- state
   last_cna_sample <- reactiveVal(NULL)
+  last_cna_context <- reactiveVal(NULL)
 
   preflight_value <- function(value) {
     if (is.null(value) || length(value) == 0L || is.na(value)) "—" else value
@@ -154,24 +155,47 @@ register_cna_status_server <- function(input, output, session, state, context) {
     idx <- as.numeric(input$cna_sample_idx)
     s_name <- basename(rv$paths_list$sample_dir_paths)[idx]
 
-    # 0. Start by disabling steps 2 through 5 and resetting the view
-    nav_select("cna_main_views", "cna_view_default")
+    # Assignment completion only updates status. Keep the current preview and
+    # view unless the sample or its upstream scientific context has changed.
+    selected <- rv$live_selected_config
+    current_context <- list(
+      dataset = rv$dataset_dir_path,
+      sample = s_name,
+      upstream = rv$pipeline_state$samples[[s_name]][setdiff(PIPELINE_SAMPLE_STEPS, "cna_assignment")],
+      resolution = selected$resolutions[[s_name]],
+      references = selected$cna_ref_cells[[s_name]],
+      candidates = selected$cna_pot_mal_cells[[s_name]],
+      subclones = selected$cna_ward_ref_cluster[[s_name]],
+      thresholds = selected$cna_thresholds[[s_name]]
+    )
+    if (!identical(isolate(last_cna_context()), current_context)) {
+      last_cna_context(current_context)
+      nav_select("cna_main_views", "cna_view_default")
+      shinyjs::disable("btn_cna_save_summary")
+      rv$cna_preview_res <- NULL
+      rv$cna_preview_sample <- NULL
+      rv$cna_preview_fingerprint <- NULL
+      output$cna_preview_scatter_ui <- renderUI({ NULL })
+      output$cna_preview_umap_pre <- renderPlot({ NULL })
+      output$cna_preview_umap <- renderPlot({ NULL })
+      output$cna_preview_heatmap <- renderPlot({ NULL })
+    }
     shinyjs::disable("btn_cna_compute_heatmaps")
     shinyjs::disable("btn_cna_go_malig_clust")
     shinyjs::disable("btn_cna_compute_sig_cor")
     shinyjs::disable("btn_cna_go_thresholds")
     shinyjs::disable("btn_cna_go_summary")
 
-    shinyjs::disable("btn_cna_save_summary")
-    rv$cna_preview_res <- NULL
-    rv$cna_preview_sample <- NULL
-    rv$cna_preview_fingerprint <- NULL
-    output$cna_preview_scatter_ui <- renderUI({ NULL })
-    output$cna_preview_umap_pre <- renderPlot({ NULL })
-    output$cna_preview_umap <- renderPlot({ NULL })
-    output$cna_preview_heatmap <- renderPlot({ NULL })
-
     preflight <- cna_status_preflight()
+    if (identical(preflight$status, "omitted")) {
+      output$cna_status_ui <- renderUI({
+        tags$div(class = "alert alert-info text-start",
+          tags$strong("CNA intentionally omitted."),
+          tags$p("No CNA computation is required for this sample. Save a new CNA configuration in Manual Annotation to include it again.", class = "mb-0")
+        )
+      })
+      return()
+    }
     if (isTRUE(preflight$eligible)) {
       shinyjs::enable("btn_cna_compute_heatmaps")
     }

@@ -319,7 +319,8 @@ register_annotation_server <- function(input, output, session, state, context) {
         } else NULL,
         details = list(
           reference_cell_types = unname(selected_refs),
-          potentially_malignant_cell_types = unname(selected_pot_mal)
+          potentially_malignant_cell_types = unname(selected_pot_mal),
+          omitted_by_user = FALSE
         ),
         invalidate_downstream = configuration_changed,
         invalidation_reason = if (configuration_changed) {

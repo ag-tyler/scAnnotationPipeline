@@ -9,7 +9,8 @@ register_cna_compute_server <- function(input, output, session, state, context) 
       current$status %in% c("completed", "skipped")
     if (
       status %in% c("incomplete", "skipped") &&
-        current$status %in% c("completed", "skipped")
+        current$status %in% c("completed", "skipped") &&
+        !(identical(status, "skipped") && identical(current$status, "skipped"))
     ) {
       rv$pipeline_state <- persist_pipeline_step_update(
         rv$pipeline_state,

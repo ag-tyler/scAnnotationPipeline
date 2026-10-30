@@ -89,6 +89,36 @@ make_f16_workspace <- function(sample_name = "Sample_A") {
 }
 
 
+test_that("F16 inventory handles absent and empty caches before clustering", {
+  dataset_dir <- withr::local_tempdir()
+  absent <- dataset_cache_inventory(dataset_dir)
+  dir.create(file.path(dataset_dir, "cache"))
+  empty <- dataset_cache_inventory(dataset_dir)
+
+  expect_identical(empty, absent)
+  expect_identical(empty$file_count, 0L)
+  expect_equal(empty$size_bytes, 0)
+  expect_length(empty$unknown, 0L)
+  expect_identical(empty$files$relative_path, character())
+
+  state <- new_pipeline_state("New_Dataset", "Sample_A")
+  state <- transition_pipeline_step(state, "standardization", "completed", force = TRUE)
+  readiness <- dataset_cleanup_readiness(
+    state,
+    list(
+      sample_dir_paths = file.path(dataset_dir, "processed", "Sample_A"),
+      cell_file_paths = file.path(dataset_dir, "processed", "Sample_A", "Cells.csv")
+    ),
+    list(resolutions = list()),
+    file.path(dataset_dir, "selected_config.yaml"),
+    file.path(dataset_dir, "results"),
+    dataset_dir
+  )
+  expect_false(readiness$ready)
+  expect_true("The dataset cache is already empty." %in% readiness$reasons)
+  expect_true("Sample_A: clustering is not_started." %in% readiness$reasons)
+})
+
 test_that("F16 readiness accepts an explicit CNA omission and inventories only known cache files", {
   workspace <- make_f16_workspace()
   on.exit(unlink(workspace$root, recursive = TRUE, force = TRUE), add = TRUE)
@@ -133,7 +163,7 @@ test_that("F16 readiness accepts an explicit CNA omission and inventories only k
 })
 
 
-test_that("F16 completed CNA requires a current reusable CNA values export", {
+test_that("F16 completed CNA allows optional exports and warns before cleanup", {
   workspace <- make_f16_workspace("Sample_CNA")
   on.exit(unlink(workspace$root, recursive = TRUE, force = TRUE), add = TRUE)
   state <- transition_pipeline_step(
@@ -168,8 +198,9 @@ test_that("F16 completed CNA requires a current reusable CNA values export", {
     workspace$results_dir,
     workspace$dataset_dir
   )
-  expect_false(without_export$ready)
-  expect_true(any(grepl("current CNA values export", without_export$reasons, fixed = TRUE)))
+  expect_true(without_export$ready)
+  expect_identical(without_export$optional_export_samples, workspace$sample_name)
+  expect_match(without_export$warnings, "recompute CNA", fixed = TRUE)
 
   matrix <- data.table::data.table(
     gene = c("GENE1", "GENE2"),
@@ -195,6 +226,8 @@ test_that("F16 completed CNA requires a current reusable CNA values export", {
     workspace$dataset_dir
   )
   expect_true(with_export$ready)
+  expect_length(with_export$warnings, 0L)
+  expect_length(with_export$optional_export_samples, 0L)
 
   Sys.setFileTime(export$paths$csv, file.info(export$paths$csv)$mtime + 2)
   outdated <- dataset_cleanup_readiness(
@@ -205,8 +238,19 @@ test_that("F16 completed CNA requires a current reusable CNA values export", {
     workspace$results_dir,
     workspace$dataset_dir
   )
-  expect_false(outdated$ready)
-  expect_true(any(grepl("current CNA values export", outdated$reasons, fixed = TRUE)))
+  expect_true(outdated$ready)
+  expect_identical(outdated$optional_export_samples, workspace$sample_name)
+  expect_match(outdated$warnings, "recompute CNA", fixed = TRUE)
+  expect_true(all(c(export$paths$csv, export$paths$metadata) %in% outdated$retained_outputs$path))
+
+  # Missing optional exports do not prevent the real archive lifecycle. Existing
+  # (even outdated) exports remain retained and audited rather than deleted.
+  before <- unname(tools::md5sum(c(export$paths$csv, export$paths$metadata)))
+  archived <- archive_dataset_cache(workspace$dataset_dir, state, workspace$storage, outdated)
+  expect_identical(archived$status, "archived")
+  expect_identical(unname(tools::md5sum(c(export$paths$csv, export$paths$metadata))), before)
+  expect_identical(unlist(archived$details$cleanup$optional_export_samples), workspace$sample_name)
+  expect_true(dataset_archive_output_audit(archived, workspace$dataset_dir)$intact)
 })
 
 
@@ -478,4 +522,130 @@ test_that("F16 Start Menu exposes cleanup status, confirmation, retry, and reope
 
   app_text <- paste(readLines(file.path(app_dir_f16, "app.R"), warn = FALSE), collapse = "\n")
   expect_match(app_text, '"app/server/storage_server.R"', fixed = TRUE)
+})
+
+make_optional_export_cleanup_fixture <- function(.local_envir = parent.frame()) {
+  workspace <- make_f16_workspace()
+  withr::defer(unlink(workspace$root, recursive = TRUE, force = TRUE), envir = .local_envir)
+  for (step in c("cna_configuration", "cna_compute", "cna_cluster_selection", "cna_signal_correlation",
+    "cna_thresholds", "cna_assignment")) {
+    workspace$state <- transition_pipeline_step(workspace$state, step, "completed", workspace$sample_name, force = TRUE)
+  }
+  workspace$state <- save_pipeline_state_at_path(workspace$state, workspace$state_path)
+  plot_dir <- file.path(workspace$results_dir, workspace$sample_name, "3_cna_plots")
+  dir.create(plot_dir)
+  for (prefix in c("cna_summary_heatmap_", "cna_umap_assigned_")) {
+    writeBin(as.raw(1:8), file.path(plot_dir, paste0(prefix, workspace$sample_name, ".png")))
+  }
+  workspace
+}
+
+test_that("optional-export cleanup warns in its modal and archives a finished sample without a CSV", {
+  workspace <- make_optional_export_cleanup_fixture()
+  env <- new.env(parent = environment(dataset_cleanup_readiness))
+  sys.source(file.path(app_dir_f16, "app/state.R"), envir = env)
+  sys.source(file.path(app_dir_f16, "app/ui/dashboard_ui.R"), envir = env)
+  sys.source(file.path(app_dir_f16, "app/server/storage_server.R"), envir = env)
+  env$nav_hide <- function(...) invisible(NULL)
+  env$record_state_event <- function(...) invisible(NULL)
+  modal <- NULL
+  env$showModal <- function(ui, ...) modal <<- as.character(ui)
+  rv <- env$create_app_state(list())
+  rv$dataset_dir_path <- workspace$dataset_dir
+  rv$results_dir_path <- workspace$results_dir
+  rv$paths_list <- workspace$paths_list
+  rv$pipeline_state <- workspace$state
+  rv$storage_state <- workspace$storage
+  rv$selected_config_path <- workspace$selected_config_path
+  rv$live_selected_config <- workspace$selected_config
+  server <- function(input, output, session) env$register_storage_server(input, output, session, rv, list())
+  shiny::testServer(server, {
+    session$setInputs(main_nav = "menu_tab", btn_review_dataset_cleanup = 1)
+    expect_match(modal, "Sample_A", fixed = TRUE)
+    expect_match(modal, "recompute CNA", fixed = TRUE)
+    expect_match(modal, "Export is optional", fixed = TRUE)
+    expect_true(dir.exists(file.path(workspace$dataset_dir, "cache")))
+    session$setInputs(dataset_cleanup_confirmation = "dataset", btn_confirm_dataset_cleanup = 1)
+    expect_identical(rv$storage_state$status, "archived")
+    expect_false(dir.exists(file.path(workspace$dataset_dir, "cache")))
+    expect_identical(get_pipeline_step(rv$pipeline_state, "cna_assignment", "Sample_A")$status, "completed")
+    expect_identical(unlist(rv$storage_state$details$cleanup$optional_export_samples), "Sample_A")
+    expect_true(all(file.exists(workspace$retained)))
+    expect_true(dataset_archive_output_audit(rv$storage_state, workspace$dataset_dir)$intact)
+  })
+})
+
+test_that("cleanup requires a fresh warning if an export disappears after review", {
+  workspace <- make_optional_export_cleanup_fixture()
+  matrix <- data.table::data.table(gene = "G", chr = "01", start_pos = 1L, cell_1 = 0.1)
+  cache_save_data(matrix, "cna_matrix_Sample_A.qs2", workspace$dataset_dir)
+  export <- export_cna_values_table("Sample_A", workspace$dataset_dir, workspace$results_dir)
+  env <- new.env(parent = environment(dataset_cleanup_readiness))
+  sys.source(file.path(app_dir_f16, "app/state.R"), envir = env)
+  sys.source(file.path(app_dir_f16, "app/ui/dashboard_ui.R"), envir = env)
+  sys.source(file.path(app_dir_f16, "app/server/storage_server.R"), envir = env)
+  env$nav_hide <- env$record_state_event <- function(...) invisible(NULL)
+  env$showModal <- function(...) invisible(NULL)
+  notifications <- character()
+  env$showNotification <- function(ui, ...) { notifications <<- c(notifications, ui); "test" }
+  rv <- env$create_app_state(list())
+  rv$dataset_dir_path <- workspace$dataset_dir
+  rv$results_dir_path <- workspace$results_dir
+  rv$paths_list <- workspace$paths_list
+  rv$pipeline_state <- workspace$state
+  rv$storage_state <- workspace$storage
+  rv$selected_config_path <- workspace$selected_config_path
+  rv$live_selected_config <- workspace$selected_config
+  server <- function(input, output, session) env$register_storage_server(input, output, session, rv, list())
+  shiny::testServer(server, {
+    session$setInputs(main_nav = "menu_tab", btn_review_dataset_cleanup = 1)
+    file.remove(export$paths$csv)
+    session$setInputs(dataset_cleanup_confirmation = "dataset", btn_confirm_dataset_cleanup = 1)
+    expect_identical(rv$storage_state$status, "active")
+    expect_true(dir.exists(file.path(workspace$dataset_dir, "cache")))
+    expect_true(any(grepl("CNA export availability changed", notifications, fixed = TRUE)))
+  })
+})
+
+test_that("storage state preserves large output sizes and safely audits older rounded records", {
+  dataset_dir <- withr::local_tempdir()
+  path <- file.path(dataset_dir, "large-output.csv.gz")
+  connection <- file(path, "wb")
+  seek(connection, 100000002, origin = "start", rw = "write")
+  writeBin(as.raw(0), connection)
+  close(connection)
+  checksum <- .cache_md5(path)
+  storage <- transition_dataset_storage_state(new_dataset_storage_state("Large"), "archived",
+    details = list(recovered_bytes = 635679743,
+      cleanup = list(cache_size_bytes = 242739668, retained_outputs = list(list(
+        path = basename(path), label = "Optional CNA values CSV", sample = "Sample",
+        size_bytes = file.info(path)$size, checksum = checksum)))))
+  persisted <- save_dataset_storage_state_atomic(storage, dataset_dir)
+  expect_equal(persisted$details$cleanup$retained_outputs[[1]]$size_bytes, 100000003)
+  expect_equal(persisted$details$cleanup$cache_size_bytes, 242739668)
+  expect_equal(persisted$details$recovered_bytes, 635679743)
+  loaded <- load_dataset_storage_state(dataset_dir, "Large", recover = FALSE)
+  expect_true(dataset_archive_output_audit(loaded, dataset_dir)$intact)
+  expect_true(dataset_archive_output_audit(loaded, dataset_dir, verify_checksums = TRUE)$intact)
+
+  state_path <- dataset_storage_state_paths(dataset_dir)$primary
+  yaml::write_yaml(loaded, state_path, precision = 7)
+  legacy <- load_dataset_storage_state(dataset_dir, "Large", recover = FALSE)
+  expect_equal(legacy$details$cleanup$retained_outputs[[1]]$size_bytes, 100000000)
+  before <- unname(tools::md5sum(state_path))
+  expect_true(dataset_archive_output_audit(legacy, dataset_dir)$intact)
+  expect_true(dataset_archive_output_audit(legacy, dataset_dir, verify_checksums = TRUE)$intact)
+  expect_identical(unname(tools::md5sum(state_path)), before)
+
+  # A same-size content edit still matches the rounded byte count, but must
+  # fail checksum verification. Deleted outputs must also remain errors.
+  connection <- file(path, "r+b")
+  writeBin(as.raw(1), connection)
+  close(connection)
+  expect_false(dataset_archive_output_audit(legacy, dataset_dir)$intact)
+  expect_false(dataset_archive_output_audit(loaded, dataset_dir, verify_checksums = TRUE)$intact)
+  file.remove(path)
+  missing <- dataset_archive_output_audit(legacy, dataset_dir)
+  expect_false(missing$intact)
+  expect_match(missing$issues, "retained output is missing", fixed = TRUE)
 })

@@ -262,6 +262,8 @@ cna_panel <- function(sample_choices) {
               )
             )
           ),
+          h5("Optional CNA Values Table"),
+          p("Export the reusable values table separately if needed. Finalizing CNA does not export it automatically.", class = "text-muted small"),
           fluidRow(
             column(
               6,

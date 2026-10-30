@@ -180,7 +180,8 @@ save_dataset_storage_state_atomic <- function(
     fileext = ".tmp"
   )
   on.exit(if (file.exists(temporary)) file.remove(temporary), add = TRUE)
-  yaml::write_yaml(saved, temporary)
+  # Preserve exact byte counts for large retained outputs and cache totals.
+  yaml::write_yaml(saved, temporary, precision = 17)
   validate_dataset_storage_state(yaml::read_yaml(temporary), saved$dataset_id)
 
   if (file.exists(paths$backup) && !file.remove(paths$backup)) {
@@ -256,11 +257,22 @@ dataset_archive_output_audit <- function(storage_state, dataset_dir_path, verify
       issues <- c(issues, paste0(relative_path, ": retained output is missing."))
       next
     }
-    if (!identical(as.numeric(file.info(candidate)$size), as.numeric(record$size_bytes))) {
-      issues <- c(issues, paste0(relative_path, ": retained output size changed."))
-      next
+    actual_size <- as.numeric(file.info(candidate)$size)
+    checksum_verified <- FALSE
+    if (!identical(actual_size, as.numeric(record$size_bytes))) {
+      # Older YAML writes rounded large numeric sizes. Only accept that exact
+      # legacy representation when the retained content checksum still matches;
+      # never excuse actual damage using a loose numeric tolerance.
+      legacy_size <- yaml::yaml.load(yaml::as.yaml(list(size = actual_size), precision = 7))$size
+      checksum_verified <- identical(as.numeric(legacy_size), as.numeric(record$size_bytes)) &&
+        !is.null(record$checksum) && identical(.cache_md5(candidate), as.character(record$checksum))
+      if (!checksum_verified) {
+        issues <- c(issues, paste0(relative_path, ": retained output size changed."))
+        next
+      }
     }
-    if (isTRUE(verify_checksums) && !identical(.cache_md5(candidate), as.character(record$checksum))) {
+    if (isTRUE(verify_checksums) && !checksum_verified &&
+        !identical(.cache_md5(candidate), as.character(record$checksum))) {
       issues <- c(issues, paste0(relative_path, ": retained output checksum changed."))
     }
   }
@@ -343,9 +355,9 @@ dataset_cache_inventory <- function(dataset_dir_path) {
     no.. = TRUE,
     include.dirs = TRUE
   )
-  info <- if (length(entries) > 0L) file.info(entries) else data.frame()
-  files <- entries[length(entries) > 0L & !info$isdir]
-  directories <- entries[length(entries) > 0L & info$isdir]
+  info <- file.info(entries)
+  files <- entries[!info$isdir]
+  directories <- entries[info$isdir]
   relative_files <- if (length(files) > 0L) .storage_relative_paths(files, cache_dir) else character()
   relative_directories <- if (length(directories) > 0L) {
     .storage_relative_paths(directories, cache_dir)
@@ -399,6 +411,7 @@ dataset_cleanup_readiness <- function(
   sample_names <- basename(paths_list$sample_dir_paths)
   reasons <- character()
   outputs <- list()
+  optional_export_samples <- character()
   add_reason <- function(reason) reasons <<- unique(c(reasons, reason))
   add_output <- function(output) {
     outputs[[length(outputs) + 1L]] <<- output
@@ -477,11 +490,19 @@ dataset_cleanup_readiness <- function(
       sample_name
     ))
     export_status <- cna_values_export_status(sample_name, dataset_dir_path, results_dir_path)
-    if (!isTRUE(export_status$current)) {
-      add_reason(paste0(sample_name, ": current CNA values export is required (", export_status$reason, ")."))
-    } else {
-      add_output(.storage_required_file(export_status$paths$csv, "CNA values CSV", sample_name))
-      add_output(.storage_required_file(export_status$paths$metadata, "CNA values provenance", sample_name))
+    if (!isTRUE(export_status$current) && identical(
+      get_pipeline_step(pipeline_state, "cna_assignment", sample_name)$status, "completed"
+    )) {
+      optional_export_samples <- c(optional_export_samples, sample_name)
+    }
+    # Optional exports never block cleanup, but retain/audit any existing files,
+    # including older exports. Results are outside the retired cache directory.
+    for (name in c("csv", "metadata")) {
+      path <- export_status$paths[[name]]
+      if (file.exists(path) && isTRUE(file.info(path)$size > 0)) {
+        add_output(.storage_required_file(path,
+          if (name == "csv") "Optional CNA values CSV" else "Optional CNA values provenance", sample_name))
+      }
     }
   }
 
@@ -508,6 +529,12 @@ dataset_cleanup_readiness <- function(
   list(
     ready = length(reasons) == 0L,
     reasons = reasons,
+    optional_export_samples = optional_export_samples,
+    warnings = if (length(optional_export_samples)) paste0(
+      "No current CNA values table is exported for: ", paste(optional_export_samples, collapse = ", "),
+      ". Export is optional. After cache removal, you will need to reopen the dataset ",
+      "and recompute CNA to export these values later."
+    ) else character(),
     sample_names = sample_names,
     cache = inventory,
     retained_outputs = output_table
@@ -537,6 +564,8 @@ build_dataset_cleanup_plan <- function(readiness, pipeline_state, timestamp = Sy
     cache_file_count = readiness$cache$file_count,
     cache_size_bytes = readiness$cache$size_bytes,
     cache_files = as.list(readiness$cache$files$relative_path),
+    optional_export_samples = as.list(readiness$optional_export_samples),
+    warnings = as.list(readiness$warnings),
     retained_outputs = lapply(seq_len(nrow(retained)), function(index) {
       as.list(retained[index, c("path", "label", "sample", "size_bytes", "checksum")])
     })

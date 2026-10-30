@@ -2,6 +2,7 @@
 
 register_storage_server <- function(input, output, session, state, context) {
   rv <- state
+  reviewed_optional_exports <- reactiveVal(character())
   storage_action_ids <- c(
     "btn_run_clustering", "btn_run_single_clustering", "btn_go_res",
     "btn_run_de", "btn_go_anno", "btn_go_cna"
@@ -13,6 +14,7 @@ register_storage_server <- function(input, output, session, state, context) {
   })
 
   cleanup_readiness <- reactive({
+    input$main_nav # Refresh optional-export availability when returning to the menu.
     req(
       rv$storage_state,
       rv$pipeline_state,
@@ -59,7 +61,10 @@ register_storage_server <- function(input, output, session, state, context) {
 
   observeEvent(input$btn_review_dataset_cleanup, {
     req(rv$storage_state, rv$pipeline_state)
-    readiness <- cleanup_readiness()
+    readiness <- dataset_cleanup_readiness(
+      rv$pipeline_state, rv$paths_list, rv$live_selected_config,
+      rv$selected_config_path, rv$results_dir_path, rv$dataset_dir_path
+    )
     if (is.null(readiness) || !isTRUE(readiness$ready)) {
       showNotification(
         paste("Dataset cleanup is not ready:", paste(readiness$reasons, collapse = "; ")),
@@ -73,6 +78,7 @@ register_storage_server <- function(input, output, session, state, context) {
       return()
     }
     dataset_id <- rv$pipeline_state$dataset_id
+    reviewed_optional_exports(readiness$optional_export_samples)
     arm_app_confirmation(rv, "dataset_cleanup")
     showModal(modalDialog(
       title = "Archive Dataset and Remove Reconstructible Caches",
@@ -81,6 +87,7 @@ register_storage_server <- function(input, output, session, state, context) {
         icon("triangle-exclamation"),
         " Annotation and CNA editing will be disabled until the dataset is explicitly reopened and its caches are recomputed."
       ),
+      dataset_cleanup_export_warning_ui(readiness),
       tags$dl(
         class = "row",
         tags$dt(class = "col-sm-5", "Cache files"),
@@ -153,6 +160,9 @@ register_storage_server <- function(input, output, session, state, context) {
         )
         if (!isTRUE(readiness$ready)) {
           stop("Cleanup requirements changed after review: ", paste(readiness$reasons, collapse = "; "))
+        }
+        if (length(setdiff(readiness$optional_export_samples, reviewed_optional_exports())) > 0L) {
+          stop("CNA export availability changed after review. Review Dataset Cleanup again to see the updated recomputation warning.")
         }
         setProgress(0.25, detail = "Validating final outputs and cache inventory")
         archived <- archive_dataset_cache(

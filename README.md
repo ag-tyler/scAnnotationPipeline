@@ -116,13 +116,27 @@ On startup, the app:
 
 ## CNA Values Results
 
-Finalizing a sample's CNA assignment also publishes a reusable long-format
-table at `results/<sample>/3_cna_results/cna_values_<sample>.csv.gz`, with the
+Finalizing a sample's CNA assignment saves its cell assignments and plots.
+The summary/preview view stays open after saving so the optional export action
+remains available.
+The separate, optional **Export/Re-export CNA Values Table** action publishes
+a reusable long-format table at `results/<sample>/3_cna_results/cna_values_<sample>.csv.gz`, with the
 columns `gene`, `chr`, `start_pos`, `cell_name`, and `cna`. A neighboring
 `.metadata.yaml` file records dimensions and the validated cache provenance.
 The CNA summary view can export or refresh this table later without recomputing
 CNA. The optimized `.qs2` cache remains authoritative and the CSV is never used
 as pipeline input.
+
+Large exports report writing and validation progress with elapsed time. If an
+export fails or is interrupted after assignments were saved, use **Export/Re-export
+CNA Values Table** in the summary view to retry. Saved assignments remain valid;
+the table and provenance are published together after validation, and a prior
+complete export is retained if the new attempt fails before publication.
+
+Dataset cleanup is allowed without these optional exports. Before cache removal,
+the app lists completed CNA samples without a current values table and warns
+that exporting their values later will require reopening the dataset and
+recomputing CNA. Existing exports are retained.
 
 To preserve chromosome strings such as `01`, import the compressed CSV with:
 

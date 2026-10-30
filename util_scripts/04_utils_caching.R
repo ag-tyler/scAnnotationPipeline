@@ -228,7 +228,10 @@ load_cache_manifest <- function(dataset_dir_path, recover = TRUE) {
     fileext = ".tmp"
   )
   on.exit(if (file.exists(temporary)) file.remove(temporary), add = TRUE)
-  yaml::write_yaml(saved, temporary)
+  # Byte counts are doubles (including file.info() sizes). yaml's default
+  # precision rounds them once they exceed eight significant digits, breaking
+  # both metadata screening and dependency fingerprints after a disk round-trip.
+  yaml::write_yaml(saved, temporary, precision = 17)
   validate_cache_manifest(yaml::read_yaml(temporary))
 
   if (file.exists(paths$backup) && !file.remove(paths$backup)) {
@@ -315,6 +318,101 @@ cache_clear_fingerprint_index <- function() {
     rm(list = entries, envir = .cache_file_fingerprint_index)
   }
   invisible(TRUE)
+}
+
+
+# Explicit, checksum-verified repair for manifests written at YAML's old default
+# precision. Preview by default; never infer or promote scientific stage states.
+.cache_manifest_precision_plan <- function(dataset_dir_path) {
+  paths <- cache_manifest_paths(dataset_dir_path)
+  manifest <- load_cache_manifest(dataset_dir_path, recover = FALSE)
+  reports <- list()
+  source_checksums <- new.env(parent = emptyenv())
+  legacy_size_matches <- function(actual, recorded) {
+    rounded <- yaml::yaml.load(yaml::as.yaml(list(size = actual), precision = 7))$size
+    identical(as.numeric(rounded), as.numeric(recorded))
+  }
+  for (filename in names(manifest$artifacts)) {
+    record <- manifest$artifacts[[filename]]
+    original <- record
+    problem <- tryCatch({
+      artifact_path <- file.path(paths$cache_dir, filename)
+      if (!file.exists(artifact_path) ||
+          !identical(.cache_md5(artifact_path), as.character(record$checksum))) {
+        stop("Artifact checksum does not match; precision repair cannot recover it.")
+      }
+      info <- file.info(artifact_path)
+      if (!identical(as.numeric(info$size), as.numeric(record$size_bytes)) &&
+          !legacy_size_matches(info$size, record$size_bytes)) {
+        stop("Artifact size difference is not legacy YAML rounding.")
+      }
+      record$size_bytes <- unname(info$size)
+      record$modified_at <- .cache_mtime_token(info$mtime)
+      old_dependencies <- record$dependencies
+      for (name in names(record$dependencies$files)) {
+        source <- record$dependencies$files[[name]]
+        if (is.null(source$path)) next
+        if (!file.exists(source$path)) stop("Source file is missing: ", name, ".")
+        source_key <- normalizePath(source$path, winslash = "/", mustWork = TRUE)
+        if (is.null(source_checksums[[source_key]])) {
+          source_checksums[[source_key]] <- .cache_md5(source_key)
+        }
+        if (!identical(source_checksums[[source_key]], as.character(source$checksum))) {
+          stop("Source checksum does not match: ", name, ".")
+        }
+        actual_size <- unname(file.info(source$path)$size)
+        if (!identical(as.numeric(actual_size), as.numeric(source$size_bytes)) &&
+            !legacy_size_matches(actual_size, source$size_bytes)) {
+          stop("Source size difference is not legacy YAML rounding: ", name, ".")
+        }
+        record$dependencies$files[[name]]$size_bytes <- actual_size
+      }
+      if (!identical(record$dependencies, old_dependencies)) {
+        repaired_fingerprint <- cache_dependency_fingerprint(record$dependencies)
+        if (!(record$dependency_fingerprint %in% c(
+          repaired_fingerprint, cache_dependency_fingerprint(old_dependencies)
+        ))) {
+          stop("Dependency fingerprint cannot be explained by legacy YAML rounding.")
+        }
+        record$dependency_fingerprint <- repaired_fingerprint
+      }
+      NULL
+    }, error = conditionMessage)
+    action <- if (!is.null(problem)) "blocked" else if (
+      identical(record, original)
+    ) "unchanged" else "repair"
+    reports[[filename]] <- data.frame(
+      artifact = filename,
+      action = action,
+      reason = if (is.null(problem)) "" else problem,
+      stringsAsFactors = FALSE
+    )
+    if (is.null(problem)) manifest$artifacts[[filename]] <- record
+  }
+  report <- if (length(reports)) do.call(rbind, unname(reports)) else {
+    data.frame(artifact = character(), action = character(), reason = character())
+  }
+  list(report = report, manifest = manifest)
+}
+
+
+repair_cache_manifest_precision <- function(dataset_dir_path, dry_run = TRUE) {
+  paths <- cache_manifest_paths(dataset_dir_path)
+  if (!isTRUE(dry_run)) {
+    acquire_cache_manifest_lock(paths$lock)
+    on.exit(unlink(paths$lock, recursive = TRUE, force = TRUE), add = TRUE)
+  }
+  plan <- .cache_manifest_precision_plan(dataset_dir_path)
+  report <- plan$report
+  if (!isTRUE(dry_run)) {
+    if (any(report$action == "blocked")) {
+      stop("Precision repair blocked; inspect the dry-run report. No manifest was changed.", call. = FALSE)
+    }
+    if (any(report$action == "repair")) {
+      .save_cache_manifest_unlocked(plan$manifest, dataset_dir_path)
+    }
+  }
+  report
 }
 
 
@@ -522,7 +620,8 @@ cache_save_data <- function(
   on.exit(unlink(manifest_paths$lock, recursive = TRUE, force = TRUE), add = TRUE)
   manifest <- load_cache_manifest(dataset_dir_path)
   old_record <- manifest$artifacts[[data_file_name]]
-  if (is.null(dependencies) && !is.null(old_record)) dependencies <- old_record$dependencies
+  inherit_dependencies <- is.null(dependencies) && !is.null(old_record)
+  if (inherit_dependencies) dependencies <- old_record$dependencies
   if (is.null(producer) && !is.null(old_record)) producer <- old_record$producer
 
   temporary <- tempfile(pattern = paste0(".", data_file_name, "-"), tmpdir = paths$cache_dir, fileext = ".tmp")
@@ -552,7 +651,9 @@ cache_save_data <- function(
     checksum = .cache_md5(paths$primary),
     size_bytes = unname(info$size),
     modified_at = .cache_mtime_token(info$mtime),
-    dependency_fingerprint = cache_dependency_fingerprint(dependencies),
+    dependency_fingerprint = if (inherit_dependencies) {
+      old_record$dependency_fingerprint
+    } else cache_dependency_fingerprint(dependencies),
     dependencies = if (is.null(dependencies)) list() else dependencies,
     validation = validation
   )
@@ -606,10 +707,14 @@ cache_save_data <- function(
     stop("Could not restore the previous cache artifact.", call. = FALSE)
   }
   candidate$previous <- NULL
-  if (!identical(candidate$checksum, record$checksum)) {
-    current_manifest$artifacts[[data_file_name]] <- candidate
-    .save_cache_manifest_unlocked(current_manifest, dataset_dir_path)
-  }
+  # Equal contents do not imply equal file metadata: restoring a backup retires
+  # the primary inode/mtime too. Persist the restored record even when two saves
+  # happened to produce the same checksum, or startup will flag it as stale.
+  restored_info <- file.info(paths$primary)
+  candidate$size_bytes <- unname(restored_info$size)
+  candidate$modified_at <- .cache_mtime_token(restored_info$mtime)
+  current_manifest$artifacts[[data_file_name]] <- candidate
+  .save_cache_manifest_unlocked(current_manifest, dataset_dir_path)
   warning("Recovered previous valid cache artifact: ", data_file_name, call. = FALSE)
   candidate
 }

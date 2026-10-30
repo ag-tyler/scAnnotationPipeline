@@ -18,21 +18,34 @@ register_cna_summary_server <- function(input, output, session, state, context) 
 
   publish_cna_values <- function(
     sample_name,
-    show_progress = TRUE,
-    assignments_saved = FALSE
+    show_progress = TRUE
   ) {
+    export_stage <- NULL
+    report_export_progress <- function(stage, progress, detail, elapsed_seconds) {
+      if (!identical(export_stage, stage)) {
+        record_state_event(rv, stage = "cna", event_type = "cna_values_export_stage",
+          outcome = "in_progress", sample = sample_name,
+          parameters = list(stage = stage, elapsed_seconds = elapsed_seconds, detail = detail))
+        message("CNA export | ", sample_name, " | ", stage, " | ", detail)
+      }
+      export_stage <<- stage
+      if (isTRUE(show_progress)) setProgress(value = progress, detail = detail)
+    }
     perform_export <- function() {
       export_cna_values_table(
         sample_name = sample_name,
         dataset_dir_path = rv$dataset_dir_path,
-        results_dir_path = rv$results_dir_path
+        results_dir_path = rv$results_dir_path,
+        progress_callback = report_export_progress
       )
     }
+    record_state_event(rv, stage = "cna", event_type = "cna_values_export",
+      outcome = "started", sample = sample_name)
     result <- tryCatch(
       if (isTRUE(show_progress)) {
         withProgress(
           message = paste("Exporting CNA values:", sample_name),
-          value = 0.1,
+          value = 0,
           {
             exported <- perform_export()
             setProgress(value = 1, detail = "Compressed table and provenance saved")
@@ -42,7 +55,11 @@ register_cna_summary_server <- function(input, output, session, state, context) 
       } else {
         perform_export()
       },
-      error = identity
+      error = identity,
+      interrupt = function(condition) {
+        structure(list(message = paste0("CNA export interrupted during ", export_stage, "."), call = NULL),
+          class = c("cna_export_interrupted", "error", "condition"))
+      }
     )
     cna_export_revision(cna_export_revision() + 1L)
     if (inherits(result, "error")) {
@@ -50,17 +67,13 @@ register_cna_summary_server <- function(input, output, session, state, context) 
         rv,
         stage = "cna",
         event_type = "cna_values_export",
-        outcome = "failed",
+        outcome = if (inherits(result, "cna_export_interrupted")) "interrupted" else "failed",
         sample = sample_name,
         reason = conditionMessage(result)
       )
       showNotification(
         paste(
-          if (isTRUE(assignments_saved)) {
-            "CNA assignments remain saved, but the values-table export failed:"
-          } else {
-            "CNA values-table export failed:"
-          },
+          "CNA values-table export failed:",
           conditionMessage(result),
           "Use Export/Re-export CNA Values Table to retry."
         ),
@@ -78,7 +91,8 @@ register_cna_summary_server <- function(input, output, session, state, context) 
       parameters = list(
         path = result$paths$csv,
         row_count = result$row_count,
-        checksum = result$csv_checksum
+        checksum = result$csv_checksum,
+        elapsed_seconds = result$elapsed_seconds
       )
     )
     invisible(result)
@@ -94,7 +108,7 @@ register_cna_summary_server <- function(input, output, session, state, context) 
       rv$results_dir_path
     )
     if (!status$exists) {
-      return(tags$small("No reusable CNA values table has been exported yet.", class = "text-muted"))
+      return(tags$small("Optional CNA values table has not been exported.", class = "text-muted"))
     }
     if (status$current) {
       return(tags$small(
@@ -377,14 +391,6 @@ register_cna_summary_server <- function(input, output, session, state, context) 
       return()
     }
 
-    # Assignment completion is authoritative. A secondary values-table export
-    # failure is reported and can be retried without rolling back assignments.
-    export_result <- publish_cna_values(
-      s_name,
-      show_progress = TRUE,
-      assignments_saved = TRUE
-    )
-
     record_state_event(
       rv,
       stage = "cna",
@@ -399,15 +405,16 @@ register_cna_summary_server <- function(input, output, session, state, context) 
     )
 
     showNotification(
-      if (identical(export_result, FALSE)) {
-        "CNA assignments were saved. Retry the CNA values-table export from this view."
-      } else {
-        "CNA Analysis Complete! Assignments, plots, and values table saved successfully."
-      },
-      type = if (identical(export_result, FALSE)) "warning" else "default"
+      "CNA Analysis Complete! Assignments and plots saved. CNA values-table export is optional.",
+      type = "default"
     )
 
-    # Force the dropdown observer to re-evaluate and update the status menu
-    shinyjs::runjs(paste0("$('#cna_sample_idx').trigger('change');"))
+    # Saving updates the cell-cache checksum included in preview provenance.
+    # The displayed preview produced these exact assignments, so rebase its
+    # fingerprint without recomputing plots or leaving Assign & Summary.
+    rv$cna_preview_fingerprint <- tryCatch(
+      cna_preview_fingerprint(s_name, rv$dataset_dir_path, rv$live_selected_config),
+      error = function(error) NULL
+    )
   })
 }

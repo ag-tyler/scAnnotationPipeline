@@ -655,9 +655,17 @@ files, and any remaining requirements. Cleanup requires typing the dataset ID.
 
 The action removes only reconstructible files under that dataset's `cache/`.
 It retains processed data, final `Cells.csv` files, result tables and plots,
-configuration, logs, pipeline state, and reusable CNA values exports. A sample
-where the user explicitly chose **Omit CNA** is considered finished; a sample
-with completed CNA must have a current CNA values export.
+configuration, logs, pipeline state, and any reusable CNA values exports.
+A sample where the user explicitly chose **Omit CNA** is considered finished.
+CNA values-table export is optional: finalization saves assignments and plots,
+and **Export/Re-export CNA Values Table** creates the table separately.
+
+Missing or outdated values exports do not block cleanup. The storage card and
+cleanup confirmation list the affected completed CNA samples and warn that,
+after removing caches, exporting their values later requires reopening the
+dataset and recomputing CNA. Existing exports remain in results, including
+older exports; cleanup never deletes them. Scientific completion statuses do
+not depend on whether the optional table was exported.
 
 After cleanup, the dataset is an archived, read-only result set and the pipeline
 overview keeps its scientific completion statuses. If a retained output later

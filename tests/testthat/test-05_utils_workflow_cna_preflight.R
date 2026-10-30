@@ -196,6 +196,7 @@ test_that("CNA preflight honors an explicit persisted omission", {
     "skipped",
     sample = fx$sample_name,
     reason = "CNA is not warranted for this sample.",
+    details = list(omitted_by_user = TRUE),
     force = TRUE
   )
 

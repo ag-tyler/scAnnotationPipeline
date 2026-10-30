@@ -35,15 +35,20 @@ The test constructs a temporary application containing:
 - deterministic clustering and DE plots;
 - selected decisions and a valid persisted pipeline state.
 
-It then visits dataset selection, dashboard, resolution selection, manual
-annotation, and CNA analysis. Screenshot comparison uses a small threshold so
-harmless font and antialiasing differences do not cause pixel-perfect failures.
-All functional browser assertions run on every supported platform. Screenshot
+It visits dataset selection, dashboard, resolution selection, manual
+annotation, and CNA analysis. After the reviewed screenshots, it assigns a
+previously unassigned cluster, saves the annotation, verifies the standardized
+cell table, manifest-backed clustering cache, and pipeline state, restarts the
+temporary app, and confirms that the saved annotation is restored in the UI.
+This is a real browser-driven write, but it is confined to the disposable
+synthetic workspace. Screenshot comparison uses a small threshold so harmless
+font and antialiasing differences do not cause pixel-perfect failures. All
+functional browser assertions run on every supported platform. Screenshot
 comparison is additionally enforced when a reviewed baseline exists for that
-platform; the repository currently includes the Windows/R 4.5 baseline.
-The test does not invoke compute, save, reset, or batch mutations through the
-browser. Its app, dataset, logs, state, caches, and results are deleted with the
-temporary test directory.
+platform; the repository currently includes the Windows/R 4.5 baseline. The
+test does not invoke expensive scientific compute, reset, cleanup, or batch
+mutations. Its app, dataset, logs, state, caches, and results are deleted with
+the temporary test directory.
 
 If the browser or browser-test dependency is unavailable, only this browser
 test is skipped; all non-browser release tests remain runnable.
@@ -57,6 +62,11 @@ test is skipped; all non-browser release tests remain runnable.
 | Multi-sample standardization plus restart continuity | `test-t23-release-integration.R` |
 | First-sample parameters and marker schemas | `test-05_utils_workflow.R`, component tests |
 | Unsaved annotation edits, navigation, CNA omission, and notes | `test-app-components.R`, `test-03_utils_misc.R` |
+| Browser-driven annotation save and restart continuity | `test-app-ui-baseline.R` |
+| Exact large-input metadata, legacy precision recovery, saved-label continuity across reloads and dataset switching | `test-f15-r01-cache-precision.R` |
+| Persistent explicit CNA omission, reversal, mixed batch, configured readiness, and CNA-view sample switching | `test-f15-r02-cna-omission.R`, `test-f05-annotation-recovery.R` |
+| Bounded CNA conversion, export progress, binary validation, interrupted export preservation and retry | `test-f15-r07-cna-export.R`, `test-f13-cna-values-export.R` |
+| Optional export independent of scientific completion; warned cleanup without an export, retained old exports, and re-review when availability changes | `test-f13-cna-values-export.R`, `test-f16-dataset-storage.R` |
 | Persistent status, repeated attempts, append-only logs, and recovery | `test-06_utils_logging.R`, `test-07_utils_state.R`, `test-t23-release-integration.R` |
 | Stale/corrupt/partial cache rejection and recovery | `test-04_utils_caching.R`, `test-regression_cna_cache.R`, state reconciliation tests |
 | CNA eligibility and numerical edge cases | `test-05_utils_workflow_cna_preflight.R`, `test-m0-cna-characterization.R` |
@@ -94,3 +104,68 @@ After F03 navigation and duplicate-action hardening, the full suite passed 894
 assertions with zero failures or warnings. Direct Shiny server tests verified
 that clustering and DE completion dialogs navigate once and ignore a repeated
 event. The browser baseline remained the only restricted-environment skip.
+
+For F15 on 2026-10-28, the focused browser journey passed all 27 assertions,
+including a real annotation save, durable-table/cache/state checks, application
+restart, and UI reload. The current Dataset Selection and Start Menu screenshots
+were reviewed and refreshed for Windows/R 4.5. The complete portable suite then
+passed 1,456 assertions with zero failures or warnings; its single browser test
+was skipped on that invocation because the restricted environment denied the
+new Chromium process pipe/port after the focused browser run.
+
+F15-R01 verification on 2026-10-28 passed all 60 new cache-precision/recovery
+assertions. The full portable gate passed 1,524 assertions with zero failures
+or warnings and the known restricted-Chromium skip. An initial attempt under
+the shell's unsupported Windows `C.UTF-8` locale produced two unrelated tooltip
+failures; clearing the inherited locale overrides restored R's normal UTF-8
+Windows locale and the complete gate passed. Real-dataset inspection and the
+explicit recovery preview remained read-only; applying the recovery and manual
+reload confirmation remain pending.
+
+F15-R02 verification on 2026-10-28 passed 53 focused omission/readiness/server
+assertions. The full suite passed 1,580 assertions with zero failures/warnings
+and the known restricted-Chromium skip. Read-only preflight verified HCC3's
+saved CNA configuration is eligible and all eight explicit Liu2022 omissions
+reconcile to skipped computation. The user confirmed R01's correct dataset
+states; manual confirmation of the updated CNA view/computation remains pending.
+
+F15-R07 verification on 2026-10-30 passed all 49 focused export assertions and
+the full portable suite (1,629 passed, zero failures/warnings, one restricted
+Chromium skip). Coverage includes bounded conversion allocation, exact values,
+monotonic progress, binary gzip validation, interrupted publication and retry,
+and retained assignment state in the Shiny server. A portable synthetic export
+at HCC3's dimensions (5,000 genes × 14,872 cells; 74,360,000 rows) completed in
+54.4 seconds and published a 633.8 MiB gzip CSV with current provenance. Real
+HCC3 assignments/plots were inspected read-only and remain saved; the missing
+export's manual retry and final storage acceptance are still pending.
+
+The optional-export policy update on 2026-10-30 passed the full portable suite
+with 1,658 assertions, zero failures/warnings, and the restricted-Chromium skip.
+Finalization no longer invokes export. Server/lifecycle regressions verify
+cleanup remains available without a current table, the recomputation warning
+appears before confirmation, existing exports are retained/audited, and newly
+missing exports after review require a fresh warning. Dataset cleanup in the
+manual F15 run no longer depends on opting into values export; required final
+scientific outputs and archive safeguards remain mandatory.
+
+The CNA save-navigation update on 2026-10-30 passed the full suite with 1,667
+assertions, zero failures/warnings, and the restricted-Chromium skip. The
+integrated status/summary server regression verifies that final assignment
+completion preserves the summary view and preview, refreshes status/provenance,
+does not invoke optional export or recompute plots, and still clears the
+preview when upstream thresholds change.
+
+The 2026-10-30 cleanup manual follow-up exposed rounded byte counts in
+`storage_state.yaml` for the large retained CNA CSV. Storage-state writes now
+preserve full numeric precision; legacy size mismatches are accepted only when
+they match the old rounding and the retained checksum verifies unchanged
+content. A read-only deep audit of Liu2022's archived backup verifies all 32
+retained outputs. The user reports cleanup and explicit reopen otherwise work,
+with the intended stale-on-reopen transition, and has checked off the CNA and
+storage-lifecycle manual scenarios. Existing dataset state/results were not
+modified during diagnosis or verification.
+
+This storage-precision fix passes all 121 storage assertions and the full
+portable suite (1,680 assertions, zero failures/warnings, one restricted-browser
+skip). Genuine changed/deleted content remains rejected, while checksum-proven
+legacy rounding no longer produces an archive-damage warning.

@@ -375,7 +375,7 @@ expect_ui_baseline_screenshot <- function(app, baseline_dir, filename) {
   invisible(TRUE)
 }
 
-test_that("baseline workflow navigation is preserved", {
+test_that("baseline navigation and writable annotation reload are preserved", {
   skip_if_not_installed("shinytest2")
   skip_if_not_installed("qs2")
 
@@ -439,6 +439,84 @@ test_that("baseline workflow navigation is preserved", {
   expect_equal(app$get_value(input = "main_nav"), "cna_tab")
   expect_match(app$get_text("body"), "CNA Pipeline Controls", fixed = TRUE)
   expect_ui_baseline_screenshot(app, baseline_dir, "05-cna-analysis.png")
+
+  app$click(input = "btn_cna_back_menu", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  app$click(input = "btn_go_anno", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+
+  # Exercise a real write in the disposable fixture, then verify both durable
+  # representations before restarting the application. Cluster 3 begins
+  # unassigned, so this also guarantees that the save changes annotations and
+  # invalidates only genuinely downstream CNA work.
+  app$set_inputs(cluster = "3", cell_type_input = "Epithelial", wait_ = FALSE)
+  app$click(input = "assign_btn", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  app$click(input = "save_btn", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  app$wait_for_js("$('.shiny-notification').length === 0", timeout = 10000)
+
+  fixture_dataset_dir <- file.path(test_app_dir, "datasets", dataset_name)
+  fixture_cells_path <- file.path(
+    fixture_dataset_dir,
+    "processed_data",
+    "Synthetic_sample",
+    "Cells.csv"
+  )
+  saved_cells <- data.table::fread(fixture_cells_path)
+  expect_equal(sum(saved_cells$cell_type == "Epithelial", na.rm = TRUE), 32L)
+
+  clustered_cache_name <- "cells_filt_clust_res_0.5_Synthetic_sample.qs2"
+  expect_true(cache_check_valid(clustered_cache_name, fixture_dataset_dir))
+  saved_clustered_cells <- cache_load_data(
+    clustered_cache_name,
+    fixture_dataset_dir
+  )
+  expect_true(all(
+    saved_clustered_cells[clust == 3]$cell_type == "Epithelial"
+  ))
+
+  saved_state <- load_pipeline_state(
+    fixture_dataset_dir,
+    dataset_id = dataset_name,
+    sample_names = "Synthetic_sample"
+  )
+  expect_identical(
+    get_pipeline_step(saved_state, "clustering", "Synthetic_sample")$status,
+    "completed"
+  )
+  expect_identical(
+    get_pipeline_step(saved_state, "annotation", "Synthetic_sample")$status,
+    "completed"
+  )
+
+  # Restart against the same temporary workspace and confirm that the UI loads
+  # the persisted annotation instead of reverting it or declaring clustering
+  # stale. This is the writable save/reload regression missing from the prior
+  # read-only browser baseline.
+  app$stop()
+  app <- shinytest2::AppDriver$new(
+    app_dir = test_app_dir,
+    name = "app-writable-reload",
+    variant = browser_variant,
+    seed = 3988,
+    width = 1440,
+    height = 1000,
+    load_timeout = 60000,
+    timeout = 60000
+  )
+  app$set_inputs(dataset_choice = dataset_name, wait_ = FALSE)
+  app$click(input = "btn_load_dataset", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  app$click(input = "btn_go_anno", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  app$set_inputs(cluster = "3", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  expect_match(
+    app$get_text("#current_cluster_annotation"),
+    "Current: Epithelial",
+    fixed = TRUE
+  )
 
   app_logs <- app$get_logs()
   error_logs <- app_logs[
