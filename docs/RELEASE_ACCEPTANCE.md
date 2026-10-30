@@ -97,6 +97,11 @@ not a repository test and is not required for another user to validate the app.
 
 ### F17 manual acceptance (pending)
 
+- [x] User confirmed Liu2022_Liver Both-mode creation using a relative
+  destination: the dataset-specific folder and ZIP were created. The destination
+  location is not retained in this record.
+- [ ] Confirm the corrected completion popup wraps both full destination paths
+  within the modal/window; the original manual test found clipping/overflow.
 - [ ] On a safe small finished dataset, exercise folder/archive/both and both
   inclusion switches; confirm defaults, previews/warnings, progress and one-shot
   confirmation. Unfinished/busy/dirty datasets must be blocked.
@@ -132,6 +137,15 @@ baselines were retained. The final suite uses the supported Windows UTF-8
 locale; the host's initial C locale caused two existing tooltip text checks to
 fail until the test locale was set correctly. Synthetic fixtures only were
 modified. F17 manual acceptance remains open.
+
+F17 completion-layout follow-up (2026-10-30): the user confirmed creation of
+the Liu2022 folder and ZIP, but reported long paths extending beyond the modal
+and screen. The display fix preserves complete selectable text with wrapping.
+All **392 focused F17 assertions** pass (zero failures/warnings/skips), including
+**36 new layout assertions**. Edge geometry checks at 1280px and 375px confirm
+that both full paths stay inside the modal/window without horizontal overflow.
+The export backend is unchanged; this follow-up ran the focused gate, not a new
+full-suite or real-dataset export. Manual visual confirmation remains open.
 
 On 2026-10-21 under Windows and R 4.5.3, `Rscript tests/testthat.R` passed 818
 assertions with zero failures, warnings, or skips. This total includes all 21

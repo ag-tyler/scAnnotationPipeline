@@ -529,3 +529,22 @@ For the next full review (not yet confirmed):
 - [ ] Expand Boundary details and confirm strict comparisons/equal-Y behavior
   are clear; expanding it must not alter sliders or plots.
 
+## Follow-up — F17 manual snapshot creation and completion layout (2026-10-30)
+
+The user manually exported `Liu2022_Liver` using a relative destination and
+confirmed that **Both** correctly created the dataset-specific folder and ZIP
+archive. The destination location is intentionally not retained here. This
+confirms creation, not all remaining content/option/archive-extraction checks.
+
+The **Review snapshot verified** completion popup displayed long output paths
+past the popup border, with their ends clipped at the screen edge. The display
+now wraps complete, selectable paths inside the popup rather than truncating
+them or inserting characters. Snapshot content, naming, validation, scientific
+state and destination-free logging are unchanged.
+
+- [x] Manual Both-mode creation of a folder and ZIP on Liu2022_Liver.
+- [ ] Reopen the completion popup after exporting and confirm both full paths
+  remain readable within the popup, including on a narrow window.
+- [ ] Retain F17's remaining option/content/summary/cleanup/failure checks from
+  `RELEASE_ACCEPTANCE.md`; this confirmation does not close overall acceptance.
+

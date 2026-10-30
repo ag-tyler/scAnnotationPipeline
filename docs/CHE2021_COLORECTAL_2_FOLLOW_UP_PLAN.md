@@ -1546,7 +1546,8 @@ R08 and selectable-subset clustering retain their separate enhancement scope.
 
 ### F17 — Verified refined copies for future annotation review
 
-**Status:** Implemented on 2026-10-30; manual acceptance pending. The user's
+**Status:** Implemented on 2026-10-30; manual Both-mode folder/ZIP creation on
+Liu2022_Liver confirmed; remaining manual acceptance pending. The user's
 decision supersedes the earlier two-version proposal: the complete scope below
 is delivered together. Logs and CNA-values switches are included, not deferred.
 
@@ -1592,6 +1593,16 @@ Manual acceptance is not claimed by implementation or synthetic test coverage.
   exported, cleaned, recomputed or altered for these checks.
 
 #### User controls, placement and readiness
+
+**Manual follow-up (2026-10-30):** The user successfully created a folder and
+ZIP for Liu2022_Liver using a relative destination. Long paths overflowed the
+completion popup and were clipped by the screen edge. The completion UI now
+wraps full, selectable paths within the modal; no truncation, path rewriting,
+export/state changes or additional destination persistence is introduced.
+Desktop/narrow-screen browser geometry and full-text regressions cover this
+presentation fix. Manual confirmation of the corrected popup and the remaining
+content/option/archive checks is still open. The actual destination is not
+recorded in this plan.
 
 - Add **Create Review Snapshot…** to the Start Menu's Dataset Storage card,
   alongside, but independent of, cleanup/reopen actions.
@@ -1858,12 +1869,13 @@ evidence that this newly planned feature has been tested.
 | F15-R07 | CNA final save/export stall | Complete | 2026-10-30 | Finalization and optional export/re-export manually exercised; optimized exporter and interruption/retry regressions pass |
 | F15-R08 | Compact threshold helper text | Implemented; manual wording review pending | — | Three short visible rules, visible every-subclone requirement, collapsed strict/equal-Y note, reduced spacing; classification and slider semantics unchanged |
 | F09 subset addendum | Selectable-subset clustering | Implemented; manual confirmation pending | — | All/stale/incomplete/manual checklist, selected-only scientific workflow/progress/invalidation, fresh confirmation identities, archive/busy/unsaved guards, and unchanged unselected artifacts |
-| F17 | Verified finished-dataset review snapshots | Implemented; manual acceptance pending — P2/M | — | Folder/archive/both, logs/CNA switches, complete processed data/all plots, origin README and scoped aggregates, verified readback, safe rollback and destination-free logs; active/archived datasets supported |
+| F17 | Verified finished-dataset review snapshots | Implemented; manual creation confirmed, remaining acceptance pending — P2/M | — | Liu2022 Both-mode folder/ZIP creation confirmed; completion paths now wrap within the popup. Full option/content/summary/cleanup acceptance remains open |
 
 ### 12.3 Progress history
 
 | Date | Task | Change | Verification |
 | --- | --- | --- | --- |
+| 2026-10-30 | F17 manual follow-up / completion-path wrapping | Recorded the user's successful Liu2022 folder-and-ZIP creation with a relative destination (location not retained). Wrapped complete selectable paths inside the completion modal, fixing border overflow/screen-edge clipping without changing export behavior | All 392 focused F17 assertions pass, 0 failures/warnings/skips, including 36 new layout assertions. Real Edge geometry at 1280px and 375px verifies no modal/document/path horizontal overflow and unchanged full path text. Manual layout confirmation and remaining F17 content/options acceptance are open |
 | 2026-10-30 | F17 implementation | Added one complete review-snapshot workflow: three modes, independent logs/CNA switches, whole processed data/all ordinary plots, origin README, scoped schema-v1 aggregates, manifest/readback verification, shared storage locks, fresh GUI confirmation, bounded copy/progress, safe rollback and destination-free logging | Full suite: 2,478 passing assertions, 0 failures/test warnings/skips, including 39 browser assertions. Separate real >4 GiB ZIP64 gate passed. All 12 combinations, active/archived CNA eligibility, source preservation, Unicode/native path limits, corrupt payloads, no-overwrite races, interruptions (including after rename), log failures and lightweight readiness covered. Final suite uses the supported Windows UTF-8 locale; initial C-locale tooltip failures were environment-specific. Manual new-dataset snapshot/content/runtime acceptance remains open; no real dataset changed |
 | 2026-10-30 | F17 planning | Added the agreed review-snapshot scope, superseding the two-version proposal with one delivery including independent logs/CNA-values options; documented contents, origin metadata, scoped filtering/annotation summaries, three output modes, final verification, safe failure handling and no destination tracking/logging | Documentation only; no snapshot implementation or new runtime tests. Earlier R08 work and pending manual acceptance remain unchanged |
 | 2026-10-30 | F15-R08 | Shortened threshold guidance to three visible rules plus a collapsed strict/equal-Y boundary note; retained eligibility, every-subclone retention and gray-zone semantics with reduced spacing | 33 focused R08 and 42 existing F11 assertions pass; full portable suite passes 2,072 assertions, 0 failures/warnings, 1 restricted-browser skip; two-subclone UI and unchanged classification/save/reload covered; new-dataset wording/layout review pending |

@@ -27,6 +27,22 @@ snapshot_server_arguments <- function(state, context, fresh = FALSE) {
   )
 }
 
+snapshot_completion_dialog_ui <- function(result) {
+  shiny::modalDialog(title = "Review snapshot verified", easyClose = TRUE,
+    shiny::p("Every requested output was verified and published. Scientific statuses are unchanged."),
+    if (length(result$warnings)) shiny::div(class = "alert alert-warning",
+      shiny::tags$ul(lapply(result$warnings, shiny::tags$li))),
+    shiny::tags$ul(class = "review-snapshot-output-paths",
+      style = "min-width: 0; max-width: 100%; padding-left: 1.25rem;",
+      lapply(result$outputs, function(path) shiny::tags$li(class = "mb-2",
+        shiny::tags$code(class = "review-snapshot-output-path",
+          # Wrap for display without changing/truncating the selectable path.
+          style = paste("display: block; max-width: 100%; white-space: normal;",
+            "overflow-wrap: anywhere; word-break: break-word;"),
+          path)))),
+    footer = shiny::modalButton("Done"))
+}
+
 register_snapshot_server <- function(input, output, session, state, context) {
   rv <- state
   preview <- reactiveVal(NULL)
@@ -158,9 +174,6 @@ register_snapshot_server <- function(input, output, session, state, context) {
     if (inherits(result, "error")) { report_error(result); return() }
     if (is.null(result)) return()
     # Only transient UI shows the new destinations. Nothing is saved to state.
-    showModal(modalDialog(title = "Review snapshot verified", easyClose = TRUE,
-      p("Every requested output was verified and published. Scientific statuses are unchanged."),
-      if (length(result$warnings)) div(class = "alert alert-warning", tags$ul(lapply(result$warnings, tags$li))),
-      tags$ul(lapply(result$outputs, tags$li)), footer = modalButton("Done")))
+    showModal(snapshot_completion_dialog_ui(result))
   })
 }
