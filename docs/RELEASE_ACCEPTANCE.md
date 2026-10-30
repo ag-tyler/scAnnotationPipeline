@@ -1,5 +1,12 @@
 # Release Acceptance
 
+**Next full manual run (prepared 2026-10-30):**
+[Che2021 Colorectal manual review](CHE2021_COLORECTAL_MANUAL_REVIEW.md).
+This fresh-dataset checklist covers setup/standardization, the semi-automatic
+pipeline, outstanding regression checks, snapshots and safe storage lifecycle
+tests. Results belong in its empty per-stage Notes sections, referenced by
+checkpoint ID; no new manual pass is implied by preparing the document.
+
 This document defines the portable Milestone 7 release gate. Every automated
 check uses committed code/fixtures or deterministic synthetic data generated in
 a temporary directory. No named local dataset, private biological resource, or

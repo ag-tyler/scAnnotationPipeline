@@ -7,6 +7,14 @@
 **Current phase (2026-10-30):** The original F01–F16 scope, R01–R08 remediation and F09 subset work are implemented with automated coverage. F17 is implemented as one complete finished-dataset review-snapshot feature, including all three output modes and independent logs/CNA-values inclusion options. Its verification record and manual export checklist are below. The Liu2022 replay is finished; previously recorded manual confirmations stand, while targeted manual checks, F17 manual acceptance and the full new-dataset review remain open. Implementation completion is not overall acceptance.
 **Basis:** Manual test notes, follow-up console-launch testing, current source inspection, file-size inventory, `pipeline.log`, and `pipeline_state.yaml` from `Che2021_Colorectal_2`.
 
+**Next full manual review:** The user is restarting the entire pipeline on a
+fresh `Che2021_Colorectal` workspace with raw inputs and updated sample metadata
+already provided. Use [Che2021 full manual review](CHE2021_COLORECTAL_MANUAL_REVIEW.md)
+for stable checkpoint IDs and empty per-stage Notes sections. Setup,
+standardization and scientific processing remain to be performed/recorded;
+creating the checklist is not acceptance evidence. The Liu2022 replay remains
+the historical record and is not reset or replaced.
+
 ---
 
 ## 1. Scope and planning principles
