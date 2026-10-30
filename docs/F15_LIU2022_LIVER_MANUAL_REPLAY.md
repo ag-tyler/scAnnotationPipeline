@@ -303,3 +303,43 @@ Verification: the full portable suite passes 1,680 assertions with zero
 failures/warnings and the known restricted-browser skip; all 121 focused
 storage assertions pass, including the new large-file/legacy audit regression.
 
+## Follow-up — R03 annotation preview and Unassigned legend (2026-10-30)
+
+The unannotated preview failure was reproduced with synthetic cells: all
+missing labels leave zero colour categories and the palette generator throws
+an error. Missing labels are also excluded from the old explicit legend breaks
+in partial annotations. R01 separately established the rounded-cache-metadata
+cause of the later stale-state split; preview was not shown to cause those
+state changes.
+
+Preview now warns without navigating when annotation data is unavailable or
+no cell types have been assigned. Unsaved partial annotations can be previewed.
+Plot construction and deferred build failures are caught, any old preview is
+cleared, and retry works in the same session. Missing/blank/literal NA and
+explicit Unassigned values become a single grey Unassigned category only in
+the plotting copy, not in saved scientific labels. The saved annotation PNG
+uses the same legend-bearing plot as the preview.
+
+All 76 new regression assertions pass, including actual PNG comparison,
+session survival/retry, all-cell retention, and unchanged persisted state,
+configuration, cell data, cache artifacts, and manifests after preview. The
+full suite passes 1,756 assertions with zero failures/warnings and the known
+restricted-browser skip. No real dataset files were changed.
+
+Targeted manual confirmation is still pending (the original completed replay
+and notes above are preserved):
+
+- [ ] Request preview before assigning any cluster: see an actionable warning
+  and retain a usable session.
+- [ ] Assign one cluster without saving, then preview: remaining cells and
+  the legend show grey Unassigned.
+- [ ] Save that annotation and check `2_de_plots/cell_types.png` has the same
+  legend; clustering, resolution, and DE remain valid after saving/reload.
+
+**Manual update (2026-10-30):** The user restored the dataset to its
+pre-cleanup state, including caches, and confirms Unassigned appears in the
+new annotation/DE preview plot legends. The unannotated-preview crash check
+has not been exercised manually; it is deferred to the next full app test on
+a new dataset. This does not imply that the other targeted checks above have
+all been repeated. No dataset restoration was performed by the agent.
+

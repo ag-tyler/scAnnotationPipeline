@@ -608,22 +608,59 @@ register_annotation_server <- function(input, output, session, state, context) {
     }
   })
 
+  output$final_umap_plot <- renderPlot({
+    req(rv$final_plot)
+    rv$final_plot
+  })
+
   observeEvent(input$preview_btn, {
-    req(rv$cells_filt, rv$sample_name, rv$res)
+    # Do not leave a prior sample/attempt's preview visible after a failed request.
+    rv$final_plot <- NULL
+    if (
+      !is.data.frame(rv$cells_filt) || nrow(rv$cells_filt) == 0L ||
+        !("cell_type" %in% names(rv$cells_filt)) ||
+        length(rv$sample_name) != 1L || is.na(rv$sample_name) ||
+        !nzchar(rv$sample_name) || length(rv$res) != 1L || is.na(rv$res)
+    ) {
+      showNotification(
+        "Annotation data is unavailable. Select a sample with completed clustering, resolution selection and DE first.",
+        type = "warning", duration = 10
+      )
+      return()
+    }
+    if (all(annotation_plot_labels(rv$cells_filt$cell_type) == "Unassigned")) {
+      showNotification(
+        "No cell types are assigned yet. Assign at least one cluster before previewing; remaining cells will appear as grey Unassigned points.",
+        type = "warning", duration = 10
+      )
+      return()
+    }
     id <- showNotification("Generating preview plot...", duration = NULL, type = "message")
     on.exit(removeNotification(id), add = TRUE)
 
     plot_title <- rv$sample_name
     plot_subtitle <- paste("Annotated cell types; clustering resolution", rv$res)
-    rv$final_plot <- plot_clusters(
-      rv$cells_filt,
-      plot_title,
-      x_col = umap1,
-      y_col = umap2,
-      cluster_col = cell_type,
-      subtitle = plot_subtitle
-    )
-    output$final_umap_plot <- renderPlot({ rv$final_plot })
+    preview <- tryCatch({
+      plot <- plot_clusters(
+        rv$cells_filt,
+        plot_title,
+        x_col = umap1,
+        y_col = umap2,
+        cluster_col = cell_type,
+        subtitle = plot_subtitle
+      )
+      # ggplot defers some errors until drawing: catch those before navigating.
+      ggplot2::ggplot_build(plot)
+      plot
+    }, error = function(e) {
+      showNotification(
+        paste("Could not generate annotation preview. Check the sample's annotation and UMAP data, then retry:", conditionMessage(e)),
+        type = "warning", duration = 10
+      )
+      NULL
+    })
+    if (is.null(preview)) return()
+    rv$final_plot <- preview
     nav_select("annotation_view", "annotation_preview")
   })
 

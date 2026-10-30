@@ -4,7 +4,7 @@
 
 **Initial plan date:** 2026-10-21  
 **Last progress update:** 2026-10-30
-**Current phase (2026-10-30):** The Liu2022 manual replay is finished, including CNA, optional export/re-export, cleanup, archived reload, and reopen. R01, R02, and R07 are implemented and their workflow paths confirmed. Original findings R03–R06, optional compact threshold guidance R08, and the F09 subset-clustering enhancement remain open. See the final replay summary below for the subsequent save-navigation and storage-audit fixes.
+**Current phase (2026-10-30):** The Liu2022 manual replay is finished, including CNA, optional export/re-export, cleanup, archived reload, and reopen. R01, R02, and R07 are implemented and their workflow paths confirmed. R03 is implemented with automated preview/legend regressions; targeted manual confirmation remains pending. Original findings R04–R06, optional compact threshold guidance R08, and the F09 subset-clustering enhancement remain open. See the final replay summary below for the subsequent save-navigation and storage-audit fixes.
 **Basis:** Manual test notes, follow-up console-launch testing, current source inspection, file-size inventory, `pipeline.log`, and `pipeline_state.yaml` from `Che2021_Colorectal_2`.
 
 ---
@@ -951,7 +951,7 @@ loading works. The following are separate findings from the resumed run.
 | --- | --- | --- | --- | --- |
 | F15-R01 | P0 | Reload repeatedly marks HC1, HC2, HC3, HCC2, HCC3, and PT clustering stale; Blood, HCC1, and IT remain valid. Logs name the same six in cache reconciliation. | Reproduce on synthetic inputs, compare artifact/dependency records before and after annotation saves and reload, and determine the cause before changing validity rules. Preserve genuine invalidation and deep validation. Two consecutive reloads and a dataset switch must retain valid upstream stages and saved labels after annotation; changed scientific inputs must still invalidate the correct dependents. | Complete — user confirms correct Liu2022 states; repeated reload/switch behavior covered automatically |
 | F15-R02 | P0 | HCC3 cannot enter CNA despite saved Macrophage reference and Hepatocyte candidate configuration. Both values persist in selected configuration; preflight logs reject clustering and expression caches. Explicit omissions also produce stale CNA-compute state on reload. | After R01, verify HCC3 preflight consumes valid caches and recognizes saved configuration. Test omission across save, batch preflight, reload, dataset switch, and reversal: intentional omission must remain distinct and must not become an unexplained stale state. Distinguish missing configuration from invalid artifacts in user-facing readiness. | Complete — final manual checklist confirms CNA computation and omission/reload workflow |
-| F15-R03 | P1 | Previewing an unannotated sample reportedly crashes the app. Preview and saved plots omit NA/Unassigned from the legend. | Reproduce the exact preview path, guard unavailable inputs, and show an actionable warning without terminating the session. Support partial/unassigned annotations with a visible Unassigned legend entry and consistent saved plots. Assert preview makes no durable state/cache changes. Investigate the reported association with later stale states without assuming causation. | Open |
+| F15-R03 | P1 | Previewing an unannotated sample reportedly crashes the app. Preview and saved plots omit NA/Unassigned from the legend. | Reproduce the exact preview path, guard unavailable inputs, and show an actionable warning without terminating the session. Support partial/unassigned annotations with a visible Unassigned legend entry and consistent saved plots. Assert preview makes no durable state/cache changes. Investigate the reported association with later stale states without assuming causation. | Implemented — automated regressions pass; targeted manual confirmation pending |
 | F15-R04 | P1 | Resolution grid and status retain their pre-clustering empty view until the user switches samples; a previously unopened single-plot view loads correctly. | Refresh same-sample grid, plots, and status after bulk or targeted clustering and on re-entry. Regress the sequence open grid → run clustering → return to the same sample, without requiring a sample switch or adding repeated expensive reads. | Open |
 | F15-R05 | P2 | Standardization checklist and User Guide opening buttons do not work; a shared checklist must be reset for every dataset. | Inspect intended opening behavior and provide working access from the app, with actionable fallback on supported platforms. Copy an editable checklist into newly created dataset workspaces, or document a justified alternative after assessing placement; retain a clean shared template and preserve existing user notes. Verify two workspaces have independent checklists. | Open |
 | F15-R06 | P2 | Bulk DE completion retains the prior annotation sample, potentially leaving earlier samples overlooked. | Review completion navigation with the status overview: choose and document whether to select the first processed sample needing review or retain position with a clear incomplete-sample cue. Test the chosen rule for bulk and subset contexts without discarding unsaved edits. | Open — UX decision |
@@ -959,7 +959,7 @@ loading works. The following are separate findings from the resumed run.
 | F15-R08 | P3 | Threshold classification explanation is useful but could be more compact. | Shorten the helper text without changing classification: retain the gray-zone Unassigned/NA rule, eligible malignant reassignment above malignant thresholds, and any multi-subclone condition needed for accurate interpretation. Preserve equal-Y support and existing numerical semantics; review the revised text in context. | Planned — optional wording improvement |
 | F09 subset addendum | P2 | Rerunning only stale clustering samples currently requires repeated individual actions or reclustering the entire dataset. | Implement the selectable-subset clustering dialog specified under F09 and manually verify selected-only computation/invalidation. | Planned enhancement — after R01 |
 
-**Remaining implementation order:** R03 → R04 → R05 → R06 → F09 subset
+**Remaining implementation order:** R04 → R05 → R06 → F09 subset
 addendum → R08. The manual replay is finished and R01/R02/R07 no longer block
 the workflow. Completing the replay does not by itself resolve the original
 defect notes or implement the optional enhancements. Capture existing evidence
@@ -1088,6 +1088,49 @@ threshold controls with equal Y values all work correctly. This confirms the
 HCC3 readiness/computation portion of R02. The user has not separately
 reconfirmed omission UI/reload behavior in this update. Final result saving
 is blocked by the newly recorded R07 stall.
+
+#### F15-R03 implementation — annotation preview and Unassigned legend
+
+**Reproduced cause:** An unannotated sample reaches `plot_clusters()` with
+only missing cell types. Natural ordering drops those values, leaving zero
+labels; the palette generator then fails with "number of cluster centres must
+lie between 1 and nrow(x)". Independently, explicit legend breaks exclude
+missing labels from partially annotated plots. The later stale-state split
+was explained by R01's rounded cache metadata, not by a demonstrated preview
+write or invalidation.
+
+**Fix:** Previewing unavailable/empty data or a sample with no assigned cell
+types now gives an actionable warning without navigating. Assigning at least
+one cluster in memory is sufficient; saving first is not required. Plot
+construction and deferred ggplot-build errors are caught, the old preview is
+cleared, and the user can retry in the same session. Plotting normalizes
+missing, blank, literal `NA`, and explicit `Unassigned` labels on a copy only,
+with one visible grey `Unassigned` legend entry. The palette is never asked
+for zero colours. Normal cluster plots retain their natural ordering.
+
+The saved annotation PNG uses that same preview plot. Regression coverage
+compares the actual saved PNG with the rendered preview, verifies all cells
+and the Unassigned key, and checks that missing scientific labels remain
+missing. Preview success and failure leave persisted pipeline state, selected
+configuration, standardized cell data, cache artifacts, and manifests unchanged.
+No real dataset files were edited or computations rerun.
+
+**Verification:** `test-f15-r03-annotation-preview.R` passes all 76 assertions.
+The full portable suite passes 1,756 assertions with zero failures/warnings
+and the known restricted-Chromium skip. Existing F05 annotation recovery and
+F08 natural-ordering tests also pass unchanged.
+
+**Targeted manual confirmation:** On an unannotated sample, request a preview
+and confirm a warning with a usable session. Assign one cluster, preview again,
+and confirm remaining cells and the legend show grey Unassigned. Save and
+check `2_de_plots/cell_types.png` for the same legend; upstream statuses must
+stay valid. R04–R06 remain separate implementation tasks.
+
+**Manual update (2026-10-30):** The user restored the pre-cleanup dataset and
+caches, inspected the new preview plots, and confirmed Unassigned is now in
+the legend. The unannotated-preview crash check is deferred to the next full
+manual run on a new dataset. R03 is implemented and its legend behavior is
+manually confirmed; the remaining targeted checks above are not marked complete.
 
 #### F15-R07 investigation plan — CNA result saving/export stall
 
@@ -1260,7 +1303,7 @@ R08 and selectable-subset clustering retain their separate enhancement scope.
 | 2 — Cache loading and save correctness | Complete | Fast load, valid annotation reload, and coherent CNA decisions |
 | 3 — Onboarding and progress | Complete | Standardization guide and batch output accepted |
 | 4 — Ordering, optional controls, status, cleanup, and performance | Complete | Natural ordering, safe single-sample clustering, clear status overview, flexible CNA Y thresholds, unambiguous subtree selection, safe archive cleanup, and responsiveness targets met |
-| 5 — Integration and CNA replay | Manual replay complete; remediation open | Finish R03–R06 and targeted regressions/retests before closing overall acceptance |
+| 5 — Integration and CNA replay | Manual replay complete; remediation open | Finish R04–R06 and targeted regressions/retests, including R03 manual confirmation, before closing overall acceptance |
 
 ### 11.2 Task status
 
@@ -1281,9 +1324,10 @@ R08 and selectable-subset clustering retain their separate enhancement scope.
 | F13 | CNA values-table results export | Complete | 2026-10-28 | Updated 2026-10-30: optional explicit export/re-export; finalization saves assignments/plots independently; optimized and validated gzip CSV/provenance publication retained |
 | F16 | Finished-dataset cache cleanup and archive lifecycle | Complete | 2026-10-28 | Updated 2026-10-30: optional exports warn rather than block cleanup; required scientific-output checks, journal, retirement/retry, archive audit, and explicit reopen remain |
 | F14 | Residual performance optimization | Complete | 2026-10-28 | Reproducible interaction profiler; redundant annotation/CNA deserialization removed; CNA preflight and threshold data shared reactively |
-| F15 | Integration and CNA replay | Manual replay complete; remediation open | — | Full Liu2022 replay finished; R03–R06 remain unresolved, with R08 and subset clustering tracked separately |
+| F15 | Integration and CNA replay | Manual replay complete; remediation open | — | Full Liu2022 replay finished; R03 implemented with manual confirmation pending; R04–R06 unresolved; R08 and subset clustering tracked separately |
 | F15-R01 | Exact cache metadata and verified legacy recovery | Complete | 2026-10-28 | User confirms correct Liu2022 states; portable repeated-reload/switch and recovery regressions pass |
 | F15-R02 | CNA readiness and persistent explicit omission | Complete | 2026-10-30 | Finished manual checklist confirms computation, omission, persistence, and reversal workflow; automated regressions pass |
+| F15-R03 | Safe annotation preview and Unassigned legend | Implemented; manual confirmation pending | — | Reproduced zero-colour palette failure; warning/retry guards, display-only Unassigned normalization, consistent saved PNG, and preview no-write regressions added |
 | F15-R07 | CNA final save/export stall | Complete | 2026-10-30 | Finalization and optional export/re-export manually exercised; optimized exporter and interruption/retry regressions pass |
 | F15-R08 | Compact threshold helper text | Planned — P3 | — | Shorten explanation while preserving existing classification and multi-subclone rules |
 | F09 subset addendum | Selectable-subset clustering | Planned | — | All/stale/incomplete/manual selection; implement after F15-R01 and track acceptance separately |
@@ -1292,6 +1336,7 @@ R08 and selectable-subset clustering retain their separate enhancement scope.
 
 | Date | Task | Change | Verification |
 | --- | --- | --- | --- |
+| 2026-10-30 | F15-R03 | Reproduced the all-missing annotation palette crash; added actionable preview warnings, same-session retry, and display-only grey Unassigned keys shared by preview and saved plots | 76 focused assertions and the full suite pass (1,756 assertions, 0 failures/warnings, 1 restricted-browser skip); preview no-write checks and actual saved-PNG comparison pass; targeted manual confirmation pending |
 | 2026-10-30 | Plan recovery and final replay status | Restored the missing working-tree document from the committed plan plus 15 recorded successful edits; incorporated finished manual replay, save-navigation, and storage-precision follow-ups | Checked against the manual replay and release record; R03–R06 and optional enhancements remain open; no code or dataset changes during document restoration |
 | 2026-10-30 | F13/F16 optional-export policy | Removed automatic export from CNA finalization; changed missing/outdated exports from cleanup blockers to sample-specific recomputation warnings; preserve existing exports and record warnings in archive plans | Full suite passes 1,658 assertions, 0 failures/warnings, 1 restricted-browser skip; synthetic/server checks cover no-export finalization, missing/outdated exports, warned archive, retained files, and changed availability after review; real cleanup not run |
 | 2026-10-30 | F15-R07 | Removed repeated whole-table export copies, replaced string-heavy validation with bounded gzip record counting, added truthful progress/stage logs and interrupt-safe publication/retry | 49 focused assertions and full suite pass (1,629 assertions, 0 failures/warnings, 1 restricted-browser skip); 74.36M-row synthetic export completes in 54.4 s with current provenance; real HCC3 export retry remains pending |

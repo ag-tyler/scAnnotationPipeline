@@ -182,6 +182,15 @@ natural_cluster_order <- function(labels) {
 }
 
 
+annotation_plot_labels <- function(labels) {
+  # Display-only normalization; never replace persisted missing annotations.
+  labels <- as.character(labels)
+  unassigned <- is.na(labels) | trimws(labels) %in% c("", "NA", "Unassigned")
+  labels[unassigned] <- "Unassigned"
+  labels
+}
+
+
 plot_clusters <- function(cells, title, x_col = umap1, y_col = umap2, cluster_col = clust,
                           subtitle = NULL) {
   #' Plot UMAP embedding coloured by clusters
@@ -197,16 +206,32 @@ plot_clusters <- function(cells, title, x_col = umap1, y_col = umap2, cluster_co
   
   # Work on a copy so display ordering never changes persisted cluster IDs.
   cluster_col_name <- as.character(substitute(cluster_col))
+  required_columns <- c(
+    as.character(substitute(x_col)), as.character(substitute(y_col)), cluster_col_name
+  )
+  if (!is.data.frame(cells) || !all(required_columns %in% names(cells))) {
+    stop("Plot data must contain embedding coordinates and the selected label column.", call. = FALSE)
+  }
   plot_cells <- data.table::copy(cells)
+  annotation_plot <- identical(cluster_col_name, "cell_type")
+  if (annotation_plot) {
+    plot_cells[[cluster_col_name]] <- annotation_plot_labels(plot_cells[[cluster_col_name]])
+  }
   cluster_levels <- natural_cluster_order(plot_cells[[cluster_col_name]])
   plot_cells[[cluster_col_name]] <- factor(
     as.character(plot_cells[[cluster_col_name]]),
     levels = cluster_levels
   )
-  cluster_colors <- stats::setNames(
-    randomcoloR::distinctColorPalette(length(cluster_levels)),
-    cluster_levels
-  )
+  coloured_levels <- if (annotation_plot) setdiff(cluster_levels, "Unassigned") else cluster_levels
+  cluster_colors <- if (length(coloured_levels) > 0L) {
+    stats::setNames(
+      randomcoloR::distinctColorPalette(length(coloured_levels)),
+      coloured_levels
+    )
+  } else stats::setNames(character(), character())
+  if (annotation_plot && "Unassigned" %in% cluster_levels) {
+    cluster_colors <- c(cluster_colors, Unassigned = "#BDBDBD")
+  }
 
   p <- ggplot2::ggplot(plot_cells) +
     ggplot2::geom_point(ggplot2::aes(

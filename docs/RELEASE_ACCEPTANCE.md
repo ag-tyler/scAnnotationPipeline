@@ -63,6 +63,7 @@ test is skipped; all non-browser release tests remain runnable.
 | First-sample parameters and marker schemas | `test-05_utils_workflow.R`, component tests |
 | Unsaved annotation edits, navigation, CNA omission, and notes | `test-app-components.R`, `test-03_utils_misc.R` |
 | Browser-driven annotation save and restart continuity | `test-app-ui-baseline.R` |
+| Safe unannotated preview, partial Unassigned legends, preview no-write behavior, and saved-PNG consistency | `test-f15-r03-annotation-preview.R` |
 | Exact large-input metadata, legacy precision recovery, saved-label continuity across reloads and dataset switching | `test-f15-r01-cache-precision.R` |
 | Persistent explicit CNA omission, reversal, mixed batch, configured readiness, and CNA-view sample switching | `test-f15-r02-cna-omission.R`, `test-f05-annotation-recovery.R` |
 | Bounded CNA conversion, export progress, binary validation, interrupted export preservation and retry | `test-f15-r07-cna-export.R`, `test-f13-cna-values-export.R` |
@@ -169,3 +170,18 @@ This storage-precision fix passes all 121 storage assertions and the full
 portable suite (1,680 assertions, zero failures/warnings, one restricted-browser
 skip). Genuine changed/deleted content remains rejected, while checksum-proven
 legacy rounding no longer produces an archive-damage warning.
+
+F15-R03 verification on 2026-10-30 passes all 76 annotation-preview assertions
+and the full portable suite (1,756 assertions, zero failures/warnings, one
+restricted-Chromium skip). Tests reproduce the all-missing label case, cover
+unavailable inputs and deferred plot errors with same-session retry, retain
+all cells and a grey Unassigned key for partial annotations, and compare the
+actual saved PNG with the preview. Preview leaves persisted workflow state,
+configuration, cell data, caches, and manifests unchanged. Targeted manual
+confirmation of warning/legend/save behavior remains pending; original replay
+notes and real dataset files are untouched.
+
+The user subsequently restored the pre-cleanup dataset/caches and confirmed
+Unassigned appears in the new preview plot legends. Manual verification of
+the unannotated-preview crash fix is deferred to the next full run on a new
+dataset; it remains covered by the automated R03 tests.
