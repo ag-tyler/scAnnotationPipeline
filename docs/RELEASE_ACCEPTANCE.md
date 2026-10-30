@@ -36,7 +36,12 @@ The test constructs a temporary application containing:
 - selected decisions and a valid persisted pipeline state.
 
 It visits dataset selection, dashboard, resolution selection, manual
-annotation, and CNA analysis. After the reviewed screenshots, it assigns a
+annotation, and CNA analysis. It also opens the clustering checklist, verifies
+default selection and all four shortcuts, checks that empty selection disables
+Run, closes without computation, and verifies unchanged workflow/manifest
+checksums. A reviewed sixth screenshot captures the selection dialog. Transient
+notifications are awaited before screenshots to avoid timing-dependent diffs.
+After the reviewed screenshots, it assigns a
 previously unassigned cluster, saves the annotation, verifies the standardized
 cell table, manifest-backed clustering cache, and pipeline state, restarts the
 temporary app, and confirms that the saved annotation is restored in the UI.
@@ -67,6 +72,7 @@ test is skipped; all non-browser release tests remain runnable.
 | Same-sample resolution grid/detail refresh after bulk/targeted clustering, stable tabs, and no unrelated PNG reads | `test-f15-r04-resolution-refresh.R` |
 | In-app setup documents, Markdown downloads, independent workspace checklists, preserved notes, and safe creation paths | `test-f15-r05-onboarding-documents.R`, `test-f06-standardization-onboarding.R` |
 | Explicit DE completion review selection, scoped processing order, fresh targets, and unsaved-edit/obsolete-action guards | `test-f15-r06-de-review-navigation.R`, `test-f03-navigation-hardening.R` |
+| Clustering checklist presets, selected-only state/cache/output isolation, selected-batch progress, guarded confirmation, and preserved all/one-sample paths | `test-f09-subset-clustering.R`, `test-f09-single-sample-clustering.R`, `test-app-ui-baseline.R` |
 | Exact large-input metadata, legacy precision recovery, saved-label continuity across reloads and dataset switching | `test-f15-r01-cache-precision.R` |
 | Persistent explicit CNA omission, reversal, mixed batch, configured readiness, and CNA-view sample switching | `test-f15-r02-cna-omission.R`, `test-f05-annotation-recovery.R` |
 | Bounded CNA conversion, export progress, binary validation, interrupted export preservation and retry | `test-f15-r07-cna-export.R`, `test-f13-cna-values-export.R` |
@@ -229,3 +235,27 @@ navigation, missing run context, failure/retry, duplicate clicks, and dataset
 switches. Selection itself leaves persisted workflow state unchanged and does
 not load scientific caches; computation scope/single-sample DE behavior are
 unchanged. Manual acceptance is recorded for the next full new-dataset review.
+
+The F09 subset-clustering focused browser journey passes all 39 assertions,
+including the existing annotation save/restart path. It runs against a disposable
+synthetic app and does not invoke clustering. The dashboard and resolution
+screenshots were refreshed after waiting for transient notifications, and the
+new clustering-selection dialog baseline was visually reviewed. Screenshot
+updates can now be limited by `UPDATE_UI_BASELINE_FILES` (comma-separated
+filenames) together with the existing `UPDATE_UI_BASELINES=true` flag.
+
+Mixed-state component tests exercise all presets, empty/invalid/duplicate
+identities, fresh per-dialog inputs, archive/busy/unsaved guards, changed
+dataset/sample/resolution contexts, selected-only progress, fail-fast batches,
+and single-shot completion navigation. The isolation test uses real
+manifest-backed CNA cache files and proves unselected state, decisions,
+artifacts, and cache records/files remain identical. Multi-index workflow
+coverage exercises all configured resolutions with selected-only positions.
+No real dataset was read, recomputed, or changed. Manual subset acceptance
+remains scheduled for the next full new-dataset review.
+
+Final F09 gate: all 99 subset and 53 expanded F09 workflow assertions pass.
+The full portable suite passes 2,039 assertions with zero failures/warnings
+and one restricted-browser skip; the separately permitted focused browser
+journey passes all 39 assertions. Scientific algorithms and parameters are
+unchanged; no real dataset was modified during verification.

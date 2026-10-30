@@ -522,12 +522,35 @@ The pipeline loads standardized expression/cell/gene data, applies filtering and
 
 Clustering results and filtered matrices are cached on disk, and UMAP plots are written to the dataset results directories.
 
+**Select Samples for Clustering** opens a checklist with each sample's current
+clustering status. All samples are checked initially. Use **Select all**,
+**Select stale**, **Select incomplete**, or **Clear**, then adjust individual
+checkboxes. Select stale uses only the clustering stage; stale resolution,
+DE, annotation, or CNA alone does not request reclustering. Select incomplete
+selects clustering `not_started`, `failed`, and `stale` states, excluding active
+computations. Any other sample can still be checked manually for an intentional
+rerun, except one already running clustering.
+
+Review the selected names/count and downstream-impact message before pressing
+**Run clustering for N selected samples**. The action is disabled for an empty
+or invalid selection, an archived dataset, another active application action,
+or unsaved annotation edits. Dataset, sample identities and resolutions are
+checked again before execution. The app processes only the checked samples,
+in dataset order, at every configured resolution. Unchecked samples' state,
+saved decisions, plots, and cache artifacts are unchanged.
+
 During bulk clustering, an in-app progress overlay reports the current sample
 position, sample name, and real processing stage (input filtering, PCA/UMAP,
 filtered-expression caching, or the current resolution's clustering/plot/cache
 work). The console prints matching sample boundaries, elapsed time, and a final
 batch summary. The operation remains synchronous and intentionally has no
 misleading Cancel control.
+
+Progress counts only the selected samples. Successful completion lists those
+samples; **Go to Resolution Selection** preselects the first processed one for
+explicit resolution review/save. Staying on the menu does not change selection.
+If a sample fails, the batch remains fail-fast: earlier selected work stays
+saved, later work is not run, and unselected work is untouched.
 
 Cluster labels are displayed in natural numeric order throughout resolution
 plots, DE summaries, and manual annotation. For example, a 13-cluster result is
@@ -880,7 +903,8 @@ for the complete contract and legacy-cache migration behavior.
 
 ### Clustering or normalization parameters changed
 
-Rerun **Run Clustering for all Resolutions**. New clustering artifacts replace
+Use **Select Samples for Clustering**, checking the samples affected by the
+parameter change (or all samples for a dataset-wide change). New clustering artifacts replace
 their previous versions atomically and are registered with the current input and
 parameter fingerprints.
 

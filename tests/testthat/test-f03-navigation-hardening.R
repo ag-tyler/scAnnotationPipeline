@@ -1,4 +1,4 @@
-test_that("F03 completion-dialog navigation is single-shot", {
+test_that("F03 completion tokens without a matching run cannot navigate", {
   app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
   test_env <- new.env(parent = globalenv())
   test_env$observeEvent <- shiny::observeEvent
@@ -33,19 +33,19 @@ test_that("F03 completion-dialog navigation is single-shot", {
     {
       state_env$arm_app_confirmation(state, "after_clustering_navigation")
       session$setInputs(btn_after_clustering_res = 1)
-      expect_identical(navigation, "res_tab")
+      expect_identical(navigation, character())
 
       session$setInputs(btn_after_clustering_res = 2)
-      expect_identical(navigation, "res_tab")
+      expect_identical(navigation, character())
 
       state_env$arm_app_confirmation(state, "after_de_navigation")
       session$setInputs(btn_after_de_anno = 1)
-      # An armed token alone is not evidence of a DE run for this dataset.
-      # R06's integrated tests cover valid completion and duplicate navigation.
-      expect_identical(navigation, "res_tab")
+      # Valid completion and duplicate navigation are exercised by the F09
+      # subset and R06 integrated tests; a token alone is insufficient.
+      expect_identical(navigation, character())
 
       session$setInputs(btn_after_de_anno = 2)
-      expect_identical(navigation, "res_tab")
+      expect_identical(navigation, character())
     }
   )
 })

@@ -101,6 +101,7 @@ test_that("R04 an already opened grid and detail refresh after bulk and targeted
     expect_identical(r04_image(output, detail)$src, "")
     expect_match(output$res_status_badge$html, "Not started")
     session$setInputs(main_nav = "menu_tab", btn_run_clustering = 1)
+    session$setInputs(clustering_samples_1 = c("sample1", "sample2"))
     session$setInputs(confirm_run_clustering = 1)
     # Observe completion without a sample switch or rebuilding the tabs.
     expect_identical(input$res_sample_idx, "1")

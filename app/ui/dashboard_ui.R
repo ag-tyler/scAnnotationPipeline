@@ -313,10 +313,10 @@ dashboard_panel <- function() {
       card(
         card_header(h4("Pre-Processing & Clustering", class = "mb-0")),
         card_body(
-          p("Runs PCA, UMAP, and Louvain clustering across all predefined resolutions for all samples."),
+          p("Choose all samples or a subset to run PCA, UMAP, and Louvain clustering across every predefined resolution."),
           actionButton(
             "btn_run_clustering",
-            "Run Clustering for all Resolutions",
+            "Select Samples for Clustering",
             icon = icon("cogs"),
             class = "btn-primary btn-lg w-100"
           ),

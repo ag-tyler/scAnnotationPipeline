@@ -56,6 +56,7 @@ test_that("F09 clustering targets one source sample and every configured resolut
       ggplot2::geom_point()
   }
   test_env$cache_save_data <- function(data, filename, dataset_dir_path, dependencies, producer) {
+    force(dependencies)
     saved_files <<- c(saved_files, filename)
     invisible(filename)
   }
@@ -104,6 +105,23 @@ test_that("F09 clustering targets one source sample and every configured resolut
   expect_true(all(vapply(progress_events, `[[`, character(1), "sample_name") == "sample2"))
   expect_true(all(!grepl("sample1|sample3", saved_files)))
 
+  saved_files <- character()
+  dependency_indices <- integer()
+  state_events <- list()
+  progress_events <- list()
+  targeted_cluster(
+    paths_list, config, results_dir, sample_root,
+    state_callback = function(...) state_events[[length(state_events) + 1L]] <<- list(...),
+    progress_callback = function(...) progress_events[[length(progress_events) + 1L]] <<- list(...),
+    sample_indices = c(1L, 3L)
+  )
+  expect_length(saved_files, 8L)
+  expect_true(all(!grepl("sample2", saved_files)))
+  expect_identical(unique(dependency_indices), c(1L, 3L))
+  expect_identical(unique(vapply(progress_events, `[[`, integer(1), "sample_index")), 1:2)
+  expect_true(all(vapply(progress_events, `[[`, integer(1), "sample_total") == 2L))
+  expect_identical(unique(vapply(progress_events, `[[`, character(1), "sample_name")), c("sample1", "sample3"))
+
   expect_error(
     targeted_cluster(paths_list, config, results_dir, sample_root, sample_indices = c(2, 2)),
     "unique valid indices"
@@ -134,6 +152,7 @@ test_that("F09 dashboard rerun isolates state, guards duplicates, and navigates 
   test_env$icon <- shiny::icon
   test_env$p <- shiny::p
   test_env$get_pipeline_step <- get_pipeline_step
+  test_env$dataset_storage_cache_is_retired <- dataset_storage_cache_is_retired
   test_env$persist_pipeline_step_update <- persist_pipeline_step_update
 
   shown_modals <- list()

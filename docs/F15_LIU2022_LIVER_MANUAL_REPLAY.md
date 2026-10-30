@@ -459,3 +459,45 @@ For the next new-dataset full review (not yet manually confirmed):
   until they are saved or discarded.
 - [ ] Use the status overview to account for all remaining annotation reviews.
 
+## Follow-up — F09 selectable-subset clustering (2026-10-30)
+
+The main clustering action now opens a checklist showing each sample's current
+clustering status, with all checked initially and Select all/stale/incomplete/
+Clear shortcuts. Stale downstream steps alone do not enter the stale preset.
+Select incomplete uses clustering not started, failed and stale states, not an
+active computation. Individual checkboxes allow a custom subset.
+
+The live confirmation lists selected names/count and downstream impact. Empty
+or invalid selection, archived/read-only storage, busy actions, active selected
+clustering, unsaved edits, and stale dataset/sample/resolution contexts cannot
+start computation. Each modal gets a fresh input identity; old selections do
+not silently narrow a reopened all-selected dialog.
+
+Only checked samples run, in dataset order, using the same scientific workflow
+and every configured resolution. Progress uses the selected count. Successful
+selected samples invalidate obsolete CNA caches and require downstream review;
+unselected state records, saved decisions, result files and cache records/files
+remain unchanged. Completion navigation is explicit and selects the first
+processed sample's resolution view. The existing one-sample shortcut remains.
+
+Portable regression coverage includes mixed-state presets, real cache-file/
+manifest isolation, all-sample mode, empty/invalid/duplicate selections, guards,
+failure isolation and selected-only progress. The synthetic browser journey
+exercises selection shortcuts and Run's disabled state without computation,
+then continues the existing save/restart test. No real dataset was modified.
+
+Verification: 99 subset assertions, 53 expanded F09 workflow assertions, and
+39 focused browser assertions pass. The complete portable suite passes 2,039
+assertions with zero failures/warnings and the known restricted-browser skip;
+browser launch was separately permitted for the passing focused journey.
+
+Next new-dataset manual review (not yet confirmed):
+
+- [ ] Confirm all samples are initially checked and statuses match the overview.
+- [ ] Check each shortcut; stale annotation/DE alone must not select clustering.
+- [ ] Select a custom subset and confirm the selected names/count and warning.
+- [ ] Run it: only checked samples appear in progress and change downstream state;
+  unselected decisions, plots and cache artifacts stay intact.
+- [ ] Continue to resolution review with the first processed sample preselected.
+- [ ] Retain verification of the all-sample and one-sample clustering paths.
+

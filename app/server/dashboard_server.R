@@ -68,6 +68,79 @@ register_dashboard_server <- function(input, output, session, state, context) {
   rv <- state
   single_clustering_completed_index <- reactiveVal(NULL)
   de_completion_context <- reactiveVal(NULL)
+  clustering_dialog_serial <- reactiveVal(0L)
+  clustering_selection_context <- reactiveVal(NULL)
+  clustering_completion_context <- reactiveVal(NULL)
+
+  clustering_block_reason <- function() {
+    if (is.null(rv$pipeline_state) ||
+        !identical(get_pipeline_step(rv$pipeline_state, "standardization")$status, "completed")) {
+      return("Cannot run clustering: standardization must be completed first.")
+    }
+    if (dataset_storage_cache_is_retired(rv$storage_state)) {
+      return("This dataset is archived/read-only. Reopen it for editing before clustering.")
+    }
+    if (length(rv$active_actions)) return("Wait for the current application action to finish before clustering.")
+    if (isTRUE(rv$annotation_dirty)) return("Save or discard the current annotation edits before clustering.")
+    NULL
+  }
+
+  clustering_context_matches <- function(request) {
+    !is.null(request) && identical(request$dataset_dir, rv$dataset_dir_path) &&
+      identical(request$dataset_id, rv$pipeline_state$dataset_id) &&
+      identical(request$samples, basename(rv$paths_list$sample_dir_paths)) &&
+      identical(request$resolutions, rv$dataset_config$params$resolutions)
+  }
+
+  resolve_clustering_selection <- function() {
+    request <- clustering_selection_context()
+    if (!clustering_context_matches(request)) {
+      stop("The dataset, sample list or resolutions changed. Reopen the clustering dialog.", call. = FALSE)
+    }
+    reason <- clustering_block_reason()
+    if (!is.null(reason)) stop(reason, call. = FALSE)
+    indices <- validate_clustering_selection(rv$pipeline_state, input[[request$input_id]], request$samples)
+    list(indices = indices, samples = request$samples[indices], context = request)
+  }
+
+  clustering_selection_review <- reactive({
+    req(clustering_selection_context())
+    tryCatch(resolve_clustering_selection(), error = identity)
+  })
+  output$clustering_selection_summary <- renderUI({
+    selection <- clustering_selection_review()
+    if (inherits(selection, "error")) {
+      return(tags$div(class = "alert alert-warning", conditionMessage(selection)))
+    }
+    tags$div(
+      tags$strong(paste(length(selection$samples), "of", length(selection$context$samples),
+        if (length(selection$context$samples) == 1L) "sample selected" else "samples selected")),
+      tags$p(style = "max-height: 15vh; overflow-y: auto; overflow-wrap: anywhere;",
+             paste(selection$samples, collapse = ", ")),
+      tags$p("Only these samples will run. Their saved resolution, DE, annotation and CNA decisions require review again; unselected samples are unchanged.")
+    )
+  })
+  output$clustering_run_control <- renderUI({
+    selection <- clustering_selection_review()
+    valid <- !inherits(selection, "error")
+    count <- if (valid) length(selection$samples) else 0L
+    button <- actionButton(
+      "confirm_run_clustering", paste("Run clustering for", count, "selected", if (count == 1L) "sample" else "samples"),
+      class = "btn-danger", onclick = "this.disabled = true;"
+    )
+    if (valid) button else shinyjs::disabled(button)
+  })
+  for (preset in c("all", "stale", "incomplete", "clear")) local({
+    current_preset <- preset
+    observeEvent(input[[paste0("clustering_select_", current_preset)]], {
+      request <- clustering_selection_context()
+      if (!clustering_context_matches(request)) return()
+      updateCheckboxGroupInput(
+        session, request$input_id,
+        selected = clustering_selection_preset(rv$pipeline_state, request$samples, current_preset)
+      )
+    })
+  })
 
   de_review_message <- function(review) {
     paste0(
@@ -106,7 +179,7 @@ register_dashboard_server <- function(input, output, session, state, context) {
   persist_sample_step <- function(step, sample_name, status, reason = NULL, details = NULL) {
     current <- get_pipeline_step(rv$pipeline_state, step, sample_name)
     invalidate <- identical(status, "in_progress") &&
-      current$status %in% c("completed", "skipped")
+      (identical(step, "clustering") || current$status %in% c("completed", "skipped"))
     invalidation_reason <- if (invalidate) {
       paste0("The ", step, " step is being rerun for this sample.")
     } else {
@@ -162,12 +235,26 @@ register_dashboard_server <- function(input, output, session, state, context) {
   observeEvent(input$btn_after_clustering_res, {
     if (!claim_app_confirmation(rv, "after_clustering_navigation")) return()
     removeModal()
+    completed <- clustering_completion_context()
+    if (is.null(completed) || !identical(completed$dataset_dir, rv$dataset_dir_path) ||
+        !identical(completed$dataset_id, rv$pipeline_state$dataset_id)) {
+      showNotification("This clustering completion no longer matches the loaded dataset. Use the pipeline overview to choose a sample.", type = "warning")
+      return()
+    }
+    if (isTRUE(rv$annotation_dirty)) {
+      showNotification("Save or discard annotation edits before reviewing another sample. Your selection and edits are unchanged.", type = "warning")
+      return()
+    }
+    if (!length(completed$samples)) return()
+    index <- match(completed$samples[[1]], basename(rv$paths_list$sample_dir_paths))
+    if (is.na(index)) return()
+    updateSelectInput(session, "res_sample_idx", selected = index)
     record_state_event(
       rv,
       stage = "navigation",
       event_type = "completion_navigation",
       outcome = "selected",
-      parameters = list(source = "clustering_complete", target = "res_tab")
+      parameters = list(source = "clustering_complete", target = "res_tab", sample_index = index, samples = completed$samples)
     )
     updateNavbarPage(session, "main_nav", selected = "res_tab")
   })
@@ -246,37 +333,55 @@ register_dashboard_server <- function(input, output, session, state, context) {
 
   observeEvent(input$btn_run_clustering, {
     req(rv$paths_list, rv$pipeline_state)
-    standardization <- get_pipeline_step(rv$pipeline_state, "standardization")
-    if (!identical(standardization$status, "completed")) {
-      showNotification(
-        paste0(
-          "Cannot run clustering: standardization is ", standardization$status,
-          if (!is.null(standardization$reason)) paste0(" (", standardization$reason, ")") else "."
-        ),
-        type = "error",
-        duration = 10
-      )
+    reason <- clustering_block_reason()
+    if (!is.null(reason)) {
+      showNotification(reason, type = "warning", duration = 10)
       return()
     }
+    samples <- basename(rv$paths_list$sample_dir_paths)
+    serial <- clustering_dialog_serial() + 1L
+    clustering_dialog_serial(serial)
+    request <- list(
+      dataset_dir = rv$dataset_dir_path, dataset_id = rv$pipeline_state$dataset_id,
+      samples = samples, resolutions = rv$dataset_config$params$resolutions,
+      input_id = paste0("clustering_samples_", serial)
+    )
+    clustering_selection_context(request)
+    statuses <- vapply(samples, function(sample) get_pipeline_step(rv$pipeline_state, "clustering", sample)$status, character(1))
     arm_app_confirmation(rv, "bulk_clustering")
     showModal(modalDialog(
-      title = "Confirm Clustering",
-      "Are you sure you want to run the clustering pipeline? This process takes a significant amount of time and will lock the application until finished.",
+      title = "Select Samples for Clustering",
+      p("All samples are checked initially. Narrow the list if only some samples need clustering; downstream stale states alone do not require reclustering."),
+      tags$div(class = "d-flex flex-wrap gap-2 mb-3",
+        actionButton("clustering_select_all", "Select all"),
+        actionButton("clustering_select_stale", "Select stale"),
+        actionButton("clustering_select_incomplete", "Select incomplete"),
+        actionButton("clustering_select_clear", "Clear")
+      ),
+      p("Select incomplete includes clustering not started, failed and stale; it excludes active computations.", class = "text-muted small"),
+      tags$div(style = "max-height: 35vh; overflow-y: auto;",
+        checkboxGroupInput(request$input_id, "Samples and clustering status:",
+          choices = stats::setNames(samples, paste0(samples, " (", gsub("_", " ", statuses), ")")), selected = samples)
+      ),
+      p(paste("Every selected sample runs all configured resolutions:", paste(request$resolutions, collapse = ", "))),
+      uiOutput("clustering_selection_summary"),
+      p("This synchronous computation locks the app until finished. Review the selected names and downstream impact before running.", class = "text-muted"),
       easyClose = TRUE,
+      size = "l",
       footer = tagList(
         modalButton("Cancel"),
-        actionButton(
-          "confirm_run_clustering",
-          "Yes, Run Clustering",
-          class = "btn-danger",
-          onclick = "this.disabled = true;"
-        )
+        uiOutput("clustering_run_control")
       )
     ))
   })
 
   observeEvent(input$btn_run_single_clustering, {
     req(rv$paths_list, rv$pipeline_state)
+    reason <- clustering_block_reason()
+    if (!is.null(reason)) {
+      showNotification(reason, type = "warning", duration = 10)
+      return()
+    }
     standardization <- get_pipeline_step(rv$pipeline_state, "standardization")
     if (!identical(standardization$status, "completed")) {
       showNotification(
@@ -325,6 +430,11 @@ register_dashboard_server <- function(input, output, session, state, context) {
 
   observeEvent(input$confirm_run_single_clustering, {
     req(rv$paths_list, rv$dataset_config)
+    reason <- clustering_block_reason()
+    if (!is.null(reason)) {
+      showNotification(reason, type = "warning", duration = 10)
+      return()
+    }
     selected_index <- suppressWarnings(as.integer(input$single_clustering_sample))
     sample_names <- basename(rv$paths_list$sample_dir_paths)
     if (
@@ -332,6 +442,10 @@ register_dashboard_server <- function(input, output, session, state, context) {
         selected_index < 1L || selected_index > length(sample_names)
     ) {
       showNotification("Select a valid sample to cluster.", type = "error")
+      return()
+    }
+    if (identical(get_pipeline_step(rv$pipeline_state, "clustering", sample_names[[selected_index]])$status, "in_progress")) {
+      showNotification("Clustering is already in progress for this sample.", type = "warning")
       return()
     }
     if (!claim_app_confirmation(rv, "single_sample_clustering")) return()
@@ -436,12 +550,23 @@ register_dashboard_server <- function(input, output, session, state, context) {
   })
 
   observeEvent(input$confirm_run_clustering, {
+    if (!("bulk_clustering" %in% rv$open_confirmations)) return()
+    selection <- tryCatch(resolve_clustering_selection(), error = identity)
+    if (inherits(selection, "error")) {
+      showNotification(conditionMessage(selection), type = "warning", duration = 12)
+      return()
+    }
     if (!claim_app_confirmation(rv, "bulk_clustering")) return()
     if (!begin_app_action(rv, "bulk_clustering")) return()
+    clustering_completion_context(NULL)
+    claim_app_confirmation(rv, "after_clustering_navigation")
+    completed_samples <- character()
     shinyjs::disable("btn_run_clustering")
+    shinyjs::disable("btn_run_single_clustering")
     on.exit({
       finish_app_action(rv, "bulk_clustering")
       shinyjs::enable("btn_run_clustering")
+      shinyjs::enable("btn_run_single_clustering")
     }, add = TRUE)
     removeModal()
     id <- showNotification("Running clustering pipeline. This may take a while. Check R console...",
@@ -453,7 +578,7 @@ register_dashboard_server <- function(input, output, session, state, context) {
       event_type = "clustering_run",
       outcome = "started",
       parameters = list(
-        sample_count = length(rv$paths_list$sample_dir_paths),
+        sample_count = length(selection$samples), selected_samples = selection$samples,
         resolutions = rv$dataset_config$params$resolutions
       )
     )
@@ -466,6 +591,9 @@ register_dashboard_server <- function(input, output, session, state, context) {
           rv$results_dir_path,
           rv$dataset_dir_path,
           state_callback = function(sample_name, status, reason = NULL, details = NULL) {
+            if (identical(status, "completed")) {
+              cache_invalidate_sample(sample_name, rv$dataset_dir_path)
+            }
             persist_sample_step(
               "clustering",
               sample_name,
@@ -473,21 +601,28 @@ register_dashboard_server <- function(input, output, session, state, context) {
               reason,
               details
             )
+            if (identical(status, "completed")) completed_samples <<- c(completed_samples, sample_name)
           },
-          progress_callback = make_shiny_batch_progress_callback(progress_context)
+          progress_callback = make_shiny_batch_progress_callback(progress_context),
+          sample_indices = selection$indices
         )
       })
+      clustering_completion_context(list(
+        dataset_dir = selection$context$dataset_dir, dataset_id = selection$context$dataset_id,
+        samples = completed_samples
+      ))
       record_state_event(
         rv,
         stage = "clustering",
         event_type = "clustering_run",
         outcome = "completed",
-        parameters = list(sample_count = length(rv$paths_list$sample_dir_paths))
+        parameters = list(sample_count = length(completed_samples), selected_samples = selection$samples, completed_samples = completed_samples)
       )
       arm_app_confirmation(rv, "after_clustering_navigation")
       showModal(modalDialog(
         title = "Clustering complete",
-        "All samples have been clustered. Review the generated UMAP plots and save one resolution per sample before running differential expression.",
+        paste0(length(completed_samples), if (length(completed_samples) == 1L) " selected sample clustered: " else " selected samples clustered: ", paste(completed_samples, collapse = ", "),
+               ". Unselected samples are unchanged. Review and save a resolution for each processed sample before rerunning DE."),
         easyClose = TRUE,
         footer = tagList(
           modalButton("Stay on Start Menu"),
@@ -508,6 +643,7 @@ register_dashboard_server <- function(input, output, session, state, context) {
         outcome = "failed",
         reason = failure_message,
         parameters = list(
+          selected_samples = selection$samples, completed_samples = completed_samples,
           sample = progress_context$sample_name,
           failed_stage = progress_context$stage
         )

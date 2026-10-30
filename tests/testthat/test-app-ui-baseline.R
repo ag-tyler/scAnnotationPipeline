@@ -343,7 +343,9 @@ expect_ui_baseline_screenshot <- function(app, baseline_dir, filename) {
   app$get_screenshot(file = actual_path, selector = "viewport")
 
   baseline_path <- file.path(baseline_dir, filename)
-  if (identical(Sys.getenv("UPDATE_UI_BASELINES"), "true")) {
+  update_files <- Sys.getenv("UPDATE_UI_BASELINE_FILES")
+  if (identical(Sys.getenv("UPDATE_UI_BASELINES"), "true") &&
+      (!nzchar(update_files) || filename %in% strsplit(update_files, ",", fixed = TRUE)[[1]])) {
     dir.create(baseline_dir, recursive = TRUE, showWarnings = FALSE)
     file.copy(actual_path, baseline_path, overwrite = TRUE)
   }
@@ -415,10 +417,41 @@ test_that("baseline navigation and writable annotation reload are preserved", {
 
   expect_equal(app$get_value(input = "main_nav"), "menu_tab")
   expect_match(app$get_text("body"), "Pipeline Dashboard", fixed = TRUE)
+  app$wait_for_js("$('.shiny-notification').length === 0", timeout = 10000)
   expect_ui_baseline_screenshot(app, baseline_dir, "02-start-menu.png")
+
+  # Review and narrow clustering scope without running scientific computation.
+  fixture_dataset_dir <- file.path(test_app_dir, "datasets", dataset_name)
+  selection_files <- c(file.path(fixture_dataset_dir, "pipeline_state.yaml"), cache_manifest_paths(fixture_dataset_dir)$primary)
+  expect_true(all(file.exists(selection_files)))
+  selection_hashes <- tools::md5sum(selection_files)
+  app$click(input = "btn_run_clustering", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  expect_match(app$get_text("#shiny-modal"), "Select Samples for Clustering", fixed = TRUE)
+  selection_input <- app$get_js("document.querySelector('#shiny-modal [id^=clustering_samples_]').id")
+  expect_equal(app$get_value(input = selection_input), "Synthetic_sample")
+  expect_false(app$get_js("document.getElementById('confirm_run_clustering').disabled"))
+  app$click(input = "clustering_select_clear", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  expect_true(app$get_js("document.getElementById('confirm_run_clustering').disabled"))
+  app$click(input = "clustering_select_stale", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  expect_true(app$get_js("document.getElementById('confirm_run_clustering').disabled"))
+  app$click(input = "clustering_select_incomplete", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  expect_true(app$get_js("document.getElementById('confirm_run_clustering').disabled"))
+  app$click(input = "clustering_select_all", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  expect_equal(app$get_value(input = selection_input), "Synthetic_sample")
+  expect_false(app$get_js("document.getElementById('confirm_run_clustering').disabled"))
+  expect_ui_baseline_screenshot(app, baseline_dir, "06-clustering-sample-selection.png")
+  app$run_js("document.querySelector('#shiny-modal [data-bs-dismiss=modal]').click()")
+  app$wait_for_idle(timeout = 60000)
+  expect_identical(tools::md5sum(selection_files), selection_hashes)
 
   app$click(input = "btn_go_res", wait_ = FALSE)
   app$wait_for_idle(timeout = 60000)
+  app$wait_for_js("$('.shiny-notification').length === 0", timeout = 10000)
   expect_equal(app$get_value(input = "main_nav"), "res_tab")
   expect_match(app$get_text("body"), "Resolution Selection", fixed = TRUE)
   expect_ui_baseline_screenshot(app, baseline_dir, "03-resolution-selection.png")

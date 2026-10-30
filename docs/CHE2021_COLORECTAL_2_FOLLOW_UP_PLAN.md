@@ -4,7 +4,7 @@
 
 **Initial plan date:** 2026-10-21  
 **Last progress update:** 2026-10-30
-**Current phase (2026-10-30):** The Liu2022 manual replay is finished, including CNA, optional export/re-export, cleanup, archived reload, and reopen. R01, R02, and R07 are implemented and their workflow paths confirmed. R03's Unassigned legend and R05's document popups are manually confirmed; the remaining R03–R06 checks are pending a new-dataset review. R04–R06 are implemented with automated regressions. Optional compact threshold guidance R08 and the F09 subset-clustering enhancement remain to implement. See the final replay summary below for the subsequent save-navigation and storage-audit fixes.
+**Current phase (2026-10-30):** The Liu2022 manual replay is finished, including CNA, optional export/re-export, cleanup, archived reload, and reopen. R01, R02, and R07 are implemented and their workflow paths confirmed. R03's Unassigned legend and R05's document popups are manually confirmed; the remaining R03–R06 checks are pending a new-dataset review. R04–R06 and the F09 subset-clustering addendum are implemented with automated regressions; selected-only manual review remains pending. Optional compact threshold guidance R08 remains to implement. See the final replay summary below for the subsequent save-navigation and storage-audit fixes.
 **Basis:** Manual test notes, follow-up console-launch testing, current source inspection, file-size inventory, `pipeline.log`, and `pipeline_state.yaml` from `Che2021_Colorectal_2`.
 
 ---
@@ -492,9 +492,9 @@ requested button placement.
 
 #### F09 addendum — Selectable-subset clustering
 
-**Status:** Planned enhancement, prompted by the F15 replay. Implement after
-F15-R01 cache validity is corrected; repeated reclustering is not a repair for
-false invalidation on reload.
+**Status:** Implemented with automated coverage; new-dataset manual confirmation
+pending. F15-R01 is already corrected; repeated reclustering is not a repair
+for false invalidation on reload.
 
 Extend the existing bulk clustering action to open a sample-selection dialog,
 following the checklist pattern used for bulk CNA. Show each sample's current
@@ -522,6 +522,51 @@ selects a subset and confirms only those samples run and become invalidated
 downstream. The all-sample and single-sample paths remain available. This is an
 enhancement with its own acceptance and is not a prerequisite for fixing the
 original F15 blockers.
+
+**Implementation:** The Start Menu's main action is now **Select Samples for
+Clustering**. Its dialog shows sample names and clustering states, defaults to
+all samples, provides the four shortcuts, and displays a live selected-name/
+count/impact summary plus a count-labelled Run button. Each dialog has a fresh
+checkbox input identity so an earlier modal's subset cannot silently leak into
+a new all-selected run. Empty/invalid selections and retired/read-only storage,
+busy actions, active clustering records, and unsaved annotations are blocked
+both in the UI and at execution. A changed dataset, sample list, or configured
+resolution list requires reopening the dialog.
+
+The existing `cluster_all_samples()` receives the selected indices in dataset
+order. Algorithms, parameters, configured resolutions, progress callbacks,
+logging, and fail-fast behavior are retained. Started samples invalidate their
+valid downstream decisions even if clustering was already stale/failed; saved
+selection values remain for explicit review. Successful selected samples retire
+their obsolete CNA cache family. Unselected state records, selections, results,
+and cache records/files are untouched. Progress and completion describe selected
+samples only; the explicit completion action opens the first processed sample's
+resolution view. New/failed runs cannot reuse the preceding completion action,
+and dataset changes or unsaved edits block an obsolete navigation jump.
+
+The secondary one-sample shortcut remains available with the same archive/busy/
+unsaved guards. Tests cover actual multi-index backend progress and all
+resolutions as well as mixed-state shortcuts, dynamic confirmation, valid
+all-sample runs, subset isolation with real manifest-backed CNA files, invalid
+identities, stale dialog contexts, duplicate events, and failure isolation.
+Browser coverage opens/closes the checklist, exercises all four shortcuts,
+checks Run's disabled state, and verifies no state/manifest writes without
+execution. Reviewed screenshots include the selection dialog; transient
+notifications are awaited so unrelated screenshots remain deterministic.
+
+**Focused verification:** All 99 subset assertions and all 53 expanded F09
+single/multi-index workflow assertions pass. The disposable browser journey
+passes 39 assertions, including selection controls and annotation save/restart.
+
+**Full gate:** The portable suite passes 2,039 assertions with zero
+failures/warnings and the known restricted-browser skip. The focused browser
+journey was run separately with local-browser launch permitted and passed.
+
+**Manual check for the next full review:** Use Select stale and then a manual
+subset. Confirm the displayed names/count, selected-only sample positions,
+unselected state/results/cache preservation, and explicit resolution review
+for processed samples. Also retain the all-sample and one-sample checks. This
+is not yet a claim of manual dataset acceptance.
 
 ### F10 — Main-menu pipeline status overview
 
@@ -957,10 +1002,10 @@ loading works. The following are separate findings from the resumed run.
 | F15-R06 | P2 | Bulk DE completion retains the prior annotation sample, potentially leaving earlier samples overlooked. | Review completion navigation with the status overview: choose and document whether to select the first processed sample needing review or retain position with a clear incomplete-sample cue. Test the chosen rule for bulk and subset contexts without discarding unsaved edits. | Implemented — first processed sample ready for required review; explicit navigation and unsaved-edit guards; manual confirmation pending |
 | F15-R07 | P0 | Saving HCC3 CNA results stays at the first exporting stage for at least five minutes; the user stopped the operation without a completed save. | Identify the actual slow or blocked stage with timings/progress evidence. Make final save complete or fail with an actionable error, retain existing complete outputs on interruption, and prevent partial export publication or falsely completed state. Verify assignment, gzip CSV/provenance publication, and reload consistency; document measured runtime and meaningful progress for long operations. | Complete — optimized optional export and final saving confirmed in the finished manual replay |
 | F15-R08 | P3 | Threshold classification explanation is useful but could be more compact. | Shorten the helper text without changing classification: retain the gray-zone Unassigned/NA rule, eligible malignant reassignment above malignant thresholds, and any multi-subclone condition needed for accurate interpretation. Preserve equal-Y support and existing numerical semantics; review the revised text in context. | Planned — optional wording improvement |
-| F09 subset addendum | P2 | Rerunning only stale clustering samples currently requires repeated individual actions or reclustering the entire dataset. | Implement the selectable-subset clustering dialog specified under F09 and manually verify selected-only computation/invalidation. | Planned enhancement — after R01 |
+| F09 subset addendum | P2 | Rerunning only stale clustering samples currently requires repeated individual actions or reclustering the entire dataset. | Implement the selectable-subset clustering dialog specified under F09 and manually verify selected-only computation/invalidation. | Implemented — selected-only regression/browser checks; manual confirmation pending |
 
-**Remaining implementation order:** F09 subset
-addendum → R08. R03–R06 are implemented, with targeted manual acceptance still
+**Remaining implementation order:** R08. R03–R06 and the F09 subset addendum
+are implemented, with targeted manual acceptance still
 pending. The manual replay is finished and R01/R02/R07 no longer block
 the workflow. Completing the replay does not by itself resolve the original
 defect notes or implement the optional enhancements. Capture existing evidence
@@ -1488,12 +1533,13 @@ R08 and selectable-subset clustering retain their separate enhancement scope.
 | F15-R06 | DE completion review-target navigation | Implemented; manual confirmation pending | — | Explicit completion action selects the first processed ready sample needing review; current counts/overview cue, subset-aware queue, fresh target, unsaved-edit and obsolete-action guards |
 | F15-R07 | CNA final save/export stall | Complete | 2026-10-30 | Finalization and optional export/re-export manually exercised; optimized exporter and interruption/retry regressions pass |
 | F15-R08 | Compact threshold helper text | Planned — P3 | — | Shorten explanation while preserving existing classification and multi-subclone rules |
-| F09 subset addendum | Selectable-subset clustering | Planned | — | All/stale/incomplete/manual selection; implement after F15-R01 and track acceptance separately |
+| F09 subset addendum | Selectable-subset clustering | Implemented; manual confirmation pending | — | All/stale/incomplete/manual checklist, selected-only scientific workflow/progress/invalidation, fresh confirmation identities, archive/busy/unsaved guards, and unchanged unselected artifacts |
 
 ### 11.3 Progress history
 
 | Date | Task | Change | Verification |
 | --- | --- | --- | --- |
+| 2026-10-30 | F09 subset addendum | Extended bulk clustering to a status-labelled checklist with all/stale/incomplete/clear presets, live selected-only confirmation/progress, fresh dialog identities, and archive/busy/unsaved/context guards; retained single-sample action | 99 subset assertions, 53 expanded F09 workflow assertions and 39 focused browser assertions pass; full portable suite passes 2,039 assertions, 0 failures/warnings, 1 restricted-browser skip; real unselected cache/state/output isolation verified; manual new-dataset review pending |
 | 2026-10-30 | F15-R06 | Completion action now selects the first processed ready sample needing annotation review; added review count/next-sample guidance, fresh scoped queues, and unsaved/obsolete-action guards | 64 focused assertions and full suite pass (1,934 assertions, 0 failures/warnings, 1 restricted-browser skip); bulk/subset order, preserved selection/edits, no navigation state writes, failures, duplicate clicks, and dataset changes covered; new-dataset manual review pending |
 | 2026-10-30 | F15-R05 | Replaced raw setup-document links with local rendered dialogs and path/download fallbacks; added independent workspace checklists, explicit legacy opt-in, and safe Windows parent-path validation | 77 focused assertions and full suite pass (1,870 assertions, 0 failures/warnings, 1 restricted-browser skip); real synthetic creation, downloads, note/template preservation, errors, and guarded loading covered; manual review pending |
 | 2026-10-30 | F15-R04 | Added deduplicated sample-scoped clustering/view-entry refresh keys to resolution grid/detail images, preserving the tab container and explicit resolution review | 37 focused assertions and full suite pass (1,793 assertions, 0 failures/warnings, 1 restricted-browser skip); integrated bulk/targeted refresh, status, no-I/O-on-unrelated-state, re-entry, and result-root checks pass; manual confirmation pending |

@@ -929,6 +929,33 @@ pipeline_step_readiness <- function(state, step, sample) {
 }
 
 
+clustering_selection_preset <- function(state, sample_names, preset = c("all", "stale", "incomplete", "clear")) {
+  preset <- match.arg(preset)
+  statuses <- vapply(sample_names, function(sample) get_pipeline_step(state, "clustering", sample)$status, character(1))
+  switch(preset,
+    all = sample_names,
+    stale = sample_names[statuses == "stale"],
+    incomplete = sample_names[statuses %in% c("not_started", "failed", "stale")],
+    clear = character()
+  )
+}
+
+validate_clustering_selection <- function(state, selected_samples, sample_names) {
+  if (!length(selected_samples)) stop("Select at least one sample for clustering.", call. = FALSE)
+  if (anyNA(selected_samples) || anyDuplicated(selected_samples) ||
+      !all(selected_samples %in% sample_names) || !all(selected_samples %in% names(state$samples))) {
+    stop("The selection contains invalid or duplicate samples. Reopen the clustering dialog.", call. = FALSE)
+  }
+  indices <- which(sample_names %in% selected_samples)
+  active <- sample_names[indices][vapply(sample_names[indices], function(sample) {
+    identical(get_pipeline_step(state, "clustering", sample)$status, "in_progress")
+  }, logical(1))]
+  if (length(active)) {
+    stop("Clustering is already in progress for: ", paste(active, collapse = ", "), ". Deselect these samples.", call. = FALSE)
+  }
+  indices
+}
+
 summarize_de_annotation_review <- function(state, processed_samples, sample_names = names(state$samples)) {
   # Read-only completion navigation, in processing order. Never send users to
   # unrelated samples or treat blocked annotation work as ready for review.

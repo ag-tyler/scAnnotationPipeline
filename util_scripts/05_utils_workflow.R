@@ -383,7 +383,8 @@ cluster_all_samples <- function(
   #'   operation, sample identity and position, stage/detail, terminal outcome, overall fraction,
   #'   and elapsed seconds.
   #' @param sample_indices Optional integer indices into `paths_list`. Defaults to every sample;
-  #'   use one index for a targeted single-sample rerun.
+  #'   use one index for a targeted single-sample rerun or several for a subset.
+  #'   Progress positions/totals describe this selected batch, not the full dataset.
   #'
   #' @return None. This function is evaluated for its side effects (disk I/O).
   #'
