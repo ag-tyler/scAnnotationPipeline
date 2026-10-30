@@ -157,7 +157,14 @@ datasets/<dataset\_id>/
 
 with configuration files, data/result/log directories, an initialized pipeline
 state, and a copy of the adaptable `templates/standardize_general.R` template
-named `standardize.R`.
+named `standardize.R`. Each workspace also gets its own editable
+`STANDARDIZATION_CHECKLIST.md` for checkmarks and notes; the shared checklist
+in `docs/` remains a reference template.
+
+The **Standardization Guide** on Dataset Selection opens the selected
+workspace's checklist and the User Guide's setup section inside the app,
+with an exact file path and Markdown download as fallbacks. Older workspaces
+can explicitly create a checklist copy without overwriting existing notes.
 
 The standardization template must be run before the dataset can enter the downstream clustering/annotation workflow.
 

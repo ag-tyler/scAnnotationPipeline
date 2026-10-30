@@ -5,8 +5,18 @@ single-cell dataset. The objective is one reproducible `standardize.R` script
 that transforms the raw inputs into the strict format required by the app.
 
 The app copies the general template into every new dataset workspace as
-`standardize.R`. The older technology-specific templates are reference material
-only.
+`standardize.R`, together with this checklist as
+`datasets/<dataset>/STANDARDIZATION_CHECKLIST.md`. Keep checkmarks and notes in
+that dataset-specific copy; this repository document stays an unchecked
+reference template and does not need to be reset between datasets. The older
+technology-specific script templates are reference material only.
+
+From Dataset Selection → Standardization Guide, **Open Standardization
+Checklist** displays the selected workspace's copy inside the app. For an
+older workspace without one, **Create Dataset Checklist** makes a copy without
+overwriting existing files. Edit the Markdown file in your editor and reopen
+the viewer to see your changes. The viewer also provides its exact path and
+a Markdown download. Checklist marks are a manual record, not pipeline statuses.
 
 ## Definition of done
 
@@ -40,6 +50,7 @@ A dataset is standardized only when all of the following are true:
 ├── dataset_config.yaml
 ├── samples_config.yaml
 ├── selected_config.yaml
+├── STANDARDIZATION_CHECKLIST.md
 └── standardize.R
 ```
 

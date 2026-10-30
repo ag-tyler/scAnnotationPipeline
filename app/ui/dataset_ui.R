@@ -31,20 +31,21 @@ standardization_guide <- function(clipboard_text) {
     ),
     div(
       class = "d-flex flex-wrap gap-2 mb-4",
-      tags$a(
+      actionButton(
+        "btn_view_standardization_checklist",
         "Open Standardization Checklist",
-        href = "pipeline-docs/STANDARDIZATION_CHECKLIST.md",
-        target = "_blank",
-        rel = "noopener noreferrer",
         class = "btn btn-outline-primary"
       ),
-      tags$a(
+      actionButton(
+        "btn_view_setup_guide",
         "Open User Guide: Dataset Setup",
-        href = "pipeline-docs/USER_GUIDE.md#setting-up-a-new-dataset",
-        target = "_blank",
-        rel = "noopener noreferrer",
         class = "btn btn-outline-primary"
       )
+    ),
+    p(
+      "The checklist uses the workspace selected on the Workspace tab. ",
+      "Each dataset has its own editable STANDARDIZATION_CHECKLIST.md; the shared template stays unchanged.",
+      class = "text-muted small"
     ),
     h4("Sample-metadata gathering prompt"),
     p(
@@ -79,6 +80,47 @@ standardization_guide <- function(clipboard_text) {
   )
 }
 
+standardization_document_modal <- function(document) {
+  rendered <- tryCatch(
+    HTML(commonmark::markdown_html(document$display_lines, extensions = TRUE)),
+    error = function(e) tags$pre(paste(document$display_lines, collapse = "\n"))
+  )
+  modalDialog(
+    title = document$title,
+    size = "l",
+    easyClose = TRUE,
+    p("Source file (also available to open directly in your editor): ", tags$code(document$path)),
+    if (document$type == "checklist") tagList(
+      p("Edit the workspace Markdown file in your editor to record checkmarks and notes; reopen this view to see changes. This checklist does not set pipeline statuses."),
+      if (document$is_template) {
+        div(
+          class = "alert alert-info",
+          if (is.null(document$dataset_dir)) {
+            "This is the shared reference template. Select or create a workspace to keep a separate checklist."
+          } else tagList(
+            "This workspace has no checklist yet. Create a separate copy at ",
+            tags$code(file.path(document$dataset_dir, "STANDARDIZATION_CHECKLIST.md")),
+            ". Existing files and notes are never overwritten.",
+            actionButton(
+              "btn_create_dataset_checklist", "Create Dataset Checklist",
+              class = "btn-primary mt-2"
+            )
+          )
+        )
+      }
+    ),
+    div(
+      class = "standardization-document",
+      style = "max-height: 60vh; overflow-y: auto; overflow-wrap: anywhere;",
+      rendered
+    ),
+    footer = tagList(
+      downloadButton("download_standardization_document", "Download Markdown"),
+      modalButton("Close")
+    )
+  )
+}
+
 dataset_created_modal <- function(dataset_name, dataset_path) {
   standardize_path <- file.path(dataset_path, "standardize.R")
 
@@ -89,6 +131,11 @@ dataset_created_modal <- function(dataset_name, dataset_path) {
       icon("circle-check"),
       " Workspace created at ",
       tags$code(dataset_path)
+    ),
+    p(
+      "Your editable standardization checklist is ",
+      tags$code(file.path(dataset_path, "STANDARDIZATION_CHECKLIST.md")),
+      ". Keep this dataset's checkmarks and notes there."
     ),
     p(
       tags$strong("Next action: "),
@@ -104,6 +151,10 @@ dataset_created_modal <- function(dataset_name, dataset_path) {
     ),
     footer = tagList(
       modalButton("Close"),
+      actionButton(
+        "btn_open_created_checklist", "Open Dataset Checklist",
+        class = "btn-outline-primary"
+      ),
       actionButton(
         "btn_open_standardization_guide",
         "Open Standardization Guide",

@@ -380,3 +380,46 @@ Targeted manual confirmation remains pending:
 The user elected to exercise these R04 checks during the next full review,
 alongside the deferred R03 crash check; they have not been marked complete.
 
+## Follow-up — R05 setup-document access and per-dataset checklists (2026-10-30)
+
+The two Standardization Guide buttons now open rendered Markdown inside the
+app instead of raw Markdown in another viewer/browser tab. Each dialog provides
+the source path for an editor and a Markdown download, with plain source text
+if rendering fails. Missing files give path-specific notifications. The User
+Guide viewer displays Dataset Setup; its download retains the full guide.
+
+Each new workspace receives its own `STANDARDIZATION_CHECKLIST.md`, shown in
+the creation handoff with an Open Dataset Checklist action. The guide selects
+the current workspace's copy. Older workspaces can explicitly create a copy
+from the template; opening documentation alone does not create it. Existing
+notes/checkmarks and the unchecked shared reference template are preserved.
+Edit the workspace copy in your editor and reopen the viewer to refresh it.
+Checklist marks are not scientific workflow statuses.
+
+The real creation regression also found and corrected Windows mixed-separator
+path normalization that could reject a safe new folder as outside its parent.
+The existing parent is now resolved before appending the sanitized new name.
+All 77 focused assertions pass, including two-workspace independence, notes,
+download/target isolation, safe legacy copying, error fallbacks, and guarded
+loading. No real datasets were changed or retroactively given checklist files.
+
+Full automated gate: 1,870 assertions pass, zero failures/warnings, one known
+restricted-browser skip. Manual visual/access confirmation remains pending.
+
+For the next full review (not yet manually confirmed):
+
+- [ ] Open the checklist and User Guide from Standardization Guide before
+  loading a dataset; verify readable in-app content and Markdown downloads.
+- [ ] Create two workspaces and confirm each gets a separate checklist.
+- [ ] Add checks/notes to one file in the editor, reopen it, and confirm the
+  other workspace and shared reference template remain unchanged.
+- [ ] For a workspace without a checklist, explicitly create its copy; reopen
+  or repeat the action without resetting any existing notes.
+- [ ] Confirm checklist marks alone do not make an unstandardized workspace
+  loadable or change pipeline statuses.
+
+**Manual update (2026-10-30):** The user confirms the buttons open popups with
+the appropriate documents. The complete checklist above will be tested using
+a new dataset; this confirmation does not claim downloads/copying/independence
+have all been manually reviewed yet.
+

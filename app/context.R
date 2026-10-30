@@ -139,6 +139,7 @@ create_app_context <- function(config_path = "general_config.yaml") {
     paths = list(
       resources_dir = resources_dir_path,
       datasets_dir = dataset_base_dir,
+      docs_dir = "docs",
       templates_dir = "templates"
     ),
     resource_paths = resource_paths,

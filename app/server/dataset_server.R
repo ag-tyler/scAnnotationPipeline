@@ -11,6 +11,88 @@ register_dataset_server <- function(input, output, session, state, context) {
   dataset_base_dir <- context$paths$datasets_dir
   templates_dir <- context$paths$templates_dir
   available_datasets <- context$available_datasets
+  docs_dir <- if (is.null(context$paths$docs_dir)) "docs" else context$paths$docs_dir
+  active_standardization_document <- reactiveVal(NULL)
+  created_workspace_path <- reactiveVal(NULL)
+
+  show_standardization_document <- function(type, dataset_dir = NULL) {
+    result <- tryCatch({
+      document <- read_standardization_document(type, docs_dir, dataset_dir)
+      modal <- standardization_document_modal(document)
+      active_standardization_document(document)
+      showModal(modal)
+      TRUE
+    }, error = function(e) {
+      showNotification(
+        paste("Could not open documentation:", conditionMessage(e)),
+        type = "error", duration = 15
+      )
+      FALSE
+    })
+    invisible(result)
+  }
+
+  selected_standardization_workspace <- function() {
+    name <- input$dataset_choice
+    if (is.null(name) || identical(name, "")) return(NULL)
+    if (length(name) != 1L || is.na(name)) stop("Select one dataset workspace.", call. = FALSE)
+    name <- sanitize_dataset_name(name)
+    path <- file.path(dataset_base_dir, name)
+    # The creation dialog can target another parent directory. Its checklist
+    # still belongs to that exact workspace, not a same-named default folder.
+    created_path <- created_workspace_path()
+    if (!is.null(created_path) && identical(basename(created_path), name)) path <- created_path
+    if (!dir.exists(path)) {
+      stop("Selected workspace not found. Check its location in your editor: ", path, call. = FALSE)
+    }
+    normalizePath(path, winslash = "/", mustWork = TRUE)
+  }
+
+  observeEvent(input$btn_view_standardization_checklist, {
+    workspace <- tryCatch(selected_standardization_workspace(), error = identity)
+    if (inherits(workspace, "error")) {
+      showNotification(conditionMessage(workspace), type = "error", duration = 15)
+      return()
+    }
+    show_standardization_document("checklist", workspace)
+  })
+
+  observeEvent(input$btn_view_setup_guide, {
+    show_standardization_document("user_guide")
+  })
+
+  observeEvent(input$btn_open_created_checklist, {
+    req(created_workspace_path())
+    show_standardization_document("checklist", created_workspace_path())
+  })
+
+  observeEvent(input$btn_create_dataset_checklist, {
+    document <- active_standardization_document()
+    req(document, identical(document$type, "checklist"), document$dataset_dir)
+    result <- tryCatch(
+      ensure_dataset_standardization_checklist(
+        document$dataset_dir, file.path(docs_dir, "STANDARDIZATION_CHECKLIST.md")
+      ),
+      error = identity
+    )
+    if (inherits(result, "error")) {
+      showNotification(conditionMessage(result), type = "error", duration = 15)
+      return()
+    }
+    show_standardization_document("checklist", document$dataset_dir)
+  })
+
+  output$download_standardization_document <- downloadHandler(
+    filename = function() {
+      req(active_standardization_document())
+      basename(active_standardization_document()$path)
+    },
+    content = function(file) {
+      req(active_standardization_document())
+      writeLines(active_standardization_document()$lines, file, useBytes = TRUE)
+    },
+    contentType = "text/markdown; charset=utf-8"
+  )
 
   observeEvent(input$btn_select_standardization_prompt, {
     runjs(paste0(
@@ -490,22 +572,26 @@ register_dataset_server <- function(input, output, session, state, context) {
     )
     req(ds_name)  # halts here if sanitize_dataset_name() failed above
 
-    new_ds_path <- file.path(parent_dir, ds_name)
-
-    # Belt-and-suspenders: confirm the resolved path still lives under parent_dir.
-    # normalizePath(mustWork=FALSE) resolves '.', symlinks, etc. without requiring
-    # the path to exist yet.
-    resolved_new_path <- normalizePath(new_ds_path, mustWork = FALSE)
-    resolved_parent   <- normalizePath(parent_dir, mustWork = FALSE)
-
-    if (!startsWith(resolved_new_path, resolved_parent)) {
+    if (!dir.exists(parent_dir)) {
+      showNotification("The parent directory does not exist. Create or select an existing parent directory first.",
+                       type = "error", duration = 10)
+      return()
+    }
+    # Resolve the existing parent first. On Windows, normalizePath() for a
+    # not-yet-created child can retain relative/mixed separators and falsely
+    # report that a valid new workspace escapes its parent.
+    resolved_parent <- normalizePath(parent_dir, winslash = "/", mustWork = TRUE)
+    new_ds_path <- file.path(resolved_parent, ds_name)
+    resolved_new_path <- new_ds_path
+    parent_prefix <- paste0(sub("/+$", "", resolved_parent), "/")
+    if (!startsWith(resolved_new_path, parent_prefix)) {
       showNotification("Invalid dataset location — path escapes the parent directory.",
                        type = "error", duration = 8)
       return()
     }
 
     # 1. Validation (existing check, now after the safety checks above)
-    if (dir.exists(new_ds_path)) {
+    if (file.exists(new_ds_path)) {
       showNotification("A dataset with this name already exists at this location.", type = "error")
       return()
     }
@@ -524,6 +610,14 @@ register_dataset_server <- function(input, output, session, state, context) {
         "standardize_general.R not found in the template folder!",
         type = "error",
         duration = 8
+      )
+      return()
+    }
+    checklist_template_path <- file.path(docs_dir, "STANDARDIZATION_CHECKLIST.md")
+    if (!file.exists(checklist_template_path)) {
+      showNotification(
+        paste("Checklist template is missing. Restore this file before creating a workspace:", checklist_template_path),
+        type = "error", duration = 15
       )
       return()
     }
@@ -627,6 +721,20 @@ register_dataset_server <- function(input, output, session, state, context) {
       return()
     }
 
+    checklist_result <- tryCatch(
+      ensure_dataset_standardization_checklist(new_ds_path, checklist_template_path),
+      error = identity
+    )
+    if (inherits(checklist_result, "error")) {
+      record_pipeline_event(
+        dataset_dir_path = new_ds_path, dataset = ds_name, stage = "dataset",
+        event_type = "workspace_created", outcome = "failed",
+        reason = conditionMessage(checklist_result)
+      )
+      showNotification(conditionMessage(checklist_result), type = "error", duration = 15)
+      return()
+    }
+
     record_pipeline_event(
       dataset_dir_path = new_ds_path,
       dataset = ds_name,
@@ -652,6 +760,7 @@ register_dataset_server <- function(input, output, session, state, context) {
     updateSelectInput(session, "dataset_choice", choices = updated_datasets, selected = ds_name)
 
     removeModal()
+    created_workspace_path(normalizePath(new_ds_path, winslash = "/", mustWork = TRUE))
     showModal(dataset_created_modal(ds_name, resolved_new_path))
   })
 }

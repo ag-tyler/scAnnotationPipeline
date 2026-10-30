@@ -22,12 +22,12 @@ test_that("F06 guide is available before a dataset is loaded", {
   expect_match(html, prompt, fixed = TRUE)
   expect_match(
     html,
-    "pipeline-docs/STANDARDIZATION_CHECKLIST.md",
+    "btn_view_standardization_checklist",
     fixed = TRUE
   )
   expect_match(
     html,
-    "pipeline-docs/USER_GUIDE.md#setting-up-a-new-dataset",
+    "btn_view_setup_guide",
     fixed = TRUE
   )
   expect_match(html, "datasets/&lt;dataset&gt;/standardize.R", fixed = TRUE)

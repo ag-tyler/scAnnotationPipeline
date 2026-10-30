@@ -243,9 +243,26 @@ Use **Create New Dataset** from the app's Dataset Selection screen.
 
 The adjacent **Standardization Guide** is available before any dataset is
 loaded. It summarizes the preparation workflow, includes the reusable sample-
-metadata gathering prompt with select/copy controls, and links to the detailed
-checklist and this section. After workspace creation, the app reports the exact
-workspace and `standardize.R` paths and offers a direct return to that guide.
+metadata gathering prompt with select/copy controls, and buttons that display
+the detailed checklist and this section inside the app. No external browser
+tab, Markdown file association, or internet connection is needed. The viewer
+shows the exact source path for opening in your editor and offers **Download
+Markdown** as a fallback. If Markdown rendering is unavailable, the viewer
+shows readable source text instead.
+
+Each new workspace also receives `STANDARDIZATION_CHECKLIST.md`. Use that copy
+for the dataset's checkmarks and notes; the shared file under `docs/` remains
+an unchecked reference template. Select the workspace on Dataset Selection's
+**Workspace** tab, then choose **Open Standardization Checklist** in the guide.
+If an older workspace has no checklist, the viewer offers **Create Dataset
+Checklist**; it never overwrites an existing copy. Edit the workspace file in
+your editor and reopen the viewer to refresh it. These manual checkmarks do
+not set scientific pipeline statuses.
+
+After workspace creation, the app reports the exact workspace, `standardize.R`,
+and checklist paths, with actions to open its checklist immediately or return
+to the guide. The parent directory must already exist; create it first if
+needed. Existing workspace folders/files are not overwritten.
 
 A new dataset is created under:
 
