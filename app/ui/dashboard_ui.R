@@ -168,7 +168,7 @@ dataset_cleanup_export_warning_ui <- function(readiness) {
 }
 
 
-dataset_storage_card_ui <- function(storage_state, readiness = NULL, archive_audit = NULL) {
+dataset_storage_card_ui <- function(storage_state, readiness = NULL, archive_audit = NULL, snapshot_readiness = NULL) {
   status <- storage_state$status
   cleanup <- storage_state$details$cleanup
   cache_size <- if (!is.null(readiness)) {
@@ -277,7 +277,20 @@ dataset_storage_card_ui <- function(storage_state, readiness = NULL, archive_aud
           }
         )
       },
-      action
+      action,
+      tags$hr(),
+      p(class = "small mb-2", "Review snapshot: ",
+        if (isTRUE(snapshot_readiness$ready)) "creation possible" else "not ready"),
+      if (!is.null(snapshot_readiness) && !isTRUE(snapshot_readiness$ready)) {
+        tags$details(class = "small mb-2",
+          tags$summary("Snapshot requirements"),
+          tags$ul(lapply(snapshot_readiness$reasons, tags$li)))
+      },
+      if (isTRUE(snapshot_readiness$ready)) {
+        actionButton("btn_create_review_snapshot", "Create Review Snapshot...",
+          icon = icon("copy"), class = "btn-outline-primary")
+      } else shinyjs::disabled(actionButton("btn_create_review_snapshot", "Create Review Snapshot...",
+        icon = icon("copy"), class = "btn-outline-primary"))
     )
   )
 }

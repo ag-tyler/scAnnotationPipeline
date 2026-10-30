@@ -10,6 +10,7 @@ component_paths <- c(
   "app/server/dataset_server.R",
   "app/server/dashboard_server.R",
   "app/server/storage_server.R",
+  "app/server/snapshot_server.R",
   "app/server/single_de_server.R",
   "app/server/resolution_server.R",
   "app/server/annotation_server.R",

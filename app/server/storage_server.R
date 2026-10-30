@@ -43,7 +43,14 @@ register_storage_server <- function(input, output, session, state, context) {
 
   output$dataset_storage_status <- renderUI({
     req(rv$storage_state)
-    dataset_storage_card_ui(rv$storage_state, cleanup_readiness(), archive_audit())
+    readiness <- if (is.null(rv$dataset_config) || is.null(context$config)) {
+      list(ready = FALSE, reasons = "Load the complete dataset configuration first.")
+    } else {
+      snapshot_args <- snapshot_server_arguments(rv, context)
+      snapshot_args <- snapshot_args[names(snapshot_args) %in% names(formals(dataset_snapshot_readiness))]
+      do.call(dataset_snapshot_readiness, snapshot_args)
+    }
+    dataset_storage_card_ui(rv$storage_state, cleanup_readiness(), archive_audit(), readiness)
   })
 
   observe({

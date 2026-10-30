@@ -24,7 +24,8 @@ install.packages(c(
   "shiny", "bslib", "shinyjs", "data.table", "yaml", "jsonlite", "DT",
   "ggplot2", "cowplot", "viridis", "Matrix", "irlba", "uwot", "Seurat",
   "stringr", "caTools", "RColorBrewer", "scales", "dbscan", "ggdendro",
-  "randomcoloR", "docstring", "qs2", "magrittr", "devtools", "R.utils"
+  "randomcoloR", "docstring", "qs2", "magrittr", "devtools", "R.utils",
+  "commonmark", "zip", "processx", "R6", "ps", "fs"
 ))
 ```
 
@@ -146,6 +147,27 @@ cna_values <- data.table::fread(
   colClasses = list(character = c("gene", "chr", "cell_name"))
 )
 ```
+
+## Review Snapshots
+
+After every sample is finished (CNA finalized or explicitly omitted), use
+**Start Menu → Dataset Storage → Create Review Snapshot**. Choose an existing
+destination outside the app-managed datasets directory and **Folder**,
+**Compressed archive (.zip)** or **Both**. Logs default on; existing CNA values
+default off. Review the contents/space estimate and acknowledge any omissions.
+
+Snapshots preserve complete standardized processed data, including cells
+excluded during app preprocessing, all ordinary results/plots, historical
+configuration, a README, scoped annotation/filtering summaries, and a checksum
+manifest. They work before or after cache cleanup. No CNA values are computed
+by copying. Older datasets can have unavailable aggregate statistics.
+
+Optional `project_info.source_doi` and `source_url` fields in
+`dataset_config.yaml` are included in the README. No destination is saved or
+tracked, and scientific statuses do not change. A snapshot is not a raw-data
+backup, an anonymized dataset or a resumable app workspace. See the
+[User Guide](docs/USER_GUIDE.md#creating-a-review-snapshot) for verification,
+space/path constraints and manual checks.
 
 ## Creating a Dataset
 

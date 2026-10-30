@@ -3,26 +3,29 @@
 
 cna_threshold_guidance_ui <- function() {
   tags$div(
-    class = "alert alert-info small cna-threshold-guidance",
-    strong("How the four thresholds classify tested cells"),
+    class = "alert alert-info small cna-threshold-guidance py-2",
+    strong("Threshold rules (tested cells)"),
     tags$ul(
-      class = "mb-2 mt-2 ps-3",
+      class = "mb-1 mt-1 ps-3",
       tags$li(
-        strong("Above both Malignant lines (m_x and m_y): "),
-        "eligible potentially malignant cell types—and cells already Unassigned/NA—can become Malignant."
+        strong("Above both malignant thresholds (m_x and m_y): "),
+        "configured potentially malignant or Unassigned/NA cells become Malignant."
       ),
       tags$li(
-        strong("Below both Non-Malignant lines (nm_x and nm_y): "),
-        "cells retain their prior annotation. With multiple subclones, a cell must be below both lines for every tested subclone."
+        strong("Below both non-malignant thresholds (nm_x and nm_y): "),
+        "retain their prior annotation; must hold for every tested subclone."
       ),
       tags$li(
-        strong("Between or mixed across the lines: "),
-        "tested cells that are neither Malignant nor safely non-malignant become Unassigned/NA for review."
+        strong("Gray zone: "),
+        "other tested, non-Malignant cells become Unassigned/NA."
       )
     ),
-    tags$div(
-      class = "mb-0",
-      "Comparisons are strict (> for Malignant and < for Non-Malignant). Equal Y thresholds are allowed; a cell exactly on their shared boundary is in the Unassigned/NA gray zone."
+    tags$details(
+      tags$summary("Boundary details"),
+      tags$p(
+        class = "mb-0 mt-1",
+        "Comparisons are strict (> malignant, < non-malignant). Equal Y thresholds are allowed; cells exactly on their shared boundary meet neither Y condition for that subclone."
+      )
     )
   )
 }

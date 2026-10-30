@@ -176,6 +176,10 @@ test_that("R03 saving a partial preview preserves its Unassigned legend and scie
     expect_identical(png::readPNG(saved_png), png::readPNG(expected_png))
     expect_identical(state$cells_filt$cell_type, c("T cell", NA_character_, NA_character_))
     expect_identical(get_pipeline_step(state$pipeline_state, "annotation", "sample1")$status, "completed")
+    aggregate <- get_pipeline_step(state$pipeline_state, "annotation", "sample1")$details$snapshot_annotations
+    expect_identical(aggregate$schema_version, 1L)
+    expect_identical(aggregate$cell_file_checksum, .cache_md5(state$paths_list$cell_file_paths[1]))
+    expect_equal(sum(vapply(aggregate$counts, `[[`, numeric(1), "cell_count")), 3)
     for (step in c("clustering", "resolution", "differential_expression")) {
       expect_identical(get_pipeline_step(state$pipeline_state, step, "sample1")$status, "completed")
     }

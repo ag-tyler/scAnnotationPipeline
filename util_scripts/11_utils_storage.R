@@ -237,6 +237,30 @@ dataset_storage_cache_is_retired <- function(state) {
 }
 
 
+# Shared by cleanup/reopen and snapshots. Never steal a live long-running
+# operation's lock solely because its timestamp is old.
+acquire_dataset_storage_operation <- function(dataset_dir_path) {
+  path <- dataset_storage_state_paths(dataset_dir_path)$operation_lock
+  if (!dir.create(path, showWarnings = FALSE)) {
+    owner <- tryCatch(yaml::read_yaml(file.path(path, "owner.yaml")), error = function(e) NULL)
+    dead_local_owner <- !is.null(owner) && identical(owner$host, unname(Sys.info()[["nodename"]])) &&
+      length(owner$pid) == 1L && is.finite(owner$pid) &&
+      !owner$pid %in% tryCatch(ps::ps_pids(), error = function(e) owner$pid)
+    if (!dead_local_owner) stop("Another dataset storage operation is running. Retry after it finishes.", call. = FALSE)
+    # Resolve the exact lock target before removing a dead owner's directory.
+    expected <- file.path(normalizePath(dataset_dir_path, winslash = "/", mustWork = TRUE), ".storage-operation.lock")
+    if (!identical(normalizePath(path, winslash = "/", mustWork = TRUE), expected) || isTRUE(fs::is_link(path))) {
+      stop("Unsafe dataset storage-operation lock path.", call. = FALSE)
+    }
+    unlink(path, recursive = TRUE, force = TRUE)
+    if (!dir.create(path, showWarnings = FALSE)) stop("Could not acquire dataset storage-operation lock.", call. = FALSE)
+  }
+  tryCatch(yaml::write_yaml(list(pid = Sys.getpid(), host = unname(Sys.info()[["nodename"]])), file.path(path, "owner.yaml")),
+    error = function(e) { unlink(path, recursive = TRUE, force = TRUE); stop("Could not record dataset storage lock ownership.", call. = FALSE) })
+  path
+}
+
+
 dataset_archive_output_audit <- function(storage_state, dataset_dir_path, verify_checksums = FALSE) {
   validate_dataset_storage_state(storage_state)
   retained <- storage_state$details$cleanup$retained_outputs
@@ -399,13 +423,14 @@ dataset_cache_inventory <- function(dataset_dir_path) {
 }
 
 
-dataset_cleanup_readiness <- function(
+dataset_completion_readiness <- function(
   pipeline_state,
   paths_list,
   selected_config,
   selected_config_path,
   results_dir_path,
-  dataset_dir_path
+  dataset_dir_path,
+  inspect_optional_exports = TRUE
 ) {
   validate_pipeline_state(pipeline_state)
   sample_names <- basename(paths_list$sample_dir_paths)
@@ -489,6 +514,7 @@ dataset_cleanup_readiness <- function(
       "Final assigned CNA UMAP",
       sample_name
     ))
+    if (!isTRUE(inspect_optional_exports)) next
     export_status <- cna_values_export_status(sample_name, dataset_dir_path, results_dir_path)
     if (!isTRUE(export_status$current) && identical(
       get_pipeline_step(pipeline_state, "cna_assignment", sample_name)$status, "completed"
@@ -506,15 +532,6 @@ dataset_cleanup_readiness <- function(
     }
   }
 
-  inventory <- dataset_cache_inventory(dataset_dir_path)
-  if (inventory$file_count == 0L) add_reason("The dataset cache is already empty.")
-  if (length(inventory$unknown) > 0L) {
-    add_reason(paste0(
-      "The cache contains unrecognized entries: ",
-      paste(utils::head(inventory$unknown, 5L), collapse = ", "),
-      if (length(inventory$unknown) > 5L) " ..." else "."
-    ))
-  }
   output_table <- if (length(outputs) > 0L) {
     data.frame(
       path = vapply(outputs, `[[`, character(1), "path"),
@@ -536,9 +553,34 @@ dataset_cleanup_readiness <- function(
       "and recompute CNA to export these values later."
     ) else character(),
     sample_names = sample_names,
-    cache = inventory,
+    cache = NULL,
     retained_outputs = output_table
   )
+}
+
+
+dataset_cleanup_readiness <- function(
+  pipeline_state, paths_list, selected_config, selected_config_path,
+  results_dir_path, dataset_dir_path
+) {
+  readiness <- dataset_completion_readiness(
+    pipeline_state, paths_list, selected_config, selected_config_path,
+    results_dir_path, dataset_dir_path
+  )
+  inventory <- dataset_cache_inventory(dataset_dir_path)
+  if (inventory$file_count == 0L) {
+    readiness$reasons <- c(readiness$reasons, "The dataset cache is already empty.")
+  }
+  if (length(inventory$unknown) > 0L) {
+    readiness$reasons <- c(readiness$reasons, paste0(
+      "The cache contains unrecognized entries: ",
+      paste(utils::head(inventory$unknown, 5L), collapse = ", "),
+      if (length(inventory$unknown) > 5L) " ..." else "."
+    ))
+  }
+  readiness$cache <- inventory
+  readiness$ready <- length(readiness$reasons) == 0L
+  readiness
 }
 
 
@@ -593,7 +635,7 @@ archive_dataset_cache <- function(
     stop("Only an active dataset can begin cache cleanup.", call. = FALSE)
   }
   paths <- dataset_storage_state_paths(dataset_dir_path, state_filename)
-  acquire_pipeline_state_lock(paths$operation_lock, timeout_seconds = 5)
+  acquire_dataset_storage_operation(dataset_dir_path)
   on.exit(unlink(paths$operation_lock, recursive = TRUE, force = TRUE), add = TRUE)
 
   plan <- build_dataset_cleanup_plan(readiness, pipeline_state, timestamp)
@@ -715,6 +757,8 @@ retry_dataset_cache_deletion <- function(
   }
 ) {
   validate_dataset_storage_state(storage_state)
+  operation_lock <- acquire_dataset_storage_operation(dataset_dir_path)
+  on.exit(unlink(operation_lock, recursive = TRUE, force = TRUE), add = TRUE)
   if (
     !identical(storage_state$status, "cleanup_failed") ||
       !isTRUE(storage_state$details$cache_retired) ||
@@ -774,6 +818,8 @@ reopen_archived_dataset <- function(
   timestamp = Sys.time()
 ) {
   validate_dataset_storage_state(storage_state, pipeline_state$dataset_id)
+  operation_lock <- acquire_dataset_storage_operation(dataset_dir_path)
+  on.exit(unlink(operation_lock, recursive = TRUE, force = TRUE), add = TRUE)
   if (!identical(storage_state$status, "archived")) {
     stop("Only an archived dataset can be reopened.", call. = FALSE)
   }

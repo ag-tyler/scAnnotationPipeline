@@ -90,6 +90,9 @@ test_that("F09 clustering targets one source sample and every configured resolut
   expect_identical(unique(vapply(state_events, `[[`, character(1), "sample")), "sample2")
   expect_identical(vapply(state_events, `[[`, character(1), "status"), c("in_progress", "completed"))
   expect_identical(state_events[[2]]$details$resolutions, c(0.25, 0.5, 1))
+  expect_identical(state_events[[2]]$details$snapshot_filtering$schema_version, 1L)
+  expect_equal(state_events[[2]]$details$snapshot_filtering$input_cells, 3)
+  expect_equal(state_events[[2]]$details$snapshot_filtering$retained_cells, 3)
   expect_setequal(
     saved_files,
     c(

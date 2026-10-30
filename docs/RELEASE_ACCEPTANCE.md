@@ -73,10 +73,12 @@ test is skipped; all non-browser release tests remain runnable.
 | In-app setup documents, Markdown downloads, independent workspace checklists, preserved notes, and safe creation paths | `test-f15-r05-onboarding-documents.R`, `test-f06-standardization-onboarding.R` |
 | Explicit DE completion review selection, scoped processing order, fresh targets, and unsaved-edit/obsolete-action guards | `test-f15-r06-de-review-navigation.R`, `test-f03-navigation-hardening.R` |
 | Clustering checklist presets, selected-only state/cache/output isolation, selected-batch progress, guarded confirmation, and preserved all/one-sample paths | `test-f09-subset-clustering.R`, `test-f09-single-sample-clustering.R`, `test-app-ui-baseline.R` |
+| Compact per-subclone threshold rules, collapsed boundary guidance, and unchanged eligibility/multi-subclone/equal-Y classification | `test-f15-r08-compact-threshold-guidance.R`, `test-f11-cna-threshold-guidance.R` |
 | Exact large-input metadata, legacy precision recovery, saved-label continuity across reloads and dataset switching | `test-f15-r01-cache-precision.R` |
 | Persistent explicit CNA omission, reversal, mixed batch, configured readiness, and CNA-view sample switching | `test-f15-r02-cna-omission.R`, `test-f05-annotation-recovery.R` |
 | Bounded CNA conversion, export progress, binary validation, interrupted export preservation and retry | `test-f15-r07-cna-export.R`, `test-f13-cna-values-export.R` |
 | Optional export independent of scientific completion; warned cleanup without an export, retained old exports, and re-review when availability changes | `test-f13-cna-values-export.R`, `test-f16-dataset-storage.R` |
+| Verified review snapshots: all 12 modes/options, whole processed data and plots, archived CNA provenance, scoped summaries, guarded GUI, bounded copy, rollback and destination-free logs | `test-f17-review-snapshots.R` |
 | Persistent status, repeated attempts, append-only logs, and recovery | `test-06_utils_logging.R`, `test-07_utils_state.R`, `test-t23-release-integration.R` |
 | Stale/corrupt/partial cache rejection and recovery | `test-04_utils_caching.R`, `test-regression_cna_cache.R`, state reconciliation tests |
 | CNA eligibility and numerical edge cases | `test-05_utils_workflow_cna_preflight.R`, `test-m0-cna-characterization.R` |
@@ -92,6 +94,44 @@ perform scientific review on data it is licensed to use, but such a review is
 not a repository test and is not required for another user to validate the app.
 
 ## Verification record
+
+### F17 manual acceptance (pending)
+
+- [ ] On a safe small finished dataset, exercise folder/archive/both and both
+  inclusion switches; confirm defaults, previews/warnings, progress and one-shot
+  confirmation. Unfinished/busy/dirty datasets must be blocked.
+- [ ] Open/extract outputs and inspect origin/README, all plots, historical
+  provenance and manifest. Confirm processed cells excluded by preprocessing
+  remain present, and annotation/filtering summaries use the correct scope.
+- [ ] Repeat from an archived/cache-cleaned dataset, including retained optional
+  CNA values and any unavailable legacy-statistics warnings.
+- [ ] Check a representative full-size new dataset for actual time, available
+  space, ZIP extraction and path limits; twelve large real copies are not needed.
+- [ ] Confirm source scientific files/decisions/statuses remain unchanged and no
+  destination is persisted in logs/config/state/generated documentation. Check
+  interruption/retry and that earlier exports survive failures.
+
+These F17 checks are new scope and are not accepted by the earlier F15 replay.
+The optional large-file regression is enabled by `RUN_F17_LARGE_TESTS=true` and
+uses a real entry exceeding 4 GiB; routine tests use small synthetic fixtures.
+
+F17 verification on 2026-10-30: the final complete suite passes **2,478
+assertions**, with **zero failures, test warnings or skips**, including all 39
+Edge browser assertions. All twelve output-mode/inclusion combinations pass.
+The separate large-file gate created and verified an actual entry exceeding
+4 GiB through ZIP64, complete extraction, size checks and checksum readback.
+Tests also cover successful aggregate capture in the real clustering/manual
+annotation/CNA-save handlers, unknown/stale summary generations, byte-exact
+processed cells/matrices, current and archived optional CNA pairs, required
+retained-output damage, bounded copy progress, Unicode names and native Windows
+path limits, no-heavy-I/O readiness, confirmation/dirty/busy guards, corrupt
+staging, partial Both publication, no-overwrite collisions, post-rename
+interrupts, source changes, destination-free logs and unavailable logging.
+The Start Menu baseline was refreshed and visually reviewed; the other browser
+baselines were retained. The final suite uses the supported Windows UTF-8
+locale; the host's initial C locale caused two existing tooltip text checks to
+fail until the test locale was set correctly. Synthetic fixtures only were
+modified. F17 manual acceptance remains open.
 
 On 2026-10-21 under Windows and R 4.5.3, `Rscript tests/testthat.R` passed 818
 assertions with zero failures, warnings, or skips. This total includes all 21
@@ -259,3 +299,18 @@ The full portable suite passes 2,039 assertions with zero failures/warnings
 and one restricted-browser skip; the separately permitted focused browser
 journey passes all 39 assertions. Scientific algorithms and parameters are
 unchanged; no real dataset was modified during verification.
+
+F15-R08 focused verification passes 33 new assertions plus all 42 existing F11
+assertions. The visible helper is limited to three rules (at most 65 words),
+with strict/equal-Y details collapsed by default (at most 100 words overall).
+The actual two-subclone threshold UI retains guidance and sliders in each
+card without extra signal-cache reads. Synthetic preview/save/reload tests
+confirm multi-subclone retention and collisions, malignant eligibility,
+Unassigned reassignment, exact equal-Y boundaries, existing Malignant labels,
+and untouched untested cells. Only helper presentation changed; scientific
+and slider-control code are untouched. Manual wording/layout acceptance is
+recorded for the next full new-dataset review.
+
+The complete gate after R08 passes 2,072 assertions with zero failures/warnings
+and one known restricted-browser skip. All currently planned implementation
+items are addressed; manual acceptance of the new-dataset run remains open.

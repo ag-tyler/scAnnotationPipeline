@@ -369,7 +369,11 @@ register_cna_summary_server <- function(input, output, session, state, context) 
         details = list(
           cell_count = nrow(cells_to_save),
           malignant_count = sum(cells_to_save$cell_type == "Malignant", na.rm = TRUE),
-          subclone_count = length(unique(stats::na.omit(cells_to_save$subclone)))
+          subclone_count = length(unique(stats::na.omit(cells_to_save$subclone))),
+          snapshot_annotations = capture_snapshot_annotations(
+            cells_to_save, cells_raw_path, rv$live_selected_config$resolutions[[s_name]],
+            get_pipeline_step(rv$pipeline_state, "clustering", s_name)
+          )
         )
       ),
       error = identity

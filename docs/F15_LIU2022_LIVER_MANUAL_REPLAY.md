@@ -501,3 +501,31 @@ Next new-dataset manual review (not yet confirmed):
 - [ ] Continue to resolution review with the first processed sample preselected.
 - [ ] Retain verification of the all-sample and one-sample clustering paths.
 
+## Follow-up — R08 compact threshold guidance (2026-10-30)
+
+The threshold helper now keeps only three short classification rules visible
+beside each subclone's sliders. Eligibility and the requirement to fall below
+both non-malignant thresholds for every tested subclone remain explicit.
+Strict comparison/equal-Y details move to an initially collapsed **Boundary
+details** note. Equality meets neither Y condition for that subclone; it does
+not override Malignant assignments from existing labels or another subclone.
+
+This is presentation-only: no classification function, slider constraint,
+threshold value, save behavior, or plotting computation was changed. Native
+details expansion adds no server input or data work. All 33 focused R08 and
+42 existing F11 assertions pass, including actual two-subclone UI rendering,
+bounded helper length, unchanged preview/save/reload classification, equal-Y
+boundaries, eligibility, collisions, and untested-cell preservation. No real
+dataset files were changed.
+
+Full automated gate: 2,072 assertions pass, zero failures/warnings, one known
+restricted-browser skip. All currently planned implementation is complete;
+the full new-dataset manual review and targeted checklists remain open.
+
+For the next full review (not yet confirmed):
+
+- [ ] Confirm the three short rules are clear and fit beside the sliders.
+- [ ] Check the every-tested-subclone condition remains understandable.
+- [ ] Expand Boundary details and confirm strict comparisons/equal-Y behavior
+  are clear; expanding it must not alter sliders or plots.
+

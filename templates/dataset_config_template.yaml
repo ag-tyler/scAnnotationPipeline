@@ -1,6 +1,8 @@
 project_info: 
   dataset_id: "Werba2023_Pancreas"
   technology: "10x"
+  source_doi: "" # Optional publication DOI, e.g. 10.1234/example
+  source_url: "" # Optional dataset/repository URL; included in review snapshots
 
 # Standardized file names
 std_names:

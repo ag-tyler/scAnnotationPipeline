@@ -541,7 +541,17 @@ cluster_all_samples <- function(
         state_callback(
           sample_name,
           "completed",
-          details = list(resolutions = config$params$resolutions)
+          details = list(
+            resolutions = config$params$resolutions,
+            snapshot_filtering = list(
+              schema_version = 1L,
+              input_cells = nrow(cells),
+              retained_cells = nrow(cells_filt),
+              settings = config$params[intersect(
+                c("min_genes", "target_sum", "log2_expr_threshold"), names(config$params)
+              )]
+            )
+          )
         )
       }
       completed_count <- completed_count + 1L

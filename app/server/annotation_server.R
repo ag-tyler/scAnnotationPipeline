@@ -749,7 +749,11 @@ register_annotation_server <- function(input, output, session, state, context) {
         details = list(
           resolution = rv$res,
           cell_count = nrow(cells_to_save),
-          assigned_count = sum(!is.na(cells_to_save$cell_type))
+          assigned_count = sum(!is.na(cells_to_save$cell_type)),
+          snapshot_annotations = capture_snapshot_annotations(
+            cells_to_save, rv$paths_list$cell_file_paths[idx], rv$res,
+            get_pipeline_step(rv$pipeline_state, "clustering", rv$sample_name)
+          )
         ),
         invalidate_downstream = annotations_changed,
         invalidation_reason = if (annotations_changed) {

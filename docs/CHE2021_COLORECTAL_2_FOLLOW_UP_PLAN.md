@@ -4,7 +4,7 @@
 
 **Initial plan date:** 2026-10-21  
 **Last progress update:** 2026-10-30
-**Current phase (2026-10-30):** The Liu2022 manual replay is finished, including CNA, optional export/re-export, cleanup, archived reload, and reopen. R01, R02, and R07 are implemented and their workflow paths confirmed. R03's Unassigned legend and R05's document popups are manually confirmed; the remaining R03–R06 checks are pending a new-dataset review. R04–R06 and the F09 subset-clustering addendum are implemented with automated regressions; selected-only manual review remains pending. Optional compact threshold guidance R08 remains to implement. See the final replay summary below for the subsequent save-navigation and storage-audit fixes.
+**Current phase (2026-10-30):** The original F01–F16 scope, R01–R08 remediation and F09 subset work are implemented with automated coverage. F17 is implemented as one complete finished-dataset review-snapshot feature, including all three output modes and independent logs/CNA-values inclusion options. Its verification record and manual export checklist are below. The Liu2022 replay is finished; previously recorded manual confirmations stand, while targeted manual checks, F17 manual acceptance and the full new-dataset review remain open. Implementation completion is not overall acceptance.
 **Basis:** Manual test notes, follow-up console-launch testing, current source inspection, file-size inventory, `pipeline.log`, and `pipeline_state.yaml` from `Che2021_Colorectal_2`.
 
 ---
@@ -17,7 +17,7 @@ The immediate objective is to restore a stable, responsive workflow through clus
 | --- | --- | --- |
 | **P0 — Critical** | Blocks or corrupts the normal workflow | unexpected app/session resets; false stale clustering/annotation state after saving |
 | **P1 — Important** | Makes core use confusing or inefficient | annotation/CNA save semantics; new-dataset onboarding; batch progress and completion output; general responsiveness |
-| **P2 — Improvement** | Nonblocking consistency, optional workflow convenience, status visibility, CNA selection usability, or environment polish | natural cluster ordering; single-sample clustering; main-menu pipeline overview; high-count CNA cluster selection; development-mode startup warning |
+| **P2 — Improvement** | Nonblocking consistency, optional workflow convenience, status visibility, CNA selection usability, preservation, or environment polish | natural cluster ordering; single-sample clustering; main-menu pipeline overview; high-count CNA cluster selection; development-mode startup warning; F17 verified review snapshots and summaries |
 
 Complexity is relative: **S** = localized; **M** = several functions/modules; **L** = cross-cutting state, cache, or integration work.
 
@@ -29,6 +29,7 @@ Implementation rules:
 - A saved annotation must never make valid clustering results stale merely because annotation columns changed.
 - Keep annotation, CNA configuration, and explicit CNA omission as distinct user decisions and workflow states.
 - Add regression tests with each change and perform the final manual replay on a disposable copy or synthetic workspace before relying on the test dataset.
+- F17 creates an independent review copy, not a cleanup operation, resumable workspace, or tracked backup. Preserve all processed cells and ordinary plots; never persist the snapshot destination or monitor saved copies.
 
 ## 2. Current evidence and working hypotheses
 
@@ -64,8 +65,14 @@ These findings guide task order. Items labelled **hypothesis** still require the
 | 3 | **Onboarding and progress** | F06–F07 | New users can find standardization instructions; batch work has clear progress | Creation-to-standardization path and bulk output tests pass |
 | 4 | **Presentation, optional workflow controls, exports, cleanup, and residual performance** | F08–F13, F16, F14 | Numeric cluster order, optional single-sample clustering, a main-menu status overview, flexible CNA Y thresholds, unambiguous CNA subtree selection, reusable CNA values-table exports, safe finished-dataset cleanup, and responsive ordinary interactions | New controls, exports, cleanup lifecycle, and measured interaction targets pass with autoreload disabled |
 | 5 | **Integration and resumed CNA test** | F15 | End-to-end workflow, including CNA, is verified | All acceptance scenarios pass |
+| 6 | **Additional finished-dataset review snapshots** | F17 | One verified snapshot feature with folder/archive/both modes, independent logs/CNA-values options, source README and summaries | Portable integrity/privacy/isolation tests and a finished-dataset manual export review pass |
 
 Performance work is split deliberately: F04 addresses the now-confirmed dataset-load/cache-validation bottleneck on the critical path, while F14 remains limited to residual interactive latency after autoreload and eager cache validation are fixed.
+
+F17 is a new extension, not unfinished work from the original milestones. Build
+its summary/provenance capture, exporter, controls, and verification as one task;
+do not defer inclusion options to a later release. Its manual checks can be
+combined with the planned new-dataset replay after implementation.
 
 ## 4. Dependency map
 
@@ -87,6 +94,7 @@ flowchart TD
     P["F16: Finished-dataset cache cleanup"]
     N["F14: Residual performance optimization"]
     O["F15: End-to-end acceptance and CNA replay"]
+    Q["F17: Verified finished-dataset review snapshots"]
 
     A --> B
     A --> D
@@ -111,6 +119,10 @@ flowchart TD
     J --> P
     M --> P
     P --> N
+    D --> Q
+    E --> Q
+    M --> Q
+    P --> Q
 ```
 
 **Critical path:** F01 → F02 → F03, F01 → F04, and F01 → F05, converging at F15. Implement the stale-annotation re-entry slice of F05 immediately; it does not need to wait for the larger F04 performance/cache redesign. Coordinate final invalidation semantics between F04 and F05. After F13, implement and review F16 before beginning the residual F14 profiling pass. F15 must include F16's destructive lifecycle on a safe copy.
@@ -1001,12 +1013,14 @@ loading works. The following are separate findings from the resumed run.
 | F15-R05 | P2 | Standardization checklist and User Guide opening buttons do not work; a shared checklist must be reset for every dataset. | Inspect intended opening behavior and provide working access from the app, with actionable fallback on supported platforms. Copy an editable checklist into newly created dataset workspaces, or document a justified alternative after assessing placement; retain a clean shared template and preserve existing user notes. Verify two workspaces have independent checklists. | Implemented — in-app viewers and independent workspace copies; manual confirmation pending |
 | F15-R06 | P2 | Bulk DE completion retains the prior annotation sample, potentially leaving earlier samples overlooked. | Review completion navigation with the status overview: choose and document whether to select the first processed sample needing review or retain position with a clear incomplete-sample cue. Test the chosen rule for bulk and subset contexts without discarding unsaved edits. | Implemented — first processed sample ready for required review; explicit navigation and unsaved-edit guards; manual confirmation pending |
 | F15-R07 | P0 | Saving HCC3 CNA results stays at the first exporting stage for at least five minutes; the user stopped the operation without a completed save. | Identify the actual slow or blocked stage with timings/progress evidence. Make final save complete or fail with an actionable error, retain existing complete outputs on interruption, and prevent partial export publication or falsely completed state. Verify assignment, gzip CSV/provenance publication, and reload consistency; document measured runtime and meaningful progress for long operations. | Complete — optimized optional export and final saving confirmed in the finished manual replay |
-| F15-R08 | P3 | Threshold classification explanation is useful but could be more compact. | Shorten the helper text without changing classification: retain the gray-zone Unassigned/NA rule, eligible malignant reassignment above malignant thresholds, and any multi-subclone condition needed for accurate interpretation. Preserve equal-Y support and existing numerical semantics; review the revised text in context. | Planned — optional wording improvement |
+| F15-R08 | P3 | Threshold classification explanation is useful but could be more compact. | Shorten the helper text without changing classification: retain the gray-zone Unassigned/NA rule, eligible malignant reassignment above malignant thresholds, and any multi-subclone condition needed for accurate interpretation. Preserve equal-Y support and existing numerical semantics; review the revised text in context. | Implemented — compact visible rules plus expandable boundary note; manual wording review pending |
 | F09 subset addendum | P2 | Rerunning only stale clustering samples currently requires repeated individual actions or reclustering the entire dataset. | Implement the selectable-subset clustering dialog specified under F09 and manually verify selected-only computation/invalidation. | Implemented — selected-only regression/browser checks; manual confirmation pending |
 
-**Remaining implementation order:** R08. R03–R06 and the F09 subset addendum
-are implemented, with targeted manual acceptance still
-pending. The manual replay is finished and R01/R02/R07 no longer block
+**Remaining implementation work:** None in the agreed scope. F17 is implemented
+as one complete feature; R03–R06, R08 and the F09 subset addendum are implemented,
+with targeted manual acceptance still pending. Run F17's export checks
+alongside the full new-dataset review and remaining
+targeted checklists. The Liu2022 replay is finished and R01/R02/R07 no longer block
 the workflow. Completing the replay does not by itself resolve the original
 defect notes or implement the optional enhancements. Capture existing evidence
 before any recovery writes. Add portable regressions for each confirmed defect
@@ -1463,6 +1477,38 @@ explanation that still tells users which cells become Unassigned/NA and which
 eligible cells can become malignant, preserving the implemented multi-subclone
 rule. No numerical/classification change is requested.
 
+**Implementation:** Each threshold card now contains three compact visible
+rules: above both malignant thresholds, configured potentially malignant or
+Unassigned/NA cells become Malignant; below both non-malignant thresholds for
+every tested subclone, retain the prior annotation; other tested, non-Malignant
+cells become Unassigned/NA. Threshold variable names remain beside the rules,
+and the essential multi-subclone condition is not hidden.
+
+Strict comparisons and the equal-Y boundary explanation move into a native,
+initially collapsed **Boundary details** note. Its text says equality meets
+neither Y condition for that subclone, rather than incorrectly implying it
+overrides an existing Malignant assignment or another subclone's result. The
+note is keyboard-accessible and toggles entirely in the browser; it adds no
+server inputs, computation, cache reads, or plot rerenders. Vertical spacing
+is reduced. No scientific function, threshold value, slider constraint, or
+save behavior was changed.
+
+**Focused verification:** All 33 R08 and 42 existing F11 assertions pass.
+Tests cap the visible summary at 65 words and the entire helper at 100 words,
+check all rules and the collapsed boundary note, and render the actual
+two-subclone threshold UI to verify both cards retain their sliders/guidance
+without extra cache work. Synthetic classification/preview/save/reload tests
+cover low-in-all versus mixed subclones, eligible versus ineligible types,
+Unassigned reassignment, subclone collisions, equal-Y boundaries, already
+Malignant cells, and untouched untested cells. Real datasets were not changed.
+
+**Full gate:** The portable suite passes 2,072 assertions with zero
+failures/warnings and the known restricted-browser skip.
+
+**Next full review:** Confirm the shorter text scans well beside the sliders,
+the multi-subclone requirement remains clear, and Boundary details expands
+without changing controls/plots. Manual wording acceptance remains pending.
+
 #### Final replay summary and subsequent fixes — 2026-10-30
 
 The user has finished docs/F15_LIU2022_LIVER_MANUAL_REPLAY.md, with all workflow
@@ -1492,9 +1538,286 @@ not a new test run for restoring this document. F15's manual replay is complete;
 overall remediation acceptance remains open until R03–R06 are addressed.
 R08 and selectable-subset clustering retain their separate enhancement scope.
 
-## 11. Progress tracker — living section
+## 11. Milestone 6 — Finished-dataset review snapshots
 
-### 11.1 Milestone status
+| ID | Priority | Complexity | Task | Dependencies |
+| --- | --- | --- | --- | --- |
+| **F17** | P2 | M | Create verified, self-contained review snapshots with folder/archive/both modes, optional logs/CNA values, origin README, and annotation/filtering summaries | F04/F05 data/state contracts, F13 optional CNA values, F16 terminal-output validation and cleanup compatibility |
+
+### F17 — Verified refined copies for future annotation review
+
+**Status:** Implemented on 2026-10-30; manual acceptance pending. The user's
+decision supersedes the earlier two-version proposal: the complete scope below
+is delivered together. Logs and CNA-values switches are included, not deferred.
+
+**Purpose and value:** Produce an understandable, integrity-checked copy of a
+finished dataset for later inspection of saved annotations, expression data,
+DE evidence and CNA plots. Estimated usefulness is **8/10** with **medium**
+implementation effort. Copying alone is simple; reliable large-file handling,
+verification, summaries, failure isolation and path-free logging drive the work.
+Manual acceptance is not claimed by implementation or synthetic test coverage.
+
+#### Implementation record (2026-10-30)
+
+- Added `14_utils_snapshots.R` and a dedicated snapshot server to the existing
+  Dataset Storage card. Folder/ZIP/both, logs on/CNA values off defaults,
+  reviewed inventory, independent switches, warning acknowledgement, fresh
+  confirmation guards, progress and transient completion destinations are live.
+- Factored scientific-completion checks out of cache-cleanup readiness. Finished
+  active and archived datasets can export without live caches. Shared storage
+  operation ownership prevents cleanup/reopen from stealing a long export lock.
+- Whole standardized trees and ordinary results/plots are copied in bounded
+  blocks; F13 CNA pairs are included only when complete/current or supported by
+  verified retained-output evidence after cleanup. No recomputation, scientific
+  state changes, destination registry or ongoing saved-copy audit is introduced.
+- Added optional origin fields to the dataset template, generated README,
+  relative-path checksum manifest and scoped summary CSVs. New successful normal
+  clustering/annotation/CNA saves capture schema-v1 aggregates; legacy/mismatched
+  history stays explicitly unavailable rather than guessed or recomputed.
+- ZIP workers provide compression/readback progress; folders and extracted
+  archive contents receive size/hash checks before publication. Source changes,
+  insufficient space, ordinary errors, R interrupts and partial Both publication
+  are guarded. Only exact operation-owned outputs are rolled back; logs omit
+  destinations on success, error and interruption.
+- Platform choice: `zip` workers plus full archive readback; Unicode paths are
+  handled under a temporary UTF-8 locale on Windows, restoring the caller locale.
+  This R/libuv Windows build retains native path-length limits: preflight rejects
+  oversized source/output paths with shorter-name/destination guidance. It does
+  not silently omit files or promise unlimited path support.
+- See `test-f17-review-snapshots.R`, the User Guide's review-snapshot section and
+  `RELEASE_ACCEPTANCE.md`. The final full suite passes **2,478 assertions**, with
+  **zero failures, test warnings or skips**, including the 39-assertion browser
+  journey. A separate synthetic **entry larger than 4 GiB** passed ZIP64 creation,
+  full extraction/readback and hash/size verification. No real dataset was
+  exported, cleaned, recomputed or altered for these checks.
+
+#### User controls, placement and readiness
+
+- Add **Create Review Snapshot…** to the Start Menu's Dataset Storage card,
+  alongside, but independent of, cleanup/reopen actions.
+- Offer a destination and three output modes: **Folder**, **Compressed archive**,
+  or **Both**. Include two independent switches: **Include logs** (default on)
+  and **Include existing CNA values** (default off). All four inclusion
+  combinations must work with all three output modes. No other content picker.
+- Show the selected content, omissions/warnings, file count, uncompressed-size
+  estimate and additional space needed, including staging. Do not promise a
+  compression ratio; already-compressed values/images may shrink very little.
+- Enable copying only for a fully finished dataset: completed standardization,
+  clustering, resolution, DE and annotation for every sample, followed by either
+  finalized CNA or a valid explicit CNA omission. Reject stale/incomplete/failed/
+  active required stages, unsaved edits and conflicting application actions.
+- Required standardized data and final scientific outputs must exist and pass
+  operation-time validation. Recheck readiness at confirmation, not just when
+  opening the dialog. Reading readiness must not repeatedly deserialize caches
+  or scan large matrices during ordinary menu rendering.
+- Support finished active datasets **and** finished archived/cache-cleaned
+  datasets. Reuse/factor out F16's scientific-completion and output checks, not
+  its complete cleanup-readiness function: that function also requires a nonempty
+  cache, which is not a snapshot prerequisite. Cleanup itself is neither required
+  nor invoked by snapshot creation; cleanup-in-progress/conflicting operations
+  must be blocked.
+- Offer the action when ready; do not silently launch a large export on the
+  final annotation/CNA Save click. Selecting or previewing an export writes no
+  scientific data and changes no scientific/storage lifecycle state.
+
+#### Fixed snapshot content and the two inclusion switches
+
+Examples use the default folder names; resolve source locations from existing
+configuration. Use a documented package layout with metadata under
+`provenance/`, so historical configuration/state is not mistaken for an active
+app workspace.
+
+| Content | Contract |
+| --- | --- |
+| `processed_data/` | Copy the complete standardized tree without rewriting or filtering it: matrices, genes, final cell metadata and sample metadata. Preserve cells excluded during app preprocessing, identifiers, ordering and values. Never construct this payload from filtered caches. |
+| `results/` | Retain all ordinary results and **all plots**, including other resolutions and diagnostic plots. No user decisions about individual plots or heuristic pruning of redundant images. CNA values follow the switch below. |
+| `logs/` | Include existing ordinary log files when enabled, including `pipeline.log` and `pipeline_events.jsonl`; omit this payload when disabled. Record intentional omission versus unavailable files accurately in the README/manifest. |
+| Configuration/state provenance | Include dataset, sample and selected configurations plus a historical `pipeline_state.yaml` snapshot. Preserve parameters, notes, resolutions, CNA decisions and thresholds. Do not treat copied state as proof of available live caches or copy cache/storage machinery as an active runtime state. |
+| Preparation provenance | Include `standardize.R` and the dataset's `STANDARDIZATION_CHECKLIST.md` when present. Missing optional historical documents are reported, not fabricated. |
+| Generated documentation | Add `README.md`, annotation and filtering summary CSVs, and an integrity manifest describing included relative paths, sizes, checksums, options, dataset identity, creation time and application/implementation identity. |
+| CNA values switch | Off by default: omit recognized F13 CNA-values payloads **and their matching export metadata**, not the whole CNA-results directory. When on, include available complete eligible value/provenance pairs as specified below. Always retain CNA plots and other ordinary results. |
+
+Exclude raw `data/`, caches, cache manifests/backups, temporary/lock files,
+machine-specific configuration/secrets, and previous snapshot outputs. The
+package is a portable review snapshot, not a complete raw-data backup or a
+resumable app workspace. It does not promise exact reconstruction of the saved
+UMAP coordinates or cell-to-cluster mapping after cache deletion.
+
+**Explicitly out of scope:** Portable per-cell cluster/UMAP review tables,
+selective plot exclusion, arbitrary folder selection, processed-data-only or
+per-sample export presets, a new review/import viewer, and automatic scientific
+recomputation. Saved plots plus expression data/final labels meet the agreed
+retrospective-review goal without these additions.
+
+**CNA-values inclusion policy:** This switch copies existing exports; it does
+not generate/re-export tables or recompute CNA. Check complete payload/sidecar
+pairs and available provenance before inclusion. Known-outdated, incomplete or
+unverifiable pairs must not be silently represented as current final data:
+identify affected samples, warn before confirmation, omit those pairs with
+documented reasons, and require acknowledgement if proceeding without requested
+values. Explicitly omitted-CNA samples do not require a values table. Verified
+retained exports must remain includable after cleanup; intentionally retired
+caches alone must not cause a false outdated/missing-values verdict. Use durable
+provenance/retained-output evidence, and report genuinely unknown legacy
+provenance honestly. Missing optional values do not force recomputation or
+change scientific completion. These are operation-time payload checks, not
+ongoing monitoring of the saved snapshot.
+
+#### Dataset origin and generated README
+
+Add optional, backward-compatible dataset-level fields to `project_info` in
+`dataset_config.yaml`, preserving existing keys:
+
+```yaml
+project_info:
+  dataset_id: "Example_Dataset"
+  technology: "10x"
+  source_doi: ""
+  source_url: ""
+```
+
+Document where users enter the publication DOI and/or dataset/repository link.
+Copy supplied values into the README; do no automatic online lookup. Missing
+origin information yields an explicit “not provided” entry/reminder, not a load,
+scientific-completion or snapshot blocker. Editing origin metadata must not
+invalidate scientific caches.
+
+The README should identify the dataset and creation time, explain folder/table
+contents, list included/omitted/unavailable material and summary limitations,
+state whether logs/CNA values were requested/included, and explain that raw
+inputs/caches are absent and pipeline state is historical. It must not record
+the destination or absolute paths of the newly created copies. Use relative
+package paths and note that included patient/sample metadata is not anonymized
+merely by being packaged. Existing source scripts/configuration/logs are not
+silently rewritten to remove unrelated historical source paths.
+
+#### Annotation and preprocessing summaries without losing cells
+
+- Generate per-sample annotation counts, including Unassigned/NA and malignant/
+  subclone counts where applicable. Label the counting scope explicitly:
+  **all standardized cells** versus **cells actually analyzed by the pipeline**.
+  Excluded cells may retain source annotations and must not be described as
+  pipeline-reviewed merely because their labels are nonempty.
+- Include standardized input-cell count, retained-for-clustering count,
+  filtered-out count/percentage and the applied cell-filter settings. These
+  describe filtering during the app's preprocessing/clustering, not cells
+  already removed by a custom standardization script.
+- Capture the small before/after counts during preprocessing while tables are
+  already loaded; persist them as versioned metadata in the successful
+  clustering-step details. Capture analyzed annotation aggregates during
+  annotation/final CNA saves from their already-loaded cell tables. This is
+  aggregate metadata, not a new portable per-cell review table.
+- Associate aggregates with their producing run/settings and saved labels.
+  Successful reruns replace only the affected samples' statistics; failed or
+  stale generations must not be presented as current. Summary capture must
+  not alter filtering, labels, matrices, selected decisions or cache contracts.
+- Build export summaries from reliable durable aggregates and the final cell
+  tables. Valid caches may supply missing historical information when present,
+  but their absence after cleanup cannot block the basic snapshot. For legacy
+  data without reliable filtering/analyzed-scope counts, emit unavailable values
+  with reasons and a warning. Never infer filtering from blank/Unassigned labels,
+  invent zeros, or reload/recompute large expression matrices just for statistics.
+- Copy `processed_data/` byte-for-byte regardless of summary availability.
+  Snapshot creation must never discard excluded cells. Data already removed
+  before standardization cannot be recovered or promised by this feature.
+
+#### Copying, compression, progress and final verification
+
+1. Validate the finished source and requested options; freeze the inclusion
+   inventory and metadata/summary inputs. Show warnings before confirmation.
+2. Validate the destination: it must not equal or lie inside the source, resolve
+   back into it through links, overwrite an existing package, or allow recursive
+   inclusion of prior exports. Prefer a separate exports location outside the
+   app-managed datasets directory, not a new apparent active dataset folder.
+3. Create uniquely named operation-owned staging output. Copy/stream with bounded
+   memory and truthful stage/file/byte progress, elapsed time and actionable
+   failure messages. Do not deserialize expression matrices for copying.
+4. For compressed output, choose/test a broadly usable archive format (ZIP is the
+   initial candidate) with large-file/archive, long-name and Unicode support on
+   supported platforms. Folder/archive/both must contain the same requested
+   payload, not different scientific subsets. Both needs explicit space estimates.
+5. Verify included relative paths, sizes and checksums against the staged
+   inventory; verify the archive's readable payload, not merely its existence
+   or compressor exit code. The manifest covers payload files other than itself
+   and is validated separately. Guard against source changes during capture.
+   Freeze copied log content at a defined point so the later export-success
+   event does not itself create a false snapshot-verification failure.
+6. Publish only verified outputs. For Both, report success only when both forms
+   are verified and published. On interruption, insufficient space, I/O error
+   or partial publication, preserve the source and previous exports; roll back
+   only newly created operation-owned outputs or clearly report incomplete work.
+   Resolve/validate exact staging paths before any recursive cleanup. No
+   unverified partial package may appear as successfully finished.
+
+#### Readiness-only status and destination-free logging
+
+The app's persistent-facing state is only **snapshot creation possible/not
+possible**, with blocking reasons. There is no saved destination registry,
+exported/not-exported/current/outdated/intact status, repeated integrity audit,
+or tracking of whether the user later moves/deletes/changes a copy. A generated
+manifest lives inside the copy for the end-of-operation verification; it does
+not establish an app-managed backup lifecycle or a new pipeline step.
+
+The destination may be shown transiently in the chooser/progress/completion
+dialog, but is not stored in configuration, pipeline/storage state, generated
+README/manifest, export-event logs, or persistent console output. Record **when
+and what**: dataset, mode, logs/CNA-values choices, categories/counts/bytes,
+verification outcome, elapsed time and success/failure. Sanitize failure and
+interrupt messages too; raw I/O exceptions must not leak destination paths.
+Ordinary scientific statuses remain unchanged; source changes are limited to
+the agreed metadata capture in normal pipeline saves and destination-free
+operation log events, not changes made by copying itself.
+
+#### Implementation sequence and acceptance
+
+Implement as one complete task: (1) origin fields and durable aggregate capture;
+(2) pure readiness/inventory/summary builders; (3) bounded copy/archive backend
+and verification/rollback; (4) Dataset Storage controls and real progress;
+(5) portable regressions, documentation and manual review. All controls and
+both inclusion switches belong to the same delivery.
+
+Required automated coverage:
+
+- All **12 combinations** of three output modes and two independent inclusion
+  switches; defaults include logs and exclude CNA values. Keep all ordinary
+  results/plots; exclude only recognized optional values and matching sidecars.
+- Exact matrix/gene/cell-file preservation, including filtered-out cells;
+  unchanged source scientific data, decisions and configuration/state, apart
+  from the explicitly permitted destination-free operation log events.
+- Origin fields absent/present, README content, relative links, and no scientific
+  invalidation from provenance edits; optional missing historical documents.
+- Accurate scoped annotation/filtering summaries, rerun replacement, failed/stale
+  statistics, excluded-but-source-labelled cells, and unknown legacy statistics.
+- Finished active and archived datasets, valid CNA omissions, retained values
+  after cleanup, and missing/outdated/partial value-pair warnings. No accidental
+  CNA generation, dependency on retired caches, or implicit cleanup/reopening.
+- Empty/missing required outputs, unfinished/stale stages, unsaved edits,
+  conflicting actions, duplicate clicks and source changes during capture.
+- Size/hash verification for folders and archives, meaningful bounded progress,
+  large-file support, Unicode/long paths, insufficient space/permission errors,
+  interruption/retry and failure while publishing the second output in Both.
+- Rejected source/destination overlap, link escapes, existing targets and unsafe
+  cleanup; failures preserve source data and prior exports.
+- Destination marker absent from persistent state, generated documentation and
+  success/failure/interrupt logs; no ongoing copy monitoring or added heavy
+  menu-render I/O. Repeated exports remain independent, user-initiated operations.
+
+**Manual acceptance:** On a small safe finished dataset, inspect the preview,
+exercise folder/archive/both and both inclusion switches, open/extract outputs,
+check origin/README/summaries and complete processed cells, verify every plot
+is retained, and confirm source scientific files/decisions/statuses are
+unchanged except for permitted destination-free log events. Repeat from a
+cache-cleaned dataset, including requested existing CNA values and any legacy
+summary warnings. Cover every mode/option combination in portable tests; use
+a representative full-size new dataset to assess actual runtime/space without
+requiring twelve large real-data copies. Check destination-free logs and
+failure recovery. F17 is
+accepted only after its entire scope passes; the earlier F15 replay is not
+evidence that this newly planned feature has been tested.
+
+## 12. Progress tracker — living section
+
+### 12.1 Milestone status
 
 | Milestone | Status | Completion criterion |
 | --- | --- | --- |
@@ -1504,8 +1827,9 @@ R08 and selectable-subset clustering retain their separate enhancement scope.
 | 3 — Onboarding and progress | Complete | Standardization guide and batch output accepted |
 | 4 — Ordering, optional controls, status, cleanup, and performance | Complete | Natural ordering, safe single-sample clustering, clear status overview, flexible CNA Y thresholds, unambiguous subtree selection, safe archive cleanup, and responsiveness targets met |
 | 5 — Integration and CNA replay | Manual replay complete; targeted acceptance open | Complete remaining R03–R06 manual checks and targeted retests before closing overall acceptance |
+| 6 — Finished-dataset review snapshots | Implemented; manual acceptance pending | F17's complete mode/options/summary/verification/privacy contract passes portable and manual gates |
 
-### 11.2 Task status
+### 12.2 Task status
 
 | ID | Task | Status | Completed | Notes |
 | --- | --- | --- | --- | --- |
@@ -1524,7 +1848,7 @@ R08 and selectable-subset clustering retain their separate enhancement scope.
 | F13 | CNA values-table results export | Complete | 2026-10-28 | Updated 2026-10-30: optional explicit export/re-export; finalization saves assignments/plots independently; optimized and validated gzip CSV/provenance publication retained |
 | F16 | Finished-dataset cache cleanup and archive lifecycle | Complete | 2026-10-28 | Updated 2026-10-30: optional exports warn rather than block cleanup; required scientific-output checks, journal, retirement/retry, archive audit, and explicit reopen remain |
 | F14 | Residual performance optimization | Complete | 2026-10-28 | Reproducible interaction profiler; redundant annotation/CNA deserialization removed; CNA preflight and threshold data shared reactively |
-| F15 | Integration and CNA replay | Manual replay complete; targeted acceptance open | — | Full Liu2022 replay finished; R03–R06 implemented with remaining manual checks pending; R08 and subset clustering tracked separately |
+| F15 | Integration and CNA replay | Manual replay complete; targeted acceptance open | — | Full Liu2022 replay finished; original/remediation scope implemented, including R08/subset clustering; new-dataset checks and separate F17 manual export acceptance pending |
 | F15-R01 | Exact cache metadata and verified legacy recovery | Complete | 2026-10-28 | User confirms correct Liu2022 states; portable repeated-reload/switch and recovery regressions pass |
 | F15-R02 | CNA readiness and persistent explicit omission | Complete | 2026-10-30 | Finished manual checklist confirms computation, omission, persistence, and reversal workflow; automated regressions pass |
 | F15-R03 | Safe annotation preview and Unassigned legend | Implemented; manual confirmation pending | — | Reproduced zero-colour palette failure; warning/retry guards, display-only Unassigned normalization, consistent saved PNG, and preview no-write regressions added |
@@ -1532,13 +1856,17 @@ R08 and selectable-subset clustering retain their separate enhancement scope.
 | F15-R05 | In-app setup documents and independent checklists | Implemented; manual confirmation pending | — | Rendered local dialogs, editor/download fallbacks, independent new-workspace copies, safe legacy opt-in, preserved notes, and corrected Windows creation-path validation |
 | F15-R06 | DE completion review-target navigation | Implemented; manual confirmation pending | — | Explicit completion action selects the first processed ready sample needing review; current counts/overview cue, subset-aware queue, fresh target, unsaved-edit and obsolete-action guards |
 | F15-R07 | CNA final save/export stall | Complete | 2026-10-30 | Finalization and optional export/re-export manually exercised; optimized exporter and interruption/retry regressions pass |
-| F15-R08 | Compact threshold helper text | Planned — P3 | — | Shorten explanation while preserving existing classification and multi-subclone rules |
+| F15-R08 | Compact threshold helper text | Implemented; manual wording review pending | — | Three short visible rules, visible every-subclone requirement, collapsed strict/equal-Y note, reduced spacing; classification and slider semantics unchanged |
 | F09 subset addendum | Selectable-subset clustering | Implemented; manual confirmation pending | — | All/stale/incomplete/manual checklist, selected-only scientific workflow/progress/invalidation, fresh confirmation identities, archive/busy/unsaved guards, and unchanged unselected artifacts |
+| F17 | Verified finished-dataset review snapshots | Implemented; manual acceptance pending — P2/M | — | Folder/archive/both, logs/CNA switches, complete processed data/all plots, origin README and scoped aggregates, verified readback, safe rollback and destination-free logs; active/archived datasets supported |
 
-### 11.3 Progress history
+### 12.3 Progress history
 
 | Date | Task | Change | Verification |
 | --- | --- | --- | --- |
+| 2026-10-30 | F17 implementation | Added one complete review-snapshot workflow: three modes, independent logs/CNA switches, whole processed data/all ordinary plots, origin README, scoped schema-v1 aggregates, manifest/readback verification, shared storage locks, fresh GUI confirmation, bounded copy/progress, safe rollback and destination-free logging | Full suite: 2,478 passing assertions, 0 failures/test warnings/skips, including 39 browser assertions. Separate real >4 GiB ZIP64 gate passed. All 12 combinations, active/archived CNA eligibility, source preservation, Unicode/native path limits, corrupt payloads, no-overwrite races, interruptions (including after rename), log failures and lightweight readiness covered. Final suite uses the supported Windows UTF-8 locale; initial C-locale tooltip failures were environment-specific. Manual new-dataset snapshot/content/runtime acceptance remains open; no real dataset changed |
+| 2026-10-30 | F17 planning | Added the agreed review-snapshot scope, superseding the two-version proposal with one delivery including independent logs/CNA-values options; documented contents, origin metadata, scoped filtering/annotation summaries, three output modes, final verification, safe failure handling and no destination tracking/logging | Documentation only; no snapshot implementation or new runtime tests. Earlier R08 work and pending manual acceptance remain unchanged |
+| 2026-10-30 | F15-R08 | Shortened threshold guidance to three visible rules plus a collapsed strict/equal-Y boundary note; retained eligibility, every-subclone retention and gray-zone semantics with reduced spacing | 33 focused R08 and 42 existing F11 assertions pass; full portable suite passes 2,072 assertions, 0 failures/warnings, 1 restricted-browser skip; two-subclone UI and unchanged classification/save/reload covered; new-dataset wording/layout review pending |
 | 2026-10-30 | F09 subset addendum | Extended bulk clustering to a status-labelled checklist with all/stale/incomplete/clear presets, live selected-only confirmation/progress, fresh dialog identities, and archive/busy/unsaved/context guards; retained single-sample action | 99 subset assertions, 53 expanded F09 workflow assertions and 39 focused browser assertions pass; full portable suite passes 2,039 assertions, 0 failures/warnings, 1 restricted-browser skip; real unselected cache/state/output isolation verified; manual new-dataset review pending |
 | 2026-10-30 | F15-R06 | Completion action now selects the first processed ready sample needing annotation review; added review count/next-sample guidance, fresh scoped queues, and unsaved/obsolete-action guards | 64 focused assertions and full suite pass (1,934 assertions, 0 failures/warnings, 1 restricted-browser skip); bulk/subset order, preserved selection/edits, no navigation state writes, failures, duplicate clicks, and dataset changes covered; new-dataset manual review pending |
 | 2026-10-30 | F15-R05 | Replaced raw setup-document links with local rendered dialogs and path/download fallbacks; added independent workspace checklists, explicit legacy opt-in, and safe Windows parent-path validation | 77 focused assertions and full suite pass (1,870 assertions, 0 failures/warnings, 1 restricted-browser skip); real synthetic creation, downloads, note/template preservation, errors, and guarded loading covered; manual review pending |
@@ -1586,9 +1914,9 @@ R08 and selectable-subset clustering retain their separate enhancement scope.
 | 2026-10-28 | F14 | Profiled residual Start Menu, annotation, and CNA interaction paths and removed measured redundant cache work | On the 15-sample Che dataset, annotation sample-load median improved 2.26 s → 0.22 s and CNA status preflight 0.19 s → 0.09 s; threshold slider rerenders now do zero cache reads after initial reactive loading; full suite passed 1,456 assertions with no failures/warnings and the known restricted-browser skip |
 | 2026-10-28 | F15 automated gate | Extended the disposable browser fixture through annotation mutation, save, durable cache/state checks, application restart, and restored UI state; added the 9-sample Liu2022 Liver manual replay checklist | Focused browser journey passed all 27 assertions and refreshed two reviewed UI baselines; full suite passed 1,456 assertions with 0 failures/warnings and 1 restricted-browser skip after the focused run |
 
-## 12. Progress notes and additional information — living section
+## 13. Progress notes and additional information — living section
 
-### 12.1 Open decisions
+### 13.1 Open decisions
 
 - After F01, choose between disabling autoreload for the pipeline by default and a reliably filtered `watcher` configuration. Stability is more important than live code reload.
 - During F04, choose the smallest safe cache migration: stage-specific dependency fingerprints or a separate annotation overlay. Prefer the overlay only if it materially reduces future coupling without turning this fix into a broad storage rewrite.
@@ -1601,8 +1929,9 @@ R08 and selectable-subset clustering retain their separate enhancement scope.
 - F13 decision (updated 2026-10-30): publish the long-format `.csv.gz` plus provenance under `3_cna_results` only through the optional export/re-export action. Finalization does not export automatically, and cleanup without a current export warns about later recomputation. A plain-CSV duplicate is omitted because of the potentially large output size.
 - F16 initial decision: start with whole-dataset cleanup, not per-sample cleanup. Treat cleanup as an archive lifecycle with its own status and explicit reopen/recompute path; do not overload scientific completion statuses or the existing invalidation helpers.
 - Decide whether long scientific computations should eventually run asynchronously only after the current responsiveness defects are fixed and measured; that is outside this plan unless still necessary.
+- F17 implementation: one complete delivery with both inclusion switches. Only copying readiness is shown; destination-free logs and final verification do not create a tracked export lifecycle. ZIP workers/readback and schema-v1 aggregate metadata implement the agreed contract. Windows native path-length limits are rejected explicitly; full-size runtime/space and final content inspection remain manual acceptance checks.
 
-### 12.2 Initial evidence record — 2026-10-21
+### 13.2 Initial evidence record — 2026-10-21
 
 - Manual console launch with `options(shiny.autoreload = FALSE)` improved selection responsiveness and prevented the reported unexpected returns to Dataset Selection through the subsequent clustering and DE reruns.
 - Follow-up testing indicates that general page loading and click response times are also restored by the console startup method.
@@ -1625,7 +1954,7 @@ R08 and selectable-subset clustering retain their separate enhancement scope.
 - The remaining reproducible defect is lifecycle/re-entry behavior: after clustering is rerun, saving resolution and successfully rerunning DE leaves annotation stale with the obsolete clustering-rerun reason, and the annotation UI cannot recover the already selected sample.
 - F01 added session diagnostics in `app/state.R`, `app/server/app_server.R`, and `app/server/dataset_server.R`, plus focused regression characterization in `tests/testthat/test-f01-characterization.R`.
 
-### 12.3 Implementation note template
+### 13.3 Implementation note template
 
 #### [YYYY-MM-DD] — [Task / topic]
 

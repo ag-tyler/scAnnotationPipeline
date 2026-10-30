@@ -661,6 +661,14 @@ skipped with an actionable reason instead of entering a numerical failure.
 
 A cell satisfying malignant thresholds for exactly one subclone receives that subclone ID.
 
+Each threshold card keeps three short rules visible: above both malignant
+thresholds, configured potentially malignant or Unassigned/NA cells become
+Malignant; below both non-malignant thresholds for every tested subclone, cells
+retain their prior annotation; other tested, non-Malignant cells become
+Unassigned/NA. **Boundary details** expands the strict comparison and equal-Y
+explanation. A cell exactly on a shared Y boundary meets neither Y condition
+for that subclone. Expanding this note changes no slider values or assignments.
+
 A cell satisfying malignant thresholds for more than one subclone remains:
 
 ```text
@@ -729,6 +737,98 @@ results remain, but the deleted caches cannot be restored and affected stages
 are marked stale.
 
 ---
+
+### Creating a review snapshot
+
+Use **Start Menu → Dataset Storage → Create Review Snapshot** after every
+sample has completed clustering, resolution, DE and annotation, with CNA either
+finalized or explicitly omitted. Required standardized inputs, annotation plots
+and final outputs must still exist. Save/discard edits and finish running work
+first. The card shows only whether creation is possible, not whether a previous
+copy exists. Finished active and cache-cleaned/archived datasets are supported;
+copying never cleans caches, reopens a dataset or changes scientific statuses.
+
+1. Enter an **existing destination directory outside the app-managed datasets
+   directory**. Use a reasonably short path, especially on Windows.
+2. Choose **Folder**, **Compressed archive (.zip)** or **Both**. Both produces
+   identical scientific contents in an independent folder and ZIP.
+3. Choose **Include logs** (default on) and **Include existing CNA values**
+   (default off). These are the only content choices; all ordinary plots remain.
+4. Click **Review Contents**. Check included relative paths, omissions, source
+   bytes and the conservative extra-space estimate, then acknowledge warnings.
+5. Click **Create Verified Snapshot**. Progress reports copy bytes, verification,
+   compression/readback and elapsed time. Wait for **Review snapshot verified**.
+
+The output contains:
+
+- `processed_data/`: the complete standardized input tree, byte-for-byte,
+  including cells filtered out during app preprocessing. Cells removed before
+  standardization cannot be recovered. Files are not reconstructed from caches.
+- `results/`: all ordinary results and plots, including alternatives/diagnostics.
+  Only recognized optional CNA-values payloads and matching sidecars follow the
+  CNA-values switch; no scientific computation is started.
+- Optional `logs/`, including existing text and structured event logs. They
+  capture the export-start point; the final success event is in the source logs.
+- `provenance/`: historical dataset/sample/selected configuration, pipeline
+  state, and available preparation script/checklist. This state is not live
+  cache evidence and must not be treated as an active app workspace.
+- `README.md`, `annotation_summary.csv`, `filtering_summary.csv` and
+  `snapshot_manifest.yaml` (relative paths, sizes and MD5 checksums, excluding
+  the manifest itself). MD5 detects accidental corruption, not malicious edits.
+
+Raw data, caches, backups, temporary/lock files, machine-specific configuration
+and prior snapshots are excluded. The package is not a full backup, anonymized
+data or a resumable workspace. Exact cached UMAP coordinates/cluster membership
+are not exported as new per-cell tables. Existing historical paths in source
+scripts/configs/logs are not rewritten.
+
+Annotation counts distinguish **all standardized cells** (possibly unreviewed
+source labels) from **pipeline-analyzed cells**, including Unassigned/NA and
+subclones. New successful clustering and annotation/CNA saves retain small
+versioned aggregate statistics. Filtering counts describe app preprocessing,
+not earlier standardization. For legacy, failed/stale or changed generations
+without reliable statistics, `NA` and warnings mean **unavailable**, not zero.
+Missing aggregate history does not block a snapshot or trigger matrix loading.
+
+To supply dataset origin, optionally add these fields to `dataset_config.yaml`:
+
+```yaml
+project_info:
+  dataset_id: "Your_Dataset"
+  technology: "10x"
+  source_doi: "10.1234/example"
+  source_url: "https://example.org/dataset"
+```
+
+The README uses the supplied DOI/link without online lookup. Missing origin
+information is reported as “not provided”; editing these descriptive fields
+does not invalidate scientific caches.
+
+When CNA values are requested, only complete exports with matching content and
+current provenance are copied. After cleanup, verified retained-output evidence
+can establish eligibility without retired caches. Missing, outdated, partial or
+unverifiable pairs are omitted with sample-specific warnings to acknowledge.
+Explicitly omitted-CNA samples need no values table. Export CNA values separately
+before cleanup if you want them; snapshots never recompute or refresh them.
+
+Copying uses bounded binary blocks. ZIP creation runs in a worker, and archives
+are fully extracted/read back and checksummed before publication. Reserve about
+one payload copy for Folder and up to three payload copies for Archive/Both
+during staging/verification, plus metadata overhead; compression savings are not
+assumed. Native Windows R/library path limits still apply: oversized paths are
+rejected with a request for a shorter destination/name, not silently truncated.
+Folder names are unique and existing outputs are never overwritten.
+
+Ordinary errors or R interrupts roll back only this operation's new staging and
+partial publication; the source and previous copies stay intact. A forced OS/R
+process termination can leave hidden `.review-snapshot-*` staging directories;
+these are not successful exports. Inspect only the known destination if recovery
+is needed. Do not manually delete source/cache directories to resolve an export.
+
+The destination appears only in the transient dialog. Export logs record when,
+what, options/counts/bytes and outcome, without the destination. No saved-copy
+registry, ongoing audit or exported/current/outdated pipeline status is created;
+moving or deleting a copy later does not affect the app.
 
 ## Testing
 

@@ -22,6 +22,7 @@ build_app_server <- function(context) {
     register_dataset_server(input, output, session, state, context)
     register_dashboard_server(input, output, session, state, context)
     register_storage_server(input, output, session, state, context)
+    register_snapshot_server(input, output, session, state, context)
     register_resolution_server(input, output, session, state, context)
     register_annotation_server(input, output, session, state, context)
     register_cna_server(input, output, session, state, context)

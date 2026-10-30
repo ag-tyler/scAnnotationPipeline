@@ -292,6 +292,10 @@ test_that("CNA finalization keeps its preview while saving without optional expo
     calls$navigation <- list()
     session$setInputs(btn_cna_save_summary = 1)
     expect_identical(get_pipeline_step(rv$pipeline_state, "cna_assignment", "Sample")$status, "completed")
+    aggregate <- get_pipeline_step(rv$pipeline_state, "cna_assignment", "Sample")$details$snapshot_annotations
+    expect_identical(aggregate$schema_version, 1L)
+    expect_identical(aggregate$cell_file_checksum, .cache_md5(cells_path))
+    expect_equal(sum(vapply(aggregate$counts, `[[`, numeric(1), "cell_count")), 2)
     expect_identical(calls$events, "cna_assignments_saved")
     expect_length(calls$navigation, 0L)
     expect_identical(input$cna_main_views, "cna_view_summary")
