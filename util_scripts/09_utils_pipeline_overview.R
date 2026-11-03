@@ -47,36 +47,23 @@ pipeline_cna_analysis_record <- function(state, sample_name) {
   )
   names(records) <- downstream_steps
 
-  # Surface actionable states before deriving progress from completed intermediates.
-  for (status in c("failed", "in_progress", "stale", "incomplete")) {
-    matching <- which(vapply(
-      records,
-      function(record) identical(record$status, status),
-      logical(1)
-    ))
-    if (length(matching) > 0L) {
-      return(records[[matching[[1]]]])
-    }
-  }
-
-  assignment <- records$cna_assignment
-  if (assignment$status %in% c("completed", "skipped")) {
-    return(assignment)
-  }
-
   statuses <- vapply(records, `[[`, character(1), "status")
-  if (any(statuses == "completed")) {
-    return(new_pipeline_overview_record(
-      "incomplete",
-      "CNA analysis has completed intermediate stages but is not finalized."
-    ))
+  pending <- which(statuses != "completed")
+  if (!length(pending)) return(records$cna_assignment)
+  step <- names(records)[pending[[1]]]
+  record <- records[[step]]
+  # Later stale retained results cannot hide the current computation or the
+  # first decision needing review. Preserve the underlying scientific records.
+  if (pipeline_step_readiness(state, step, sample_name)$ready) {
+    if ((identical(record$status, "stale") && "archive_cleanup" %in% record$details$stale_after) ||
+        (identical(record$status, "not_started") && any(statuses == "completed"))) {
+      record <- new_pipeline_overview_record("incomplete", paste0(
+        if (identical(record$status, "stale")) "Previous CNA results require review/recomputation. " else "",
+        "Next: ", pipeline_recovery_action(step), "."))
+    }
+    record$details$next_step <- step
   }
-  if (any(statuses == "skipped")) {
-    first_skipped <- which(statuses == "skipped")[[1]]
-    return(new_pipeline_overview_record("skipped", records[[first_skipped]]$reason))
-  }
-
-  new_pipeline_overview_record("not_started")
+  record
 }
 
 
@@ -109,6 +96,9 @@ pipeline_overview_next_action <- function(records) {
       next
     }
     label <- unname(action_labels[[stage]])
+    if (identical(stage, "cna_analysis") && !is.null(record$details$next_step)) {
+      label <- pipeline_recovery_action(record$details$next_step)
+    }
     prefix <- switch(
       record$status,
       in_progress = "Wait: ",

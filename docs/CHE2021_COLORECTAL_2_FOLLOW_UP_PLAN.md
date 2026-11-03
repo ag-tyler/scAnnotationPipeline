@@ -20,8 +20,8 @@ below are historical and do not supersede these November findings.
 the next implementation work is defined in the
 [November remediation plan](CHE2021_COLORECTAL_REMEDIATION_PLAN.md).
 C01–C06 address the remaining required fixes, C07–C09 cover optional usability
-follow-up, and C10 defines the final acceptance gate. C01–C03 are implemented
-with synthetic server/browser regression coverage; C04–C09 remain planned and C10
+follow-up, and C10 defines the final acceptance gate. C01–C04 are implemented
+with synthetic server/browser regression coverage; C05–C09 remain planned and C10
 remains open. The original F01–F17 implementation history below remains valid;
 its completion does not close the newly reproduced failures.
 **Basis:** Manual test notes, follow-up console-launch testing, current source inspection, file-size inventory, `pipeline.log`, and `pipeline_state.yaml` from `Che2021_Colorectal_2`.

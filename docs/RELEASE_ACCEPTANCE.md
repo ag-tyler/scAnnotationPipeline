@@ -61,6 +61,22 @@ failures/errors/test warnings/skips. This includes 49 new C03 server and 20
 instrumented browser assertions. Supported Windows UTF-8 was used; the optional
 >4 GiB ZIP64 gate was not enabled. Only the CNA sidebar baseline changed.
 
+**C04 implementation follow-up (2026-11-03):** Post-reopen CNA status now
+identifies the first unfinished recovery stage and refreshes archive-cleanup
+reasons as prerequisites are restored. Valid configuration leads to a base CNA
+compute action; later stale results cannot obscure current work. Retained
+scientific records remain stale until recomputed/saved, genuine cache failures
+keep their diagnosis, and untouched/omitted controls retain their exact state.
+Final verification passed 2,782 portable and 104 browser assertions with zero
+failures/errors/test warnings/skips, including 102 new portable and 13 browser
+assertions. The browser replay uses real reopen and decision/save handlers
+through final assignment and restart, with deterministic fixture publication
+for numerical rebuild phases. This is synthetic recovery/status evidence;
+human manual acceptance remains part of C10. The Start Menu baseline was
+refreshed and visually inspected. Supported Windows UTF-8 was used; the optional
+>4 GiB ZIP64 gate was not enabled. Neither real Che dataset changed.
+C05/C06 and the C10 release gate remain open; C07–C09 are separate usability work.
+
 This document defines the portable Milestone 7 release gate. Every automated
 check uses committed code/fixtures or deterministic synthetic data generated in
 a temporary directory. No named local dataset, private biological resource, or

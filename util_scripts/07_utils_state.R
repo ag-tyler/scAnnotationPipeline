@@ -1005,6 +1005,39 @@ synchronize_pipeline_cna_omission <- function(state, sample, timestamp = Sys.tim
   )
 }
 
+pipeline_recovery_action <- function(step) {
+  labels <- c(clustering = "Run clustering", resolution = "Review and save a resolution",
+    differential_expression = "Run differential expression", annotation = "Review and save annotations",
+    cna_configuration = "Configure or omit CNA", cna_compute = "Compute base CNA and heatmaps",
+    cna_cluster_selection = "Review and save malignant clusters",
+    cna_signal_correlation = "Recompute signal and correlation",
+    cna_thresholds = "Review and save CNA thresholds", cna_assignment = "Preview and finalize CNA assignments")
+  unname(labels[[step]])
+}
+
+refresh_archived_cna_recovery_reasons <- function(state, sample, timestamp = Sys.time()) {
+  if (identical(get_pipeline_step(state, "cna_configuration", sample)$status, "skipped")) return(state)
+  pending <- PIPELINE_SAMPLE_STEPS[vapply(PIPELINE_SAMPLE_STEPS, function(step) {
+    !identical(get_pipeline_step(state, step, sample)$status, "completed")
+  }, logical(1))]
+  # Untouched samples still genuinely need clustering; retain their exact state.
+  if (!length(pending) || identical(pending[[1]], "clustering")) return(state)
+  next_step <- pending[[1]]
+  next_record <- get_pipeline_step(state, next_step, sample)
+  action <- pipeline_recovery_action(next_step)
+  if (identical(next_record$status, "in_progress")) action <- "Wait for the current operation to finish"
+  if (identical(next_record$status, "failed")) action <- paste0("Retry: ", action)
+  reason <- paste0("Retained CNA results are stale after archive cleanup. Next: ", action, ".")
+  for (step in PIPELINE_STALE_DEPENDENCIES$cna_configuration) {
+    record <- get_pipeline_step(state, step, sample)
+    if (identical(record$status, "stale") && "archive_cleanup" %in% record$details$stale_after &&
+        !identical(record$reason, reason)) {
+      state <- transition_pipeline_step(state, step, "stale", sample, reason = reason, timestamp = timestamp)
+    }
+  }
+  state
+}
+
 
 reconcile_pipeline_state_dependencies <- function(state, timestamp = Sys.time()) {
   validate_pipeline_state(state)
@@ -1039,6 +1072,12 @@ reconcile_pipeline_state_dependencies <- function(state, timestamp = Sys.time())
       )
       changed <- c(changed, paste(sample_name, step, sep = "/"))
     }
+    before <- state$samples[[sample_name]]
+    state <- refresh_archived_cna_recovery_reasons(state, sample_name, timestamp)
+    refreshed <- names(before)[!vapply(names(before), function(step) {
+      identical(before[[step]], state$samples[[sample_name]][[step]])
+    }, logical(1))]
+    if (length(refreshed)) changed <- unique(c(changed, paste(sample_name, refreshed, sep = "/")))
   }
   attr(state, "dependency_changes") <- changed
   state
@@ -1436,5 +1475,6 @@ persist_pipeline_step_update <- function(
       timestamp = timestamp
     )
   }
+  if (!is.null(sample)) updated <- refresh_archived_cna_recovery_reasons(updated, sample, timestamp)
   save_pipeline_state_at_path(updated, state_path, timestamp)
 }

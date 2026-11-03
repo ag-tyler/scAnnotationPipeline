@@ -904,3 +904,23 @@ failures/errors/test warnings/skips, including 49 new server and 20 browser
 assertions. Original manual failure notes remain historical evidence; C04–C10
 remain open. See C03 in the
 [remediation plan](CHE2021_COLORECTAL_REMEDIATION_PLAN.md).
+
+**C04 implementation follow-up — 2026-11-03:** STO-07 now has synthetic
+recovery/status regression coverage. After archive/reopen and upstream recovery,
+saving valid CNA configuration displays the current base CNA compute action.
+Archive-cleanup reasons advance through the remaining work; later retained
+stale results no longer hide the first unfinished CNA stage. Scientific records
+remain stale until recomputed/saved. Genuine cache failures keep their diagnosis,
+untouched controls retain their exact reopened state, and omissions remain
+distinct from missing configuration.
+
+Final C04 verification passed 2,782 portable plus 104 browser assertions with
+zero failures/errors/test warnings/skips, including 102 new portable and 13
+browser assertions. Real synthetic archive/reopen and GUI decision/save handlers
+were replayed through final assignment and restart; numerical rebuild phases
+republished deterministic tiny fixture inputs. This does not claim a new
+scientific recalculation or human manual acceptance pass. The updated Start Menu
+screenshot was visually inspected. Neither real Che dataset was modified.
+Original manual failure notes remain historical evidence. C05–C10, including
+the final acceptance replay, remain open. See C04 in the
+[remediation plan](CHE2021_COLORECTAL_REMEDIATION_PLAN.md).

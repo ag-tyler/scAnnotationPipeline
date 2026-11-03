@@ -226,9 +226,11 @@ unavailable. To run it explicitly from R:
 testthat::test_file("tests/testthat/test-app-ui-baseline.R")
 ```
 
-The test does not invoke compute, scientific-output saves, reset, or batch
-actions. All state/log/cache changes occur only in its temporary synthetic
-workspace. Approved platform-specific screenshots are stored under
+Browser journeys exercise recovery, computation, saves and reset only in
+disposable synthetic workspaces. The archive/reopen status replay republishes
+deterministic numerical fixtures between real GUI decisions and saves. All
+state/log/cache changes stay in these temporary workspaces. Approved
+platform-specific screenshots are stored under
 `tests/testthat/fixtures/ui-baseline/`; platforms without a reviewed screenshot
 set still run all functional browser assertions.
 

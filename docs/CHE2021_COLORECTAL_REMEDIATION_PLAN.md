@@ -2,8 +2,8 @@
 
 **Date:** 2026-11-03
 
-**Status:** C01–C03 implemented with synthetic regression/browser coverage;
-C04–C09 remain planned and C10 release acceptance remains open.
+**Status:** C01–C04 implemented with synthetic regression/browser coverage;
+C05–C09 remain planned and C10 release acceptance remains open.
 
 **Evidence:** [Completed manual review](CHE2021_COLORECTAL_MANUAL_REVIEW.md),
 especially stage notes and section 10. This plan extends the
@@ -263,7 +263,7 @@ among the reviewed screenshot baselines.
 
 ## C04 — Post-reopen CNA status
 
-- [ ] Implement and verify.
+- [x] Implement and verify on synthetic workspaces (2026-11-03).
 
 **Evidence:** After rebuilding a sample and saving valid CNA configuration, the
 main menu retained an obsolete stale display even though CNA could run.
@@ -284,6 +284,36 @@ Rebuild one sample through configuration, computation and final assignment.
 Dashboard/detail/CNA status agree at every step; reload preserves their meaning.
 The unprocessed control stays honestly stale and explicit omission stays
 distinct from missing configuration. Include a focused manual recovery replay.
+
+**Implementation record (2026-11-03):** Archive-cleanup stale reasons now
+advance with the sample's first unfinished recovery stage, both on persisted
+updates and on reload. Once valid CNA configuration is saved, the dashboard
+requests base CNA computation instead of retaining the obsolete instruction to
+rerun clustering. Subsequent actions advance through malignant-cluster review,
+signal/correlation, thresholds and final assignment. The overview follows the
+first unfinished CNA stage, so later retained stale results or old failures
+cannot hide an active computation or the current review decision.
+
+Ready cleanup-stale results display as requiring computation/review in the
+overview; their underlying scientific records remain stale until actually
+recomputed or saved. Genuine cache-validation failures retain their diagnosis.
+Untouched samples retain their exact reopened state, and explicit omissions
+remain distinct from missing configuration. Overview derivation adds no I/O.
+
+**Verification:** 2,782 portable and 104 browser assertions passed with zero
+failures/errors/test warnings/skips. C04 adds 102 portable assertions and 13
+browser assertions. Actual synthetic archive/reopen, stage-by-stage status,
+reload idempotence, unchanged controls/retained output hashes, omission and
+cache-failure diagnoses are covered. The browser replay uses real reopen,
+resolution, annotation, CNA configuration, malignant-selection, threshold and
+final-save handlers through application restart. Numerical rebuild phases
+republish deterministic tiny fixture inputs; this verifies recovery/status,
+not a new scientific recalculation or a human manual acceptance replay.
+The Start Menu screenshot was refreshed and visually inspected. Tests used
+R 4.5.3 with supported Windows UTF-8; the optional >4 GiB ZIP64 gate was not
+enabled. Local scripts/logs/results stay in ignored `artifacts/local-checks/`.
+Neither real Che dataset was modified. C05–C10 remain open, including the final
+C10 acceptance replay.
 
 ## C05 — Snapshot review layout and destination guidance
 
