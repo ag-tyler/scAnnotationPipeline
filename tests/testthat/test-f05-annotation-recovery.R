@@ -18,10 +18,10 @@ test_that("F05 retries the selected sample when DE becomes ready", {
 
   test_env <- new.env(parent = globalenv())
   for (function_name in c(
-    "get_pipeline_step", "pipeline_step_readiness",
+    "get_pipeline_step", "pipeline_step_readiness", "app_sample_index",
     "pipeline_status_presentation", "load_cells",
     "validate_annotation_cell_alignment", "persist_pipeline_step_update",
-    "cache_save_data", "cache_invalidate_sample"
+    "cache_save_data", "cache_invalidate_sample", "capture_snapshot_annotations"
   )) {
     test_env[[function_name]] <- get(function_name, inherits = TRUE)
   }
@@ -43,7 +43,11 @@ test_that("F05 retries the selected sample when DE becomes ready", {
   }
   test_env$nav_select <- function(...) invisible(NULL)
   test_env$record_state_event <- function(...) invisible(NULL)
-  test_env$showNotification <- function(...) "notification"
+  notifications <- character()
+  test_env$showNotification <- function(ui, ...) {
+    notifications <<- c(notifications, as.character(ui))
+    "notification"
+  }
   test_env$removeNotification <- function(...) invisible(NULL)
   sys.source(
     file.path(app_dir, "app/server/single_de_server.R"),
@@ -136,7 +140,7 @@ test_that("F05 retries the selected sample when DE becomes ready", {
     session$flushReact()
     expect_identical(
       get_pipeline_step(state$pipeline_state, "annotation", "sample1")$status,
-      "completed"
+      "completed", info = paste(notifications, collapse = "; ")
     )
     expect_identical(
       get_pipeline_step(state$pipeline_state, "cna_configuration", "sample1")$status,

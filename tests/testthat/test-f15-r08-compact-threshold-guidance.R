@@ -93,7 +93,11 @@ test_that("R08 guidance stays beside each subclone's sliders without extra cache
   )
   server <- function(input, output, session) env$register_cna_threshold_server(input, output, session, state, list())
   shiny::testServer(server, {
-    session$setInputs(cna_sample_idx = "1")
+    for (step in c("cna_configuration", "cna_compute", "cna_cluster_selection", "cna_signal_correlation")) {
+      state$pipeline_state <- transition_pipeline_step(state$pipeline_state, step, "completed", "sample1", force = TRUE)
+    }
+    state$cna_view_context <- cna_analysis_context(state, "sample1", "cna_view_thresholds")
+    session$setInputs(main_nav = "cna_tab", cna_main_views = "cna_view_thresholds", cna_sample_idx = "1")
     html <- output$cna_dynamic_thresholds_ui$html
     count <- function(pattern) lengths(regmatches(html, gregexpr(pattern, html, fixed = TRUE)))
     expect_identical(count("cna-threshold-guidance"), 2L)

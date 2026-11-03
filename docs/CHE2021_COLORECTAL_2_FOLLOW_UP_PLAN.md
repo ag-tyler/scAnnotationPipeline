@@ -3,17 +3,33 @@
 **Document purpose.** This is the working implementation plan for issues found during the 2026-10-21 manual end-to-end test on `Che2021_Colorectal_2`. It follows the structure of `scAnnotationPipeline_Development_Plan.md`, but is a separate follow-up plan because the original milestones are complete. It records priorities, dependencies, acceptance criteria, and implementation order. It does not claim that the planned changes have been implemented.
 
 **Initial plan date:** 2026-10-21  
-**Last progress update:** 2026-10-30
-**Current phase (2026-10-30):** The original F01–F16 scope, R01–R08 remediation and F09 subset work are implemented with automated coverage. F17 is implemented as one complete finished-dataset review-snapshot feature, including all three output modes and independent logs/CNA-values inclusion options. Its verification record and manual export checklist are below. The Liu2022 replay is finished; previously recorded manual confirmations stand, while targeted manual checks, F17 manual acceptance and the full new-dataset review remain open. Implementation completion is not overall acceptance.
+**Last progress update:** 2026-11-03
+**Latest manual acceptance:** The [completed Che2021 review](CHE2021_COLORECTAL_MANUAL_REVIEW.md)
+records successful scientific completion of all 15 samples (10 final CNA,
+5 explicit omissions), checked R03–R06/R08/subset-clustering manual evidence,
+full-size snapshots and storage lifecycle testing. Overall acceptance remains
+open: interrupted clustering blocks retry after restart; dataset switching
+crashes annotation/CNA reactives; omitted/reset CNA navigation requests missing
+caches; post-reopen CNA status is misleading; snapshot review paths overflow.
+Section 10 contains the sample inventory, new isolated failure/guard results,
+coverage limitations and supplemental locale-specific snapshot rollback result.
+The preserved active copy is the finished scientific reference; the repository
+copy is the subsequent destructive-test workspace. Earlier progress entries
+below are historical and do not supersede these November findings.
+**Current phase (2026-11-03):** The fresh-dataset manual review is complete;
+the next implementation work is defined in the
+[November remediation plan](CHE2021_COLORECTAL_REMEDIATION_PLAN.md).
+C01–C06 address the remaining required fixes, C07–C09 cover optional usability
+follow-up, and C10 defines the final acceptance gate. C01–C03 are implemented
+with synthetic server/browser regression coverage; C04–C09 remain planned and C10
+remains open. The original F01–F17 implementation history below remains valid;
+its completion does not close the newly reproduced failures.
 **Basis:** Manual test notes, follow-up console-launch testing, current source inspection, file-size inventory, `pipeline.log`, and `pipeline_state.yaml` from `Che2021_Colorectal_2`.
 
-**Next full manual review:** The user is restarting the entire pipeline on a
-fresh `Che2021_Colorectal` workspace with raw inputs and updated sample metadata
-already provided. Use [Che2021 full manual review](CHE2021_COLORECTAL_MANUAL_REVIEW.md)
-for stable checkpoint IDs and empty per-stage Notes sections. Setup,
-standardization and scientific processing remain to be performed/recorded;
-creating the checklist is not acceptance evidence. The Liu2022 replay remains
-the historical record and is not reset or replaced.
+**Full manual review:** The user completed the fresh `Che2021_Colorectal`
+replay on 2026-11-03. Use [its stage notes and final review](CHE2021_COLORECTAL_MANUAL_REVIEW.md)
+for current checkpoint outcomes and outstanding failures. The Liu2022 replay
+remains historical evidence and is not reset or replaced.
 
 ---
 
@@ -1838,6 +1854,11 @@ evidence that this newly planned feature has been tested.
 
 ### 12.1 Milestone status
 
+The original implementation milestones below are historical. Current required
+remediation and acceptance status is tracked as C01–C10 in the
+[November plan](CHE2021_COLORECTAL_REMEDIATION_PLAN.md). C01–C03 implementation and
+synthetic verification are complete; the remaining C tasks are open.
+
 | Milestone | Status | Completion criterion |
 | --- | --- | --- |
 | 0 — Reproduction and baseline | Complete | Reload/cache defects and timing baseline characterized |
@@ -1845,8 +1866,8 @@ evidence that this newly planned feature has been tested.
 | 2 — Cache loading and save correctness | Complete | Fast load, valid annotation reload, and coherent CNA decisions |
 | 3 — Onboarding and progress | Complete | Standardization guide and batch output accepted |
 | 4 — Ordering, optional controls, status, cleanup, and performance | Complete | Natural ordering, safe single-sample clustering, clear status overview, flexible CNA Y thresholds, unambiguous subtree selection, safe archive cleanup, and responsiveness targets met |
-| 5 — Integration and CNA replay | Manual replay complete; targeted acceptance open | Complete remaining R03–R06 manual checks and targeted retests before closing overall acceptance |
-| 6 — Finished-dataset review snapshots | Implemented; manual acceptance pending | F17's complete mode/options/summary/verification/privacy contract passes portable and manual gates |
+| 5 — Integration and CNA replay | November manual replay complete; remediation open | Preserve checked R03–R06/R08/subset evidence; complete C01–C04 and the C10 recovery/navigation replay |
+| 6 — Finished-dataset review snapshots | Normal manual workflow confirmed; remediation open | Complete C05/C06 review layout and fallback-locale rollback fixes, then C10 snapshot acceptance |
 
 ### 12.2 Task status
 
@@ -1867,17 +1888,17 @@ evidence that this newly planned feature has been tested.
 | F13 | CNA values-table results export | Complete | 2026-10-28 | Updated 2026-10-30: optional explicit export/re-export; finalization saves assignments/plots independently; optimized and validated gzip CSV/provenance publication retained |
 | F16 | Finished-dataset cache cleanup and archive lifecycle | Complete | 2026-10-28 | Updated 2026-10-30: optional exports warn rather than block cleanup; required scientific-output checks, journal, retirement/retry, archive audit, and explicit reopen remain |
 | F14 | Residual performance optimization | Complete | 2026-10-28 | Reproducible interaction profiler; redundant annotation/CNA deserialization removed; CNA preflight and threshold data shared reactively |
-| F15 | Integration and CNA replay | Manual replay complete; targeted acceptance open | — | Full Liu2022 replay finished; original/remediation scope implemented, including R08/subset clustering; new-dataset checks and separate F17 manual export acceptance pending |
+| F15 | Integration and CNA replay | November manual replay complete; remediation open | — | All 15 samples finished scientifically; C01–C04 and C10 address newly reproduced failures and remaining acceptance gaps |
 | F15-R01 | Exact cache metadata and verified legacy recovery | Complete | 2026-10-28 | User confirms correct Liu2022 states; portable repeated-reload/switch and recovery regressions pass |
 | F15-R02 | CNA readiness and persistent explicit omission | Complete | 2026-10-30 | Finished manual checklist confirms computation, omission, persistence, and reversal workflow; automated regressions pass |
-| F15-R03 | Safe annotation preview and Unassigned legend | Implemented; manual confirmation pending | — | Reproduced zero-colour palette failure; warning/retry guards, display-only Unassigned normalization, consistent saved PNG, and preview no-write regressions added |
-| F15-R04 | Same-sample resolution-view refresh | Implemented; manual confirmation pending | — | Sample-scoped clustering and view-entry refresh for grid/detail PNGs; no tab rebuild, polling, or scientific-cache reads; status transitions covered |
-| F15-R05 | In-app setup documents and independent checklists | Implemented; manual confirmation pending | — | Rendered local dialogs, editor/download fallbacks, independent new-workspace copies, safe legacy opt-in, preserved notes, and corrected Windows creation-path validation |
-| F15-R06 | DE completion review-target navigation | Implemented; manual confirmation pending | — | Explicit completion action selects the first processed ready sample needing review; current counts/overview cue, subset-aware queue, fresh target, unsaved-edit and obsolete-action guards |
+| F15-R03 | Safe annotation preview and Unassigned legend | Manual evidence recorded | 2026-11-03 | ANN-01–03 checked in the completed Che review; retain regression coverage during C01 changes |
+| F15-R04 | Same-sample resolution-view refresh | Manual evidence recorded | 2026-11-03 | RES-01 and RER-02 checked; C02 addresses the separate interrupted-clustering recovery failure |
+| F15-R05 | In-app setup documents and independent checklists | Manual evidence recorded | 2026-11-03 | PRE-04–07 checked; nonblocking origin reminder proposed separately in C09 |
+| F15-R06 | DE completion review-target navigation | Manual evidence recorded | 2026-11-03 | DE-01–03 and RER-07 checked; dataset-switch crashes are separate C01 scope |
 | F15-R07 | CNA final save/export stall | Complete | 2026-10-30 | Finalization and optional export/re-export manually exercised; optimized exporter and interruption/retry regressions pass |
-| F15-R08 | Compact threshold helper text | Implemented; manual wording review pending | — | Three short visible rules, visible every-subclone requirement, collapsed strict/equal-Y note, reduced spacing; classification and slider semantics unchanged |
-| F09 subset addendum | Selectable-subset clustering | Implemented; manual confirmation pending | — | All/stale/incomplete/manual checklist, selected-only scientific workflow/progress/invalidation, fresh confirmation identities, archive/busy/unsaved guards, and unchanged unselected artifacts |
-| F17 | Verified finished-dataset review snapshots | Implemented; manual creation confirmed, remaining acceptance pending — P2/M | — | Liu2022 Both-mode folder/ZIP creation confirmed; completion paths now wrap within the popup. Full option/content/summary/cleanup acceptance remains open |
+| F15-R08 | Compact threshold helper text | Manual evidence recorded | 2026-11-03 | THR-01–04 checked; proposed defaults/tick alignment are separate C08 scope |
+| F09 subset addendum | Selectable-subset clustering | Manual evidence recorded; C02 recovery verified synthetically | 2026-11-03 | CLU-02/03 and RER-05–08 checked; C02 adds owned-attempt recovery after process death plus guarded legacy recovery/retry |
+| F17 | Verified finished-dataset review snapshots | Normal workflow confirmed; remediation open | — | SNP-01–11 checked by reviewer; 382 supplemental assertions pass in supported UTF-8. C05/C06 address review-path overflow and fallback-locale rollback; see recorded mode/coverage limits |
 
 ### 12.3 Progress history
 

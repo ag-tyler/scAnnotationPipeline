@@ -560,3 +560,287 @@ test_that("baseline navigation and writable annotation reload are preserved", {
   ]
   expect_equal(nrow(error_logs), 0L, info = paste(error_logs$message, collapse = "\n"))
 })
+
+test_that("C01 browser switches dataset contexts with old indices, unsaved edits and archived state", {
+  skip_if_not_installed("shinytest2")
+  skip_if_not_installed("qs2")
+  browser <- tryCatch(chromote::find_chrome(), error = function(e) NULL)
+  skip_if(is.null(browser) || !nzchar(browser), "no Chromium browser is configured")
+  withr::local_envvar(NOT_CRAN = "true")
+  app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
+  test_app <- make_ui_baseline_app(app_dir)
+  suppressWarnings(make_portable_ui_fixture(test_app, "Small"))
+  suppressWarnings(make_portable_ui_fixture(test_app, "Archived"))
+  large <- file.path(test_app, "datasets", "Synthetic_Demo")
+  # The late sample need not be computed: its out-of-range index was sufficient
+  # to crash the hidden annotation/preflight observers on the next dataset.
+  config <- yaml::read_yaml(file.path(test_app, "general_config.yaml"))
+  for (sample in c("Z_extra1", "Z_extra2")) {
+    write_mini_sample(file.path(large, "processed_data"), sample)
+  }
+  samples_path <- file.path(large, config$config_files$samples)
+  samples <- yaml::read_yaml(samples_path)
+  samples$samples <- c(samples$samples, lapply(c("Z_extra1", "Z_extra2"), make_valid_sample_entry))
+  yaml::write_yaml(samples, samples_path)
+  # Persist the reconciled records up front; subsequent loads are read-only
+  # apart from permitted operation logs.
+  selected_path <- file.path(large, config$config_files$selected)
+  yaml::write_yaml(reconcile_selected_config(yaml::read_yaml(selected_path),
+    c("Synthetic_sample", "Z_extra1", "Z_extra2")), selected_path)
+  pipeline_path <- file.path(large, "pipeline_state.yaml")
+  pipeline <- yaml::read_yaml(pipeline_path)
+  extra <- new_pipeline_state("Synthetic_Demo", c("Z_extra1", "Z_extra2"))
+  pipeline$samples <- c(pipeline$samples, extra$samples)
+  save_pipeline_state_at_path(pipeline, pipeline_path)
+  archived_dir <- file.path(test_app, "datasets", "Archived")
+  save_dataset_storage_state_atomic(transition_dataset_storage_state(
+    new_dataset_storage_state("Archived"), "archived"), archived_dir)
+  app <- shinytest2::AppDriver$new(app_dir = test_app, name = "c01-dataset-switch",
+    seed = 3988, load_timeout = 60000, timeout = 60000)
+  on.exit(app$stop(), add = TRUE)
+  load_dataset <- function(name) {
+    app$set_inputs(dataset_choice = name, wait_ = FALSE)
+    app$click("btn_load_dataset", wait_ = FALSE)
+    app$wait_for_idle(timeout = 60000)
+    expect_identical(app$get_value(input = "main_nav"), "menu_tab")
+  }
+  change_dataset <- function() {
+    app$set_inputs(main_nav = "menu_tab", wait_ = FALSE)
+    app$wait_for_idle(timeout = 60000)
+    app$click("btn_change_dataset", wait_ = FALSE)
+    app$wait_for_idle(timeout = 60000)
+    expect_identical(app$get_value(input = "main_nav"), "dataset_tab")
+  }
+  load_dataset("Synthetic_Demo")
+  app$click("btn_go_anno", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  app$set_inputs(cluster = "3", cell_type_input = "Epithelial", wait_ = FALSE)
+  app$click("assign_btn", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  # Exercise the existing unsaved-change dialog through the actual controls.
+  app$click("btn_back_menu_2", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  expect_identical(app$get_value(input = "main_nav"), "anno_tab")
+  expect_match(app$get_text("body"), "Unsaved annotation changes", fixed = TRUE)
+  app$click("btn_discard_annotation_navigation", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  app$set_inputs(main_nav = "anno_tab", sample_idx = "3", cna_sample_idx = "3", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  change_dataset()
+  load_dataset("Small")
+  expect_identical(app$get_value(input = "sample_idx"), "1")
+  expect_identical(app$get_value(input = "cna_sample_idx"), "1")
+  app$set_inputs(main_nav = "cna_tab", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  expect_match(app$get_text("#cna_header_text"), "Synthetic_sample", fixed = TRUE)
+  app$set_inputs(cna_main_views = "cna_view_select_malignant", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  change_dataset()
+  load_dataset("Archived")
+  expect_match(app$get_text("body"), "Archived", fixed = TRUE)
+  change_dataset()
+  load_dataset("Synthetic_Demo")
+  app$click("btn_go_anno", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  expect_match(app$get_text("body"), "Synthetic_sample", fixed = TRUE)
+  logs <- app$get_logs()
+  errors <- logs[logs$level == "error" | grepl("Error|Execution halted", logs$message, ignore.case = TRUE), , drop = FALSE]
+  expect_equal(nrow(errors), 0L, info = paste(errors$message, collapse = "\n"))
+})
+
+test_that("C02 browser recovers legacy attempts and retries real clustering without editing cell labels", {
+  skip_if_not_installed("shinytest2")
+  browser <- tryCatch(chromote::find_chrome(), error = function(e) NULL)
+  skip_if(is.null(browser) || !nzchar(browser), "no Chromium browser is configured")
+  withr::local_envvar(NOT_CRAN = "true")
+  app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
+  test_app <- make_ui_baseline_app(app_dir)
+  dataset <- file.path(test_app, "datasets", "Synthetic_Demo")
+  state_path <- file.path(dataset, "pipeline_state.yaml")
+  state <- load_pipeline_state(dataset)
+  state <- persist_pipeline_step_update(state, state_path, "clustering", "in_progress", "Synthetic_sample",
+    invalidate_downstream = TRUE, invalidation_reason = "Interrupted legacy test run.")
+  sample_path <- file.path(dataset, "processed_data", "Synthetic_sample")
+  scientific <- list.files(sample_path, full.names = TRUE)
+  before <- tools::md5sum(scientific)
+  app <- shinytest2::AppDriver$new(app_dir = test_app, name = "c02-clustering-recovery",
+    seed = 3988, load_timeout = 60000, timeout = 60000)
+  on.exit(app$stop(), add = TRUE)
+  app$set_inputs(dataset_choice = "Synthetic_Demo", wait_ = FALSE)
+  app$click("btn_load_dataset", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  expect_identical(get_pipeline_step(load_pipeline_state(dataset), "clustering", "Synthetic_sample")$status, "in_progress")
+  expect_match(app$get_text("#clustering_recovery_control"), "Recover Interrupted Clustering", fixed = TRUE)
+  app$click("btn_recover_clustering", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  expect_match(app$get_text(".modal"), "I have stopped the previous clustering", fixed = TRUE)
+  hash <- tools::md5sum(state_path)
+  app$set_inputs(clustering_recovery_stopped = TRUE, clustering_recovery_dataset = "wrong", wait_ = FALSE)
+  app$click("confirm_recover_clustering", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  expect_identical(tools::md5sum(state_path), hash)
+  app$set_inputs(clustering_recovery_dataset = "Synthetic_Demo", wait_ = FALSE)
+  app$click("confirm_recover_clustering", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  recovered <- load_pipeline_state(dataset)
+  expect_identical(get_pipeline_step(recovered, "clustering", "Synthetic_sample")$status, "failed")
+  expect_identical(get_pipeline_step(recovered, "clustering", "Synthetic_sample")$attempt, 1L)
+  expect_identical(tools::md5sum(scientific), before)
+  app$click("btn_run_single_clustering", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  app$click("confirm_run_single_clustering", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  retried <- load_pipeline_state(dataset)
+  expect_identical(get_pipeline_step(retried, "clustering", "Synthetic_sample")$status, "completed")
+  expect_identical(get_pipeline_step(retried, "clustering", "Synthetic_sample")$attempt, 2L)
+  expect_equal(unlist(get_pipeline_step(retried, "clustering", "Synthetic_sample")$details$resolutions), c(0.5, 1))
+  expect_identical(tools::md5sum(scientific), before)
+  expect_match(app$get_text(".modal"), "Sample clustering complete", fixed = TRUE)
+  app$click("btn_after_single_clustering_res", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  expect_identical(app$get_value(input = "main_nav"), "res_tab")
+  app$stop()
+  # Simulate a prior invocation in this now-reused PID; load must not mistake
+  # the current process for that original invocation.
+  ended <- begin_clustering_execution("old-invocation")
+  end_clustering_execution(ended)
+  ended$process_started_at <- as.character(as.numeric(ended$process_started_at) - 100)
+  persist_pipeline_step_update(retried, state_path, "clustering", "in_progress", "Synthetic_sample",
+    details = list(execution_owner = ended))
+  app <- shinytest2::AppDriver$new(app_dir = test_app, name = "c02-restart-auto-recovery",
+    seed = 3988, load_timeout = 60000, timeout = 60000)
+  app$set_inputs(dataset_choice = "Synthetic_Demo", wait_ = FALSE)
+  app$click("btn_load_dataset", wait_ = FALSE)
+  app$wait_for_idle(timeout = 60000)
+  automatically_recovered <- load_pipeline_state(dataset)
+  expect_identical(get_pipeline_step(automatically_recovered, "clustering", "Synthetic_sample")$status, "failed")
+  expect_identical(get_pipeline_step(automatically_recovered, "clustering", "Synthetic_sample")$details$interruption_recovery$mode, "owner_ended")
+  expect_identical(tools::md5sum(scientific), before)
+  logs <- app$get_logs()
+  errors <- logs[logs$level == "error" | grepl("Error|Execution halted", logs$message, ignore.case = TRUE), , drop = FALSE]
+  expect_equal(nrow(errors), 0L, info = paste(errors$message, collapse = "\n"))
+})
+
+test_that("C03 browser keeps status and unavailable samples free of main heatmap work", {
+  skip_if_not_installed("shinytest2")
+  browser <- tryCatch(chromote::find_chrome(), error = function(e) NULL)
+  skip_if(is.null(browser) || !nzchar(browser), "no Chromium browser is configured")
+  withr::local_envvar(NOT_CRAN = "true")
+  app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
+  test_app <- make_ui_baseline_app(app_dir)
+  dataset <- file.path(test_app, "datasets", "Synthetic_Demo")
+  processed <- file.path(dataset, "processed_data")
+  original <- "Synthetic_sample"
+  samples <- c(original, "Z_omitted", "Z_reset")
+  config <- yaml::read_yaml(file.path(dataset, "dataset_config.yaml"))
+  selected <- yaml::read_yaml(file.path(dataset, "selected_config.yaml"))
+  sample_config <- yaml::read_yaml(file.path(dataset, "samples_config.yaml"))
+  pipeline <- load_pipeline_state(dataset)
+  counts <- cache_load_data(paste0("expmat_filt_", original, ".qs2"), dataset)
+  cells <- cache_load_data(paste0("cells_filt_clust_res_0.5_", original, ".qs2"), dataset)
+  for (sample in samples[-1]) {
+    dir.create(file.path(processed, sample))
+    file.copy(list.files(file.path(processed, original), full.names = TRUE), file.path(processed, sample))
+    sample_cells <- data.table::copy(cells); sample_cells[, sample := ..sample]
+    data.table::fwrite(sample_cells, file.path(processed, sample, "Cells.csv"))
+    entry <- sample_config$samples[[1]]; entry$sample <- sample
+    sample_config$samples <- c(sample_config$samples, list(entry))
+    pipeline$samples[[sample]] <- new_pipeline_state("Synthetic_Demo", sample)$samples[[sample]]
+  }
+  yaml::write_yaml(sample_config, file.path(dataset, "samples_config.yaml"))
+  for (sample in samples) {
+    selected$resolutions[[sample]] <- 0.5
+    selected$cna_ref_cells[[sample]] <- "B_cell"
+    selected$cna_pot_mal_cells[[sample]] <- "Epithelial"
+    selected$cna_ward_ref_cluster[[sample]] <- list(list(k = 7L, cluster = 1L))
+    sample_cells <- data.table::copy(cells); sample_cells[, sample := ..sample]
+    if (sample != original) {
+      cache_save_data(counts, paste0("expmat_filt_", sample, ".qs2"), dataset)
+      for (resolution in config$params$resolutions) {
+        cache_save_data(sample_cells, paste0("cells_filt_clust_res_", resolution, "_", sample, ".qs2"), dataset)
+      }
+    }
+    for (step in c("clustering", "resolution", "differential_expression", "annotation", "cna_configuration")) {
+      pipeline <- transition_pipeline_step(pipeline, step, "completed", sample, force = TRUE)
+    }
+    if (sample == "Z_omitted") {
+      pipeline <- transition_pipeline_step(pipeline, "cna_configuration", "skipped", sample,
+        reason = "CNA intentionally omitted.", details = list(omitted_by_user = TRUE), force = TRUE)
+      next
+    }
+    matrix <- data.table::data.table(gene = rownames(counts), chr = rep(sprintf("%02d", 1:3), each = 22), start_pos = seq_len(66))
+    for (index in seq_along(sample_cells$cell_name)) {
+      data.table::set(matrix, j = sample_cells$cell_name[index], value = sin(seq_len(66) * index / 10) / 5)
+    }
+    candidate_cells <- sample_cells[is.na(cell_type) | cell_type == "Epithelial", cell_name]
+    hc <- stats::hclust(stats::dist(t(as.matrix(matrix[, ..candidate_cells]))), method = "ward.D2")
+    cache_save_data(matrix, paste0("cna_matrix_", sample, ".qs2"), dataset)
+    cache_save_data(hc, paste0("hclust_", sample, ".qs2"), dataset)
+    for (step in c("cna_compute", "cna_cluster_selection")) {
+      pipeline <- transition_pipeline_step(pipeline, step, "completed", sample, force = TRUE)
+    }
+  }
+  yaml::write_yaml(selected, file.path(dataset, "selected_config.yaml"))
+  save_pipeline_state_at_path(reconcile_pipeline_state_dependencies(pipeline), file.path(dataset, "pipeline_state.yaml"))
+  # Instrument only the disposable app, leaving production cache/plot functions
+  # intact. Metadata preflight cell reads are distinct from the main CNA matrix.
+  entry <- file.path(test_app, "app.R")
+  lines <- readLines(entry)
+  instrumentation <- c(
+    ".c03_heatmap <- cna_heatmap",
+    "cna_heatmap <- function(...) { write('heatmap', file = 'c03_trace.log', append = TRUE); .c03_heatmap(...) }",
+    "assign('cna_heatmap', cna_heatmap, envir = globalenv())",
+    ".c03_cache_load <- cache_load_data",
+    "cache_load_data <- function(data_file_name, ...) { if (grepl('^(hclust_|cna_matrix_)', data_file_name)) write(data_file_name, file = 'c03_trace.log', append = TRUE); .c03_cache_load(data_file_name, ...) }",
+    "assign('cache_load_data', cache_load_data, envir = globalenv())")
+  insertion <- match("app_context <- create_app_context()", lines)
+  writeLines(append(lines, instrumentation, after = insertion - 1L), entry)
+  trace <- function() {
+    path <- file.path(test_app, "c03_trace.log")
+    if (file.exists(path)) readLines(path) else character()
+  }
+  scientific <- list.files(file.path(processed, original), full.names = TRUE)
+  before <- tools::md5sum(scientific)
+  app <- shinytest2::AppDriver$new(app_dir = test_app, name = "c03-cna-navigation",
+    seed = 3988, width = 1440, height = 1000, load_timeout = 60000, timeout = 60000)
+  on.exit(app$stop(), add = TRUE)
+  app$set_inputs(dataset_choice = "Synthetic_Demo", wait_ = FALSE)
+  app$click("btn_load_dataset", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  app$set_inputs(main_nav = "cna_tab", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  expect_length(trace(), 0)
+  expect_match(app$get_text("#btn_cna_status"), "CNA Pipeline Status", fixed = TRUE)
+  started <- proc.time()[["elapsed"]]
+  app$click("btn_cna_go_malig_clust", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  cold <- proc.time()[["elapsed"]] - started
+  expect_identical(app$get_value(input = "cna_main_views"), "cna_view_select_malignant")
+  expect_equal(sum(trace() == "heatmap"), 1)
+  expect_equal(sum(startsWith(trace(), "hclust_")), 1)
+  expect_equal(sum(startsWith(trace(), "cna_matrix_")), 1)
+  expect_equal(app$get_value(input = "cna_selected_clusters"), "1")
+  app$set_inputs(cna_k_clusters = 8, wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  app$set_inputs(cna_sample_idx = "2", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  expect_identical(app$get_value(input = "cna_main_views"), "cna_view_default")
+  expect_match(app$get_text("#cna_status_ui"), "intentionally omitted", fixed = TRUE)
+  expect_equal(sum(trace() == "heatmap"), 1)
+  app$set_inputs(cna_sample_idx = "3", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  expect_equal(sum(trace() == "heatmap"), 1)
+  app$click("btn_cna_reset", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  app$click("confirm_cna_reset", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  expect_identical(get_pipeline_step(load_pipeline_state(dataset), "cna_compute", "Z_reset")$status, "not_started")
+  expect_equal(sum(trace() == "heatmap"), 1)
+  app$set_inputs(cna_sample_idx = "1", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  expect_identical(app$get_value(input = "cna_main_views"), "cna_view_default")
+  started <- proc.time()[["elapsed"]]
+  app$click("btn_cna_go_malig_clust", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  warm <- proc.time()[["elapsed"]] - started
+  expect_equal(sum(trace() == "heatmap"), 1)
+  expect_equal(app$get_value(input = "cna_selected_clusters"), "1")
+  app$click("btn_cna_status", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  expect_identical(app$get_value(input = "cna_main_views"), "cna_view_default")
+  expect_equal(sum(trace() == "heatmap"), 1)
+  expect_identical(tools::md5sum(scientific), before)
+  message(sprintf("C03 browser synthetic main-heatmap first entry %.2fs; warm re-entry %.2fs; heatmap builds=1", cold, warm))
+  logs <- app$get_logs()
+  errors <- logs[logs$level == "error" | grepl("Error|Execution halted", logs$message, ignore.case = TRUE), , drop = FALSE]
+  expect_equal(nrow(errors), 0L, info = paste(errors$message, collapse = "\n"))
+})

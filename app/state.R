@@ -72,6 +72,25 @@ claim_app_confirmation <- function(state, key) {
   isTRUE(claimed)
 }
 
+# Clear dataset-owned memory before publishing another workspace. Select input
+# updates reach the browser later, so old indices must not retain loaded data or
+# confirmation tokens while the replacement workspace is being prepared.
+clear_app_dataset <- function(state) {
+  state$dataset_generation <- shiny::isolate(state$dataset_generation) + 1L
+  for (name in c(
+    "paths_list", "dataset_config", "samples_config", "live_selected_config",
+    "complete_markers", "results_dir_path", "selected_config_path",
+    "pipeline_state", "pipeline_state_path", "storage_state", "storage_state_path",
+    "dataset_dir_path", "config", "cells_filt", "all_matches", "cells_raw",
+    "sample_name", "res", "final_plot", "annotation_loaded_index",
+    "annotation_pending_navigation", "cna_preview_res", "cna_preview_sample",
+    "cna_preview_fingerprint", "cna_view_context"
+  )) state[[name]] <- NULL
+  state$annotation_dirty <- FALSE
+  state$open_confirmations <- character()
+  invisible(TRUE)
+}
+
 create_app_state <- function(
   context,
   session_id = NULL,
@@ -84,6 +103,7 @@ create_app_state <- function(
     session_logged_datasets = character(),
     active_actions = character(),
     open_confirmations = character(),
+    dataset_generation = 0L,
     paths_list = NULL,
     dataset_config = NULL,
     samples_config = NULL,
@@ -110,6 +130,7 @@ create_app_state <- function(
     annotation_pending_navigation = NULL,
 
     # Active CNA preview state.
+    cna_view_context = NULL,
     cna_preview_res = NULL,
     cna_preview_sample = NULL,
     cna_preview_fingerprint = NULL

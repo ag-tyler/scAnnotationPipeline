@@ -175,7 +175,7 @@ register_annotation_server <- function(input, output, session, state, context) {
 
   observeEvent(input$btn_anno_next, {
     req(rv$paths_list, input$sample_idx)
-    idx <- as.numeric(input$sample_idx)
+    idx <- app_sample_index(rv, input$sample_idx)
     total_samples <- length(rv$paths_list$sample_dir_paths)
     if (idx < total_samples) {
       updateSelectInput(session, "sample_idx", selected = idx + 1)
@@ -368,7 +368,8 @@ register_annotation_server <- function(input, output, session, state, context) {
 
   annotation_load_trigger <- reactive({
     req(rv$paths_list, rv$pipeline_state, input$sample_idx, input$main_nav)
-    idx <- as.numeric(input$sample_idx)
+    req(identical(input$main_nav, "anno_tab"))
+    idx <- app_sample_index(rv, input$sample_idx)
     sample_name <- basename(rv$paths_list$sample_dir_paths[[idx]])
     de_record <- get_pipeline_step(
       rv$pipeline_state,
@@ -376,6 +377,7 @@ register_annotation_server <- function(input, output, session, state, context) {
       sample_name
     )
     list(
+      dataset = rv$dataset_dir_path,
       index = idx,
       sample = sample_name,
       nav = input$main_nav,
@@ -690,6 +692,8 @@ register_annotation_server <- function(input, output, session, state, context) {
 
   save_current_annotations <- function() {
     req(rv$paths_list, rv$cells_filt, rv$cells_raw, rv$sample_name, rv$res, rv$results_dir_path)
+    idx <- app_sample_index(rv, input$sample_idx)
+    req(identical(basename(rv$paths_list$sample_dir_paths[[idx]]), rv$sample_name))
     if (!begin_app_action(rv, "annotation_save")) return(FALSE)
     save_button_ids <- c(
       "save_btn", "btn_save_annotation_navigation"
@@ -712,7 +716,7 @@ register_annotation_server <- function(input, output, session, state, context) {
     id <- showNotification("Saving annotations and plot to disk...", duration = NULL, type = "message")
     on.exit(removeNotification(id), add = TRUE)
 
-    idx <- as.numeric(input$sample_idx)
+    idx <- app_sample_index(rv, input$sample_idx)
     de_plots_dir_path <- file.path(rv$results_dir_path, rv$sample_name, '2_de_plots')
 
     if (!is.null(rv$final_plot)) {

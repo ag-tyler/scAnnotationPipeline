@@ -196,6 +196,12 @@ See [Setting Up a New Dataset](docs/USER_GUIDE.md#setting-up-a-new-dataset) and 
 
 The repository includes `testthat` unit, integration, regression, and golden-output tests using deterministic synthetic fixtures.
 
+Keep permanent regression tests in `tests/testthat/`. One-off local validation
+runners, diagnostic scripts, logs and generated result files belong in
+`artifacts/local-checks/`, which is gitignored. Run these local scripts from the
+repository root; keep `datasets/` for scientific workspaces and their runtime
+data.
+
 Run the complete test suite from the repository root:
 
 ```r

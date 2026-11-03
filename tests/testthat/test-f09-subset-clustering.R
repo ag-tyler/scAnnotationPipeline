@@ -276,5 +276,71 @@ test_that("F09 all-sample mode remains available and failures do not touch later
     expect_match(tail(fixture$notifications, 1), "Synthetic subset failure", fixed = TRUE)
     session$setInputs(btn_after_clustering_res = 1)
     expect_length(fixture$navigation, 0)
+    # ERR-01: a caught failure is retryable through a fresh guarded dialog.
+    fixture$fail_sample <- NULL
+    session$setInputs(btn_run_clustering = 3)
+    set_subset_checks(session, fixture, "sample4")
+    session$setInputs(confirm_run_clustering = 3)
+    expect_identical(tail(fixture$calls, 1L), list(4L))
+    expect_identical(get_pipeline_step(state$pipeline_state, "clustering", "sample4")$status, "completed")
+    expect_identical(serialize(state$pipeline_state$samples[c("sample1", "sample3", "sample7")], NULL), before)
+    expect_match(tail(fixture$modals, 1L), "1 selected sample clustered: sample4", fixed = TRUE)
   })
+})
+
+test_that("C02 guarded legacy recovery targets selected samples and permits exactly one retry", {
+  fixture <- make_subset_clustering_fixture(withr::local_tempdir())
+  state <- fixture$state
+  shiny::testServer(fixture$server, {
+    hash <- tools::md5sum(state$pipeline_state_path)
+    session$setInputs(btn_recover_clustering = 1)
+    expect_match(tail(fixture$modals, 1), "Recover Interrupted Clustering", fixed = TRUE)
+    session$setInputs(clustering_recovery_samples = "sample5", clustering_recovery_stopped = FALSE,
+      clustering_recovery_dataset = state$pipeline_state$dataset_id, confirm_recover_clustering = 1)
+    expect_identical(tools::md5sum(state$pipeline_state_path), hash)
+    session$setInputs(clustering_recovery_stopped = TRUE, clustering_recovery_dataset = "wrong", confirm_recover_clustering = 2)
+    expect_identical(tools::md5sum(state$pipeline_state_path), hash)
+    control <- serialize(state$pipeline_state$samples[setdiff(names(state$pipeline_state$samples), "sample5")], NULL)
+    session$setInputs(clustering_recovery_dataset = state$pipeline_state$dataset_id, confirm_recover_clustering = 3)
+    expect_identical(get_pipeline_step(state$pipeline_state, "clustering", "sample5")$status, "failed")
+    expect_identical(serialize(state$pipeline_state$samples[setdiff(names(state$pipeline_state$samples), "sample5")], NULL), control)
+    recovered_hash <- tools::md5sum(state$pipeline_state_path)
+    session$setInputs(confirm_recover_clustering = 4)
+    expect_identical(tools::md5sum(state$pipeline_state_path), recovered_hash)
+    session$setInputs(btn_run_clustering = 1)
+    set_subset_checks(session, fixture, "sample5")
+    session$setInputs(confirm_run_clustering = 1)
+    session$setInputs(confirm_run_clustering = 2)
+    expect_identical(fixture$calls, list(5L))
+    expect_identical(get_pipeline_step(state$pipeline_state, "clustering", "sample5")$status, "completed")
+    expect_identical(clustering_execution_status(get_pipeline_step(state$pipeline_state, "clustering", "sample5")$details$execution_owner), "ended")
+  })
+})
+
+test_that("C02 recovery rejects live owners, changed state, archive, busy and unsaved contexts", {
+  for (mode in c("live", "revision", "archived", "busy", "dirty", "dataset")) {
+    fixture <- make_subset_clustering_fixture(withr::local_tempdir())
+    state <- fixture$state
+    owner <- begin_clustering_execution("live-control")
+    withr::defer(end_clustering_execution(owner))
+    shiny::testServer(fixture$server, {
+      session$setInputs(btn_recover_clustering = 1, clustering_recovery_samples = "sample5",
+        clustering_recovery_stopped = TRUE, clustering_recovery_dataset = state$pipeline_state$dataset_id)
+      if (mode == "live") {
+        # Another viewer acquired ownership after this dialog was opened.
+        state$pipeline_state <- persist_pipeline_step_update(state$pipeline_state, state$pipeline_state_path,
+          "clustering", "in_progress", "sample5", details = list(execution_owner = owner))
+      } else if (mode == "revision") {
+        persist_pipeline_step_update(state$pipeline_state, state$pipeline_state_path,
+          "annotation", "stale", "sample1", reason = "Another viewer saved state.")
+      } else if (mode == "archived") state$storage_state <- list(status = "archived")
+      else if (mode == "busy") state$active_actions <- "bulk_clustering"
+      else if (mode == "dirty") state$annotation_dirty <- TRUE
+      else state$dataset_generation <- state$dataset_generation + 1L
+      before <- tools::md5sum(state$pipeline_state_path)
+      session$setInputs(confirm_recover_clustering = 1)
+      expect_identical(tools::md5sum(state$pipeline_state_path), before)
+      expect_length(fixture$calls, 0)
+    })
+  }
 })

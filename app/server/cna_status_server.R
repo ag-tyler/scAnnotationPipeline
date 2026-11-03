@@ -16,7 +16,7 @@ register_cna_status_server <- function(input, output, session, state, context) {
       rv$live_selected_config,
       rv$pipeline_state
     )
-    idx <- as.numeric(input$cna_sample_idx)
+    idx <- app_sample_index(rv, input$cna_sample_idx)
     sample_name <- basename(rv$paths_list$sample_dir_paths)[idx]
     cna_sample_preflight(
       sample_name,
@@ -70,7 +70,7 @@ register_cna_status_server <- function(input, output, session, state, context) {
 
   observe({
     req(rv$paths_list, input$cna_sample_idx, rv$live_selected_config)
-    idx <- as.numeric(input$cna_sample_idx)
+    idx <- app_sample_index(rv, input$cna_sample_idx)
     sample_name <- basename(rv$paths_list$sample_dir_paths)[idx]
     note <- rv$live_selected_config$sample_notes[[sample_name]]
     updateTextAreaInput(
@@ -82,7 +82,7 @@ register_cna_status_server <- function(input, output, session, state, context) {
 
   observeEvent(input$btn_save_cna_notes, {
     req(rv$paths_list, input$cna_sample_idx, rv$live_selected_config)
-    idx <- as.numeric(input$cna_sample_idx)
+    idx <- app_sample_index(rv, input$cna_sample_idx)
     sample_name <- basename(rv$paths_list$sample_dir_paths)[idx]
     rv$live_selected_config <- save_sample_note(
       rv$live_selected_config,
@@ -109,18 +109,21 @@ register_cna_status_server <- function(input, output, session, state, context) {
       seq_along(rv$paths_list$sample_dir_paths),
       basename(rv$paths_list$sample_dir_paths)
     )
-    updateSelectInput(session, "cna_sample_idx", choices = s_choices)
+    updateSelectInput(session, "cna_sample_idx", choices = s_choices, selected = 1)
   })
 
-  observeEvent(input$cna_sample_idx, {
+  observeEvent(list(rv$dataset_generation, rv$dataset_dir_path, input$cna_sample_idx), {
     req(rv$paths_list, input$cna_sample_idx)
-    idx <- as.numeric(input$cna_sample_idx)
+    idx <- app_sample_index(rv, input$cna_sample_idx)
     sample_name <- basename(rv$paths_list$sample_dir_paths)[idx]
     previous_sample <- last_cna_sample()
-    if (identical(previous_sample, sample_name)) return()
+    selection <- list(dataset = rv$dataset_dir_path, generation = rv$dataset_generation, sample = sample_name)
+    if (identical(previous_sample, selection)) return()
 
     parameters <- list(sample_index = idx)
-    if (!is.null(previous_sample)) parameters$previous_sample <- previous_sample
+    if (!is.null(previous_sample) && identical(previous_sample$dataset, rv$dataset_dir_path)) {
+      parameters$previous_sample <- previous_sample$sample
+    }
     record_state_event(
       rv,
       stage = "cna",
@@ -129,18 +132,35 @@ register_cna_status_server <- function(input, output, session, state, context) {
       sample = sample_name,
       parameters = parameters
     )
-    last_cna_sample(sample_name)
+    last_cna_sample(selection)
   })
 
   # Basic Navigation between main views
   observeEvent(input$btn_cna_back_menu, { updateNavbarPage(session, "main_nav", selected = "menu_tab") })
-  observeEvent(input$btn_cna_go_malig_clust, { nav_select("cna_main_views", "cna_view_select_malignant") })
-  observeEvent(input$btn_cna_go_thresholds, { nav_select("cna_main_views", "cna_view_thresholds") })
-  observeEvent(input$btn_cna_go_summary, { nav_select("cna_main_views", "cna_view_summary") })
+  open_cna_view <- function(view, completed_step = NULL) {
+    sample <- basename(rv$paths_list$sample_dir_paths[[app_sample_index(rv, input$cna_sample_idx)]])
+    req(rv$pipeline_state)
+    if (isTRUE(rv$annotation_dirty)) {
+      showNotification("Save or discard annotation changes before opening CNA analysis.", type = "warning")
+      return()
+    }
+    if (!is.null(completed_step)) {
+      req(!dataset_storage_cache_is_retired(rv$storage_state),
+        !isTRUE(get_pipeline_step(rv$pipeline_state, "cna_configuration", sample)$details$omitted_by_user),
+        identical(get_pipeline_step(rv$pipeline_state, completed_step, sample)$status, "completed"),
+        pipeline_step_readiness(rv$pipeline_state, completed_step, sample)$ready)
+    }
+    rv$cna_view_context <- cna_analysis_context(rv, sample, view)
+    nav_select("cna_main_views", view)
+  }
+  observeEvent(input$btn_cna_status, { open_cna_view("cna_view_default") })
+  observeEvent(input$btn_cna_go_malig_clust, { open_cna_view("cna_view_select_malignant", "cna_compute") })
+  observeEvent(input$btn_cna_go_thresholds, { open_cna_view("cna_view_thresholds", "cna_signal_correlation") })
+  observeEvent(input$btn_cna_go_summary, { open_cna_view("cna_view_summary", "cna_thresholds") })
 
   output$cna_header_text <- renderText({
     req(rv$paths_list, input$cna_sample_idx)
-    s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
+    s_name <- basename(rv$paths_list$sample_dir_paths)[app_sample_index(rv, input$cna_sample_idx)]
     paste("CNA Analysis:", s_name)
   })
 
@@ -152,7 +172,7 @@ register_cna_status_server <- function(input, output, session, state, context) {
       rv$pipeline_state,
       rv$live_selected_config
     )
-    idx <- as.numeric(input$cna_sample_idx)
+    idx <- app_sample_index(rv, input$cna_sample_idx)
     s_name <- basename(rv$paths_list$sample_dir_paths)[idx]
 
     # Assignment completion only updates status. Keep the current preview and
@@ -160,6 +180,7 @@ register_cna_status_server <- function(input, output, session, state, context) {
     selected <- rv$live_selected_config
     current_context <- list(
       dataset = rv$dataset_dir_path,
+      generation = rv$dataset_generation,
       sample = s_name,
       upstream = rv$pipeline_state$samples[[s_name]][setdiff(PIPELINE_SAMPLE_STEPS, "cna_assignment")],
       resolution = selected$resolutions[[s_name]],
@@ -170,6 +191,7 @@ register_cna_status_server <- function(input, output, session, state, context) {
     )
     if (!identical(isolate(last_cna_context()), current_context)) {
       last_cna_context(current_context)
+      rv$cna_view_context <- cna_analysis_context(rv, s_name, "cna_view_default")
       nav_select("cna_main_views", "cna_view_default")
       shinyjs::disable("btn_cna_save_summary")
       rv$cna_preview_res <- NULL
@@ -286,12 +308,12 @@ register_cna_status_server <- function(input, output, session, state, context) {
     output$cna_status_ui <- renderUI({
       HTML(paste(status_html, collapse = ""))
     })
-  })
+  }, priority = 100)
 
   # Next Sample Button Logic for CNA
   observeEvent(input$btn_cna_next, {
     req(rv$paths_list, input$cna_sample_idx)
-    idx <- as.numeric(input$cna_sample_idx)
+    idx <- app_sample_index(rv, input$cna_sample_idx)
     total_samples <- length(rv$paths_list$sample_dir_paths)
 
     if (idx < total_samples) {

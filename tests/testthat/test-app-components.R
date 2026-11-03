@@ -54,14 +54,14 @@ test_that("shared state remains flat and contains only mutable session data", {
     c(
       "paths_list", "dataset_config", "samples_config",
       "session_id", "session_started_at", "session_logged_datasets",
-      "active_actions", "open_confirmations",
+      "active_actions", "open_confirmations", "dataset_generation",
       "live_selected_config", "complete_markers", "results_dir_path",
       "selected_config_path", "pipeline_state", "pipeline_state_path",
       "storage_state", "storage_state_path",
       "dataset_dir_path", "config", "cells_filt",
       "all_matches", "cells_raw", "sample_name", "res", "final_plot",
       "annotation_dirty", "annotation_loaded_index", "annotation_pending_navigation",
-      "cna_preview_res", "cna_preview_sample", "cna_preview_fingerprint"
+      "cna_preview_res", "cna_preview_sample", "cna_preview_fingerprint", "cna_view_context"
     )
   )
   expect_false(any(c(
@@ -500,7 +500,7 @@ test_that("Assign and Summary auto-previews current inputs with before/after vie
     collapse = "\n"
   )
 
-  expect_match(summary_text, "observeEvent(input$cna_main_views", fixed = TRUE)
+  expect_match(summary_text, "observeEvent(list(input$cna_main_views, rv$cna_view_context)", fixed = TRUE)
   expect_match(summary_text, '"cna_view_summary"', fixed = TRUE)
   expect_match(summary_text, "cna_preview_fingerprint", fixed = TRUE)
   expect_match(summary_text, "reusable <-", fixed = TRUE)

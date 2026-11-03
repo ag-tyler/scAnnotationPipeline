@@ -32,7 +32,7 @@ register_cna_threshold_server <- function(input, output, session, state, context
       rv$live_selected_config,
       rv$pipeline_state
     )
-    s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
+    s_name <- basename(rv$paths_list$sample_dir_paths)[app_sample_index(rv, input$cna_sample_idx)]
     ward_refs <- rv$live_selected_config$cna_ward_ref_cluster[[s_name]]
     lapply(seq_along(ward_refs), function(i) {
       cache_name <- paste0('cna_sig_cor_', s_name, '_subclone_', i, '.qs2')
@@ -44,8 +44,9 @@ register_cna_threshold_server <- function(input, output, session, state, context
   })
 
   cna_signal_axis <- reactive({
+    require_cna_analysis_view(rv, input, "cna_view_thresholds", "cna_signal_correlation")
     req(input$cna_sample_idx, rv$paths_list, rv$live_selected_config)
-    s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
+    s_name <- basename(rv$paths_list$sample_dir_paths)[app_sample_index(rv, input$cna_sample_idx)]
     cna_signal_axis_summary(
       cna_signal_tables(),
       saved_thresholds = rv$live_selected_config$cna_thresholds[[s_name]]
@@ -75,8 +76,9 @@ register_cna_threshold_server <- function(input, output, session, state, context
 
   # 1. Dynamically generate the UI (Tabs + Sliders + Plot Output)
   output$cna_dynamic_thresholds_ui <- renderUI({
+    require_cna_analysis_view(rv, input, "cna_view_thresholds", "cna_signal_correlation")
     req(input$cna_sample_idx, rv$paths_list, rv$live_selected_config)
-    s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
+    s_name <- basename(rv$paths_list$sample_dir_paths)[app_sample_index(rv, input$cna_sample_idx)]
     ward_refs <- rv$live_selected_config$cna_ward_ref_cluster[[s_name]]
 
     if (length(ward_refs) == 0) return(h5("No malignant clusters selected yet.", class = "text-danger"))
@@ -141,12 +143,18 @@ register_cna_threshold_server <- function(input, output, session, state, context
   # 2. Dynamically render the plots for each subclone
   observe({
     req(input$cna_sample_idx, rv$paths_list, rv$live_selected_config)
-    s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
+    s_name <- basename(rv$paths_list$sample_dir_paths)[app_sample_index(rv, input$cna_sample_idx)]
     ward_refs <- rv$live_selected_config$cna_ward_ref_cluster[[s_name]]
 
     if (length(ward_refs) > 0) {
+      plot_dataset <- rv$dataset_dir_path
+      plot_generation <- rv$dataset_generation
       lapply(seq_along(ward_refs), function(i) {
         output[[paste0("cna_sig_cor_plot_", i)]] <- renderPlot({
+          current_sample <- require_cna_analysis_view(rv, input, "cna_view_thresholds", "cna_signal_correlation")
+          req(identical(current_sample, s_name), identical(rv$dataset_dir_path, plot_dataset),
+            identical(rv$dataset_generation, plot_generation),
+            identical(rv$live_selected_config$cna_ward_ref_cluster[[s_name]], ward_refs))
           # React to the dynamically generated sliders
           mx <- input[[paste0("cna_thresh_mx_", i)]]
           my <- input[[paste0("cna_thresh_my_", i)]]
@@ -234,8 +242,9 @@ register_cna_threshold_server <- function(input, output, session, state, context
 
   # 3. Save all dynamic thresholds to config AND save plots
   observeEvent(input$btn_cna_save_thresholds, {
+    require_cna_analysis_view(rv, input, "cna_view_thresholds", "cna_signal_correlation")
     req(input$cna_sample_idx, rv$paths_list)
-    s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
+    s_name <- basename(rv$paths_list$sample_dir_paths)[app_sample_index(rv, input$cna_sample_idx)]
     ward_refs <- rv$live_selected_config$cna_ward_ref_cluster[[s_name]]
     n_subclones <- length(ward_refs)
     shared_y_max <- input$cna_shared_ymax

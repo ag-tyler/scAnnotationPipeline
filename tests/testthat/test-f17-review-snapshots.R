@@ -202,6 +202,42 @@ test_that("F17 verified retained CNA values remain eligible after real cache cle
   expect_error(f17_inventory(args), "Required retained outputs changed")
 })
 
+test_that("ERR-04 archived required damage blocks snapshots while optional damage only warns", {
+  for (kind in c("required_missing", "required_changed", "optional_missing", "optional_changed")) {
+    workspace <- make_f17_workspace(cna = TRUE)
+    withr::defer(unlink(workspace$root, recursive = TRUE))
+    args <- workspace$args
+    ready <- dataset_cleanup_readiness(args$pipeline_state, args$paths_list, args$selected_config,
+      args$selected_config_path, args$results_dir_path, args$dataset_dir_path)
+    args$storage_state <- archive_dataset_cache(args$dataset_dir_path, args$pipeline_state, args$storage_state, ready)
+    state_before <- tools::md5sum(args$config_paths[["pipeline_state.yaml"]])
+    pair <- cna_values_export_paths(args$results_dir_path, "Sample_A")
+    target <- if (startsWith(kind, "required")) args$paths_list$cell_file_paths else pair$csv
+    if (endsWith(kind, "missing")) {
+      expect_true(file.remove(target))
+    } else {
+      cat("controlled fixture damage", file = target, append = TRUE)
+    }
+    if (startsWith(kind, "required")) {
+      expect_false(dataset_archive_output_audit(args$storage_state, args$dataset_dir_path, verify_checksums = TRUE)$intact)
+      expect_error(f17_inventory(args, snapshot_options(include_cna_values = TRUE)), "Required retained outputs changed")
+    } else {
+      expect_true(f17_readiness(args)$ready)
+      inventory <- f17_inventory(args, snapshot_options(include_cna_values = TRUE))
+      expect_length(inventory$cna_included, 0L)
+      expect_true(length(inventory$warnings) > 0L)
+      expect_false(any(grepl("cna_values_", inventory$files$path)))
+      args$acknowledge_warnings <- FALSE
+      expect_error(do.call(create_review_snapshot, c(args, list(options = snapshot_options(include_cna_values = TRUE)))), "acknowledge")
+      args$acknowledge_warnings <- TRUE
+      expect_no_error(do.call(create_review_snapshot, c(args, list(options = snapshot_options(include_cna_values = TRUE)))))
+      expect_false(dir.exists(file.path(args$dataset_dir_path, "cache")))
+      expect_identical(get_pipeline_step(args$pipeline_state, "cna_assignment", "Sample_A")$status, "completed")
+    }
+    expect_identical(tools::md5sum(args$config_paths[["pipeline_state.yaml"]]), state_before)
+  }
+})
+
 test_that("F17 missing, outdated and orphan CNA pairs warn and never compute", {
   workspace <- make_f17_workspace(cna = TRUE)
   on.exit(unlink(workspace$root, recursive = TRUE), add = TRUE)

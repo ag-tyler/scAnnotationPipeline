@@ -281,11 +281,12 @@ test_that("CNA finalization keeps its preview while saving without optional expo
     env$register_cna_summary_server(input, output, session, rv, list())
   }
   shiny::testServer(server, {
-    session$setInputs(cna_sample_idx = "1")
+    session$setInputs(cna_sample_idx = "1", main_nav = "cna_tab")
     rv$cna_preview_res <- list(cells_filt = cells, summary_heatmap = plot,
       pre_umap_plot = plot, umap_plot = plot, pre_scatter_plots = list(), post_scatter_plots = list())
     rv$cna_preview_sample <- "Sample"
     rv$cna_preview_fingerprint <- "current"
+    session$setInputs(btn_cna_go_summary = 1)
     session$setInputs(cna_main_views = "cna_view_summary")
     preview <- rv$cna_preview_res
     calls$events <- character()

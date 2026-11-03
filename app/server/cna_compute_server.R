@@ -44,7 +44,7 @@ register_cna_compute_server <- function(input, output, session, state, context) 
   # --- STEP 1: Compute CNA & Heatmaps ---
   observeEvent(input$btn_cna_compute_heatmaps, {
     req(input$cna_sample_idx, rv$paths_list)
-    idx <- as.numeric(input$cna_sample_idx)
+    idx <- app_sample_index(rv, input$cna_sample_idx)
     s_name <- basename(rv$paths_list$sample_dir_paths)[idx]
 
     readiness <- pipeline_step_readiness(rv$pipeline_state, "cna_compute", s_name)
@@ -371,7 +371,7 @@ register_cna_compute_server <- function(input, output, session, state, context) 
       ))
 
       # If the currently selected sample in the UI was just processed, unlock Step 2 automatically
-      current_s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
+      current_s_name <- basename(rv$paths_list$sample_dir_paths)[app_sample_index(rv, input$cna_sample_idx)]
       if (current_s_name %in% res$processed) {
         shinyjs::enable("btn_cna_go_malig_clust")
         nav_select("cna_main_views", "cna_view_select_malignant")

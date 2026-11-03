@@ -156,6 +156,9 @@ test_that("F09 dashboard rerun isolates state, guards duplicates, and navigates 
   test_env$p <- shiny::p
   test_env$get_pipeline_step <- get_pipeline_step
   test_env$dataset_storage_cache_is_retired <- dataset_storage_cache_is_retired
+  test_env$interrupted_clustering_candidates <- interrupted_clustering_candidates
+  test_env$begin_clustering_execution <- begin_clustering_execution
+  test_env$end_clustering_execution <- end_clustering_execution
   test_env$persist_pipeline_step_update <- persist_pipeline_step_update
 
   shown_modals <- list()
@@ -482,8 +485,18 @@ test_that("F09 addendum reruns DE for the sample selected in Manual Annotation",
       logical(1)
     )))
 
+    # C02 regression: an interrupted DE status remains retryable after restart;
+    # clustering recovery must not add a blanket in-progress lock to DE.
+    state$pipeline_state <- persist_pipeline_step_update(state$pipeline_state, state$pipeline_state_path,
+      "differential_expression", "in_progress", "sample2")
+    session$setInputs(btn_rerun_anno_single_de = 3)
     session$setInputs(confirm_run_anno_single_de = 2)
-    expect_identical(de_indices, 2L)
+    expect_identical(de_indices, c(2L, 2L))
+    expect_identical(get_pipeline_step(state$pipeline_state, "differential_expression", "sample2")$status, "completed")
+    expect_identical(serialize(state$pipeline_state$samples$sample1, NULL), sample1_before)
+
+    session$setInputs(confirm_run_anno_single_de = 3)
+    expect_identical(de_indices, c(2L, 2L))
   })
 })
 

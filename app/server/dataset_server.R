@@ -120,6 +120,18 @@ register_dataset_server <- function(input, output, session, state, context) {
 
   observeEvent(input$btn_load_dataset, {
     req(input$dataset_choice)
+    if (isTRUE(rv$annotation_dirty) || length(rv$active_actions) > 0L) {
+      showNotification("Save or discard annotation changes and finish the current action before loading a dataset.", type = "warning")
+      return()
+    }
+    if (!begin_app_action(rv, "dataset_load")) return()
+    on.exit(finish_app_action(rv, "dataset_load"), add = TRUE)
+    clear_app_dataset(rv)
+    for (input_id in c("sample_idx", "res_sample_idx", "cna_sample_idx")) {
+      shiny::freezeReactiveValue(input, input_id)
+      updateSelectInput(session, input_id, choices = character())
+    }
+    removeModal()
     dataset_name <- input$dataset_choice
 
     id <- showNotification(paste("Loading workspace:", dataset_name), duration = NULL, type = "message")
@@ -315,7 +327,17 @@ register_dataset_server <- function(input, output, session, state, context) {
     state_sample_changes <- attr(pipeline_state, "sample_changes")
     state_dependency_changes <- attr(pipeline_state, "dependency_changes")
     state_cache_changes <- character()
+    clustering_recovered <- character()
     if (!dataset_storage_cache_is_retired(storage_state)) {
+      recovered_state <- tryCatch(reconcile_interrupted_clustering(
+        pipeline_state, file.path(dataset_dir_path, state_filename)), error = identity)
+      if (inherits(recovered_state, "error")) {
+        showNotification(paste("Clustering recovery could not be checked:", conditionMessage(recovered_state)), type = "error", duration = 15)
+        return()
+      }
+      pipeline_state <- recovered_state
+      clustering_recovered <- attr(pipeline_state, "clustering_recovered")
+      attr(pipeline_state, "clustering_recovered") <- NULL
       pipeline_state <- reconcile_pipeline_state_cache(
         pipeline_state,
         paths_list = paths_list,
@@ -489,6 +511,7 @@ register_dataset_server <- function(input, output, session, state, context) {
     )
     updateSelectInput(session, "res_sample_idx", choices = s_choices, selected = 1)
     updateSelectInput(session, "sample_idx", choices = s_choices, selected = 1)
+    updateSelectInput(session, "cna_sample_idx", choices = s_choices, selected = 1)
 
     # 7. Reveal App Tabs & Jump to Dashboard
     nav_show("main_nav", target = "menu_tab")
@@ -506,9 +529,19 @@ register_dataset_server <- function(input, output, session, state, context) {
     updateNavbarPage(session, "main_nav", selected = "menu_tab")
 
     showNotification("Dataset loaded successfully!", type = "default")
+    if (length(clustering_recovered)) {
+      record_state_event(rv, stage = "clustering", event_type = "interrupted_clustering_recovered",
+        outcome = "recovered", parameters = list(samples = clustering_recovered, mode = "owner_ended"))
+      showNotification(paste("Interrupted clustering is ready to retry:", paste(clustering_recovered, collapse = ", ")),
+        type = "warning", duration = 15)
+    }
   })
 
   observeEvent(input$btn_change_dataset, {
+    if (isTRUE(rv$annotation_dirty) || length(rv$active_actions) > 0L) {
+      showNotification("Save or discard annotation changes and finish the current action before changing datasets.", type = "warning")
+      return()
+    }
     # Allow user to swap datasets - reveal selection UI
     record_state_event(
       rv,
@@ -521,11 +554,18 @@ register_dataset_server <- function(input, output, session, state, context) {
         session_id = rv$session_id
       )
     )
+    clear_app_dataset(rv)
+    removeModal()
+    for (input_id in c("sample_idx", "res_sample_idx", "cna_sample_idx")) {
+      shiny::freezeReactiveValue(input, input_id)
+      updateSelectInput(session, input_id, choices = character())
+    }
     nav_show("main_nav", target = "dataset_tab")
     nav_hide("main_nav", target = "menu_tab")
     nav_hide("main_nav", target = "clipboard_tab")
     nav_hide("main_nav", target = "res_tab")
     nav_hide("main_nav", target = "anno_tab")
+    nav_hide("main_nav", target = "cna_tab")
     updateNavbarPage(session, "main_nav", selected = "dataset_tab")
   })
 

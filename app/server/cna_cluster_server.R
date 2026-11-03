@@ -3,6 +3,34 @@
 register_cna_cluster_server <- function(input, output, session, state, context) {
   rv <- state
   cluster_ui_context <- reactiveVal(NULL)
+  cna_cache_context <- reactiveVal(NULL)
+  last_static_plots <- NULL
+  # Track only the base computation identity, rather than invalidating the
+  # expensive heatmap for every downstream selection/threshold/assignment save.
+  observe({
+    if (is.null(rv$pipeline_state) || is.null(rv$paths_list)) {
+      last_static_plots <<- NULL
+      cna_cache_context(NULL)
+      return()
+    }
+    req(input$cna_sample_idx)
+    idx <- app_sample_index(rv, input$cna_sample_idx)
+    sample <- basename(rv$paths_list$sample_dir_paths[[idx]])
+    computation <- get_pipeline_step(rv$pipeline_state, "cna_compute", sample)
+    cfg <- rv$live_selected_config
+    key <- list(dataset = rv$dataset_dir_path, generation = rv$dataset_generation, sample = sample,
+      status = computation$status, updated_at = computation$updated_at,
+      resolution = cfg$resolutions[[sample]], references = cfg$cna_ref_cells[[sample]],
+      candidates = cfg$cna_pot_mal_cells[[sample]],
+      retired = dataset_storage_cache_is_retired(rv$storage_state))
+    if (!identical(last_static_plots$key$dataset, key$dataset) ||
+        !identical(last_static_plots$key$generation, key$generation)) last_static_plots <<- NULL
+    previous_selection <- isolate(cluster_ui_context())
+    if (!identical(previous_selection$dataset, key$dataset) ||
+        !identical(previous_selection$generation, key$generation) ||
+        !identical(previous_selection$sample_name, sample)) cluster_ui_context(NULL)
+    cna_cache_context(key)
+  })
 
   persist_cna_step <- function(
     step,
@@ -32,18 +60,25 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
   # Debounce the slider so it only triggers 800ms AFTER the user stops dragging.
   k_debounced <- debounce(reactive({ input$cna_k_clusters }), millis = 800)
 
-  # 3. Cache the heavy static plots (Only runs ONCE per sample)
+  # Reuse the last valid static bundle across view/k changes and sample visits
+  # that never request another main heatmap. Keep only one bundle in memory.
   cna_static_plots <- reactive({
     req(input$cna_sample_idx, rv$paths_list)
 
     # 1. CRITICAL FIX: Get the correct sample name specifically for the CNA tab!
-    s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
+    s_name <- basename(rv$paths_list$sample_dir_paths)[app_sample_index(rv, input$cna_sample_idx)]
+    cache_context <- cna_cache_context()
+    req(identical(cache_context$dataset, rv$dataset_dir_path),
+      identical(cache_context$generation, rv$dataset_generation),
+      identical(cache_context$sample, s_name),
+      identical(cache_context$status, "completed"), !cache_context$retired)
+    if (identical(last_static_plots$key, cache_context)) return(last_static_plots$plots)
 
     # 2. ISOLATE the config to completely prevent reactive invalidation loops
     cfg <- isolate(rv$live_selected_config)
     req(cfg)
 
-    id <- showNotification("Generating main heatmap (this only happens once per sample)...", duration = NULL, type = "message")
+    id <- showNotification("Preparing the main heatmap...", duration = NULL, type = "message")
     on.exit(removeNotification(id), add = TRUE)
 
     hclust_file_name <- paste0('hclust_', s_name, '.qs2')
@@ -104,7 +139,7 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
     cell_type_grob <- ggplot2::ggplotGrob(cell_type_p + remove_leg)
 
     # Return them as a list to be reused
-    return(list(
+    plots <- list(
       dend_grob = dend_grob,
       htmp_grob = htmp_grob,
       cell_type_grob = cell_type_grob,
@@ -112,12 +147,15 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
       cell_type_leg = cell_type_leg,
       hdata_cells = hdata_hclust_cells,
       hc = clust_hclust
-    ))
+    )
+    last_static_plots <<- list(key = cache_context, plots = plots)
+    plots
   })
 
   # One lightweight identity/order mapping feeds the plot bar, navigator, save
   # confirmation, and persisted selection for each debounced sample/k context.
   cna_cluster_identity <- reactive({
+    require_cna_analysis_view(rv, input, "cna_view_select_malignant", "cna_compute")
     k_val <- k_debounced()
     static <- cna_static_plots()
     req(k_val, static)
@@ -127,8 +165,10 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
   cluster_ui_model <- reactive({
     identity <- cna_cluster_identity()
     req(input$cna_sample_idx, rv$paths_list)
-    sample_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
+    sample_name <- basename(rv$paths_list$sample_dir_paths)[app_sample_index(rv, input$cna_sample_idx)]
     previous <- isolate(cluster_ui_context())
+    if (!identical(previous$dataset, rv$dataset_dir_path) ||
+        !identical(previous$generation, rv$dataset_generation)) previous <- NULL
 
     saved_refs <- isolate(rv$live_selected_config$cna_ward_ref_cluster[[sample_name]])
     saved_record <- isolate(get_pipeline_step(
@@ -148,6 +188,8 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
       as.character(identity$clusters$cluster_id)
     )
 
+    reconciled$context$dataset <- rv$dataset_dir_path
+    reconciled$context$generation <- rv$dataset_generation
     cluster_ui_context(reconciled$context)
     list(identity = identity, selected = selected)
   })
@@ -237,7 +279,7 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
     # 1. Provide an explicit, visible warning if no clusters are selected
     if (is.null(input$cna_selected_clusters) || length(input$cna_selected_clusters) == 0) {
       if (!is.null(input$cna_sample_idx) && !is.null(rv$paths_list)) {
-        s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
+        s_name <- basename(rv$paths_list$sample_dir_paths)[app_sample_index(rv, input$cna_sample_idx)]
         record_state_event(
           rv,
           stage = "cna",
@@ -255,7 +297,7 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
     # 2. Make sure the dataset variables are available
     req(input$cna_sample_idx, input$cna_k_clusters, rv$paths_list, rv$live_selected_config)
 
-    s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
+    s_name <- basename(rv$paths_list$sample_dir_paths)[app_sample_index(rv, input$cna_sample_idx)]
 
     readiness <- pipeline_step_readiness(
       rv$pipeline_state,
@@ -449,7 +491,7 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
   # --- STEP 3: Compute Signal & Correlation ---
   observeEvent(input$btn_cna_compute_sig_cor, {
     req(input$cna_sample_idx)
-    s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
+    s_name <- basename(rv$paths_list$sample_dir_paths)[app_sample_index(rv, input$cna_sample_idx)]
 
     readiness <- pipeline_step_readiness(
       rv$pipeline_state,

@@ -17,9 +17,7 @@ register_resolution_server <- function(input, output, session, state, context) {
   resolution_plot_refresh <- reactiveVal(NULL)
   observe({
     req(rv$paths_list, rv$pipeline_state, input$res_sample_idx)
-    idx <- as.integer(input$res_sample_idx)
-    req(length(idx) == 1L, !is.na(idx), idx >= 1L,
-        idx <= length(rv$paths_list$sample_dir_paths))
+    idx <- app_sample_index(rv, input$res_sample_idx)
     sample_name <- basename(rv$paths_list$sample_dir_paths[[idx]])
     resolution_plot_refresh(list(
       sample = sample_name,
@@ -41,7 +39,7 @@ register_resolution_server <- function(input, output, session, state, context) {
 
   observe({
     req(rv$paths_list, input$res_sample_idx, rv$live_selected_config)
-    idx <- as.numeric(input$res_sample_idx)
+    idx <- app_sample_index(rv, input$res_sample_idx)
     sample_name <- basename(rv$paths_list$sample_dir_paths)[idx]
     note <- rv$live_selected_config$sample_notes[[sample_name]]
     updateTextAreaInput(
@@ -53,7 +51,7 @@ register_resolution_server <- function(input, output, session, state, context) {
 
   observeEvent(input$btn_save_res_notes, {
     req(rv$paths_list, input$res_sample_idx, rv$live_selected_config)
-    idx <- as.numeric(input$res_sample_idx)
+    idx <- app_sample_index(rv, input$res_sample_idx)
     sample_name <- basename(rv$paths_list$sample_dir_paths)[idx]
     rv$live_selected_config <- save_sample_note(
       rv$live_selected_config,
@@ -75,7 +73,7 @@ register_resolution_server <- function(input, output, session, state, context) {
 
   output$res_status_badge <- renderUI({
     req(rv$paths_list, input$res_sample_idx, rv$pipeline_state)
-    idx <- as.numeric(input$res_sample_idx)
+    idx <- app_sample_index(rv, input$res_sample_idx)
     s_name <- basename(rv$paths_list$sample_dir_paths)[idx]
     current_val <- rv$live_selected_config$resolutions[[s_name]]
     view <- pipeline_status_presentation(
@@ -97,14 +95,14 @@ register_resolution_server <- function(input, output, session, state, context) {
 
   output$res_header_text <- renderText({
     req(rv$paths_list, input$res_sample_idx)
-    idx <- as.numeric(input$res_sample_idx)
+    idx <- app_sample_index(rv, input$res_sample_idx)
     s_name <- basename(rv$paths_list$sample_dir_paths)[idx]
     paste("Resolution Plots for:", s_name)
   })
 
   output$res_radio_ui <- renderUI({
     req(rv$paths_list, rv$dataset_config, input$res_sample_idx)
-    idx <- as.numeric(input$res_sample_idx)
+    idx <- app_sample_index(rv, input$res_sample_idx)
     s_name <- basename(rv$paths_list$sample_dir_paths)[idx]
 
     current_val <- rv$live_selected_config$resolutions[[s_name]]
@@ -117,7 +115,7 @@ register_resolution_server <- function(input, output, session, state, context) {
 
   output$res_plots_tabs <- renderUI({
     req(rv$paths_list, rv$dataset_config, input$res_sample_idx)
-    idx <- as.numeric(input$res_sample_idx)
+    idx <- app_sample_index(rv, input$res_sample_idx)
     s_name <- basename(rv$paths_list$sample_dir_paths)[idx]
     resolutions <- rv$dataset_config$params$resolutions
 
@@ -175,7 +173,7 @@ register_resolution_server <- function(input, output, session, state, context) {
 
   observeEvent(input$btn_save_res, {
     req(rv$paths_list, input$res_sample_idx, input$selected_res)
-    idx <- as.numeric(input$res_sample_idx)
+    idx <- app_sample_index(rv, input$res_sample_idx)
     s_name <- basename(rv$paths_list$sample_dir_paths)[idx]
 
     readiness <- pipeline_step_readiness(rv$pipeline_state, "resolution", s_name)

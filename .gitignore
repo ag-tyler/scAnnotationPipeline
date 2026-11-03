@@ -15,6 +15,9 @@ Rplots.pdf
 # Local datasets
 datasets/
 
+# Local validation runners, logs and generated results
+/artifacts/local-checks/
+
 # Generated RDS files
 *.rds
 !tests/testthat/fixtures/compute_cna_golden.rds

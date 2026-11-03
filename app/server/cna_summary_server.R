@@ -101,7 +101,7 @@ register_cna_summary_server <- function(input, output, session, state, context) 
   output$cna_values_export_status <- renderUI({
     cna_export_revision()
     req(input$cna_sample_idx, rv$dataset_dir_path, rv$results_dir_path)
-    sample_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
+    sample_name <- basename(rv$paths_list$sample_dir_paths)[app_sample_index(rv, input$cna_sample_idx)]
     status <- cna_values_export_status(
       sample_name,
       rv$dataset_dir_path,
@@ -126,7 +126,7 @@ register_cna_summary_server <- function(input, output, session, state, context) 
 
   observeEvent(input$btn_cna_export_values, {
     req(input$cna_sample_idx)
-    sample_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
+    sample_name <- basename(rv$paths_list$sample_dir_paths)[app_sample_index(rv, input$cna_sample_idx)]
     result <- publish_cna_values(sample_name, show_progress = TRUE)
     if (!identical(result, FALSE)) {
       showNotification(
@@ -138,8 +138,9 @@ register_cna_summary_server <- function(input, output, session, state, context) 
 
   # --- STEP 5: PREVIEW ASSIGNMENTS & SUMMARY ---
   prepare_cna_preview <- function(notify_reuse = FALSE) {
+    require_cna_analysis_view(rv, input, "cna_view_summary", "cna_thresholds")
     req(input$cna_sample_idx)
-    s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
+    s_name <- basename(rv$paths_list$sample_dir_paths)[app_sample_index(rv, input$cna_sample_idx)]
 
     readiness <- pipeline_step_readiness(rv$pipeline_state, "cna_assignment", s_name)
     if (!readiness$ready) {
@@ -272,7 +273,7 @@ register_cna_summary_server <- function(input, output, session, state, context) 
     invisible(TRUE)
   }
 
-  observeEvent(input$cna_main_views, {
+  observeEvent(list(input$cna_main_views, rv$cna_view_context), {
     if (identical(input$cna_main_views, "cna_view_summary")) {
       prepare_cna_preview(notify_reuse = FALSE)
     }
@@ -285,8 +286,9 @@ register_cna_summary_server <- function(input, output, session, state, context) 
 
   # --- STEP 6: FINALIZE & SAVE ---
   observeEvent(input$btn_cna_save_summary, {
+    require_cna_analysis_view(rv, input, "cna_view_summary", "cna_thresholds")
     req(input$cna_sample_idx, rv$cna_preview_res)
-    s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
+    s_name <- basename(rv$paths_list$sample_dir_paths)[app_sample_index(rv, input$cna_sample_idx)]
 
     current_fingerprint <- tryCatch(
       cna_preview_fingerprint(s_name, rv$dataset_dir_path, rv$live_selected_config),
@@ -328,7 +330,7 @@ register_cna_summary_server <- function(input, output, session, state, context) 
     cache_save_data(cells_to_save, cells_file, rv$dataset_dir_path)
 
     # 2. Sync with the raw Cells.csv so Manual Annotation sees these updates
-    cells_raw_path <- rv$paths_list$cell_file_paths[as.numeric(input$cna_sample_idx)]
+    cells_raw_path <- rv$paths_list$cell_file_paths[app_sample_index(rv, input$cna_sample_idx)]
     cells_raw <- load_cells(cells_raw_path)
 
     # Force the subclone column to integer to prevent logical coercion warnings

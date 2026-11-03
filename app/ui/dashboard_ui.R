@@ -338,7 +338,8 @@ dashboard_panel <- function() {
             "Run Clustering for One Sample",
             icon = icon("sync"),
             class = "btn-outline-primary w-100 mt-2"
-          )
+          ),
+          uiOutput("clustering_recovery_control")
         )
       ),
       card(

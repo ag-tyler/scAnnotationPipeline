@@ -1,11 +1,65 @@
 # Release Acceptance
 
-**Next full manual run (prepared 2026-10-30):**
+**Latest full manual run (completed 2026-11-03; acceptance has open failures):**
 [Che2021 Colorectal manual review](CHE2021_COLORECTAL_MANUAL_REVIEW.md).
-This fresh-dataset checklist covers setup/standardization, the semi-automatic
-pipeline, outstanding regression checks, snapshots and safe storage lifecycle
-tests. Results belong in its empty per-stage Notes sections, referenced by
-checkpoint ID; no new manual pass is implied by preparing the document.
+All 15 samples reached a finished scientific decision before cleanup: ten final
+CNA assignments and five explicit omissions. The preserved active copy is the
+finished-run reference; the current repository dataset is the destructive-test
+copy after cleanup/reopen/interruption. Section 10 reconciles every sample,
+reports observed durations, and separates new isolated automated checks from
+manual results. Checked R03–R06, R08 and subset-clustering evidence is recorded
+there. Overall acceptance remains open for interrupted-clustering recovery,
+dataset-switch crashes, CNA navigation/cache guards, stale status presentation
+after reopen, and long-path wrapping in snapshot review. The successful
+completion-modal wrapping check does not close the separate review-modal issue.
+
+Required fixes and their acceptance criteria are scheduled in the
+[November remediation plan](CHE2021_COLORECTAL_REMEDIATION_PLAN.md).
+Complete C01–C06 and the C10 verification gate before closing this review's
+release acceptance; record C07–C09 usability work separately if deferred.
+
+**C01 implementation follow-up (2026-11-03):** Dataset switching now tears down
+old loaded data/confirmation tokens, validates asynchronous sample indices and
+scopes CNA context to each dataset load. Synthetic server/browser checks cover
+unequal sample counts, same-workspace reloads, archived-to-active transitions,
+unsaved-edit protection and stale-action rejection. This addresses the recorded
+dataset-switch crashes at the implementation/regression level; the original
+manual failures remain in the review record. C02–C06 and C10 remain open.
+Final C01 verification passed 2,549 portable and 54 browser assertions, with
+zero failures/errors/test warnings/skips in the supported Windows UTF-8 locale.
+The browser run includes 15 new C01 assertions and the existing 39-assertion
+save/restart journey. The optional >4 GiB ZIP64 gate was not rerun.
+
+**C02 implementation follow-up (2026-11-03):** Clustering attempts now record
+execution ownership. On load, an editable dataset recovers confirmed ended
+attempts as retryable failures while preserving attempt history and scientific
+files. Legacy/unknown ownership requires the Start Menu's explicit Recover
+Interrupted Clustering confirmation; live processes remain protected. Synthetic
+workers were killed before/after cache publication, recovered and successfully
+retried through all configured resolutions. Guarded server and browser recovery
+checks pass; interrupted DE retry remains covered. No real dataset or user R
+process was changed. C03–C06 and the C10 release gate remain open.
+Final C02 verification passed 2,631 portable and 71 browser assertions with
+zero failures/errors/test warnings/skips. C02 contributes 79 recovery/ownership
+assertions, three DE retry regressions and 17 browser assertions. Tests used
+only disposable synthetic inputs, including the forcibly stopped worker
+processes; the optional >4 GiB ZIP64 gate was not enabled.
+
+**C03 implementation follow-up (2026-11-03):** CNA analysis views now require
+the current server-authorized sample/view context. Status, omitted/reset samples
+and stale browser view messages cannot trigger main heatmap reads. CNA Pipeline
+Status is accessible beside the sample controls; warm re-entry and k changes
+reuse a bounded last-valid plot bundle. Saved sample/k decisions restore, stale
+threshold/finalization actions are guarded, and reset confirmation is scoped to
+the reviewed sample. Instrumented synthetic browser navigation built the main
+heatmap once (one hclust and one matrix read); first entry was 2.58 s and warm
+re-entry 1.20 s on 48 cells/66 genes, including browser overhead. The CNA sidebar
+screenshot was refreshed and inspected. No real dataset changed; C04–C06 and
+the C10 release gate remain open.
+Final C03 verification passed 2,680 portable and 91 browser assertions, zero
+failures/errors/test warnings/skips. This includes 49 new C03 server and 20
+instrumented browser assertions. Supported Windows UTF-8 was used; the optional
+>4 GiB ZIP64 gate was not enabled. Only the CNA sidebar baseline changed.
 
 This document defines the portable Milestone 7 release gate. Every automated
 check uses committed code/fixtures or deterministic synthetic data generated in

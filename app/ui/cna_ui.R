@@ -134,6 +134,12 @@ cna_panel <- function(sample_choices) {
           "Next Sample",
           class = "btn-secondary btn-sm w-100 mt-2"
         ),
+        actionButton(
+          "btn_cna_status",
+          "CNA Pipeline Status",
+          icon = icon("list-check"),
+          class = "btn-outline-secondary w-100 mt-2"
+        ),
         hr(),
         h5("Pipeline Steps", class = "mb-3"),
         actionButton(

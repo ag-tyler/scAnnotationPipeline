@@ -71,6 +71,7 @@ register_dashboard_server <- function(input, output, session, state, context) {
   clustering_dialog_serial <- reactiveVal(0L)
   clustering_selection_context <- reactiveVal(NULL)
   clustering_completion_context <- reactiveVal(NULL)
+  clustering_recovery_request <- reactiveVal(NULL)
 
   clustering_block_reason <- function() {
     if (is.null(rv$pipeline_state) ||
@@ -91,6 +92,71 @@ register_dashboard_server <- function(input, output, session, state, context) {
       identical(request$samples, basename(rv$paths_list$sample_dir_paths)) &&
       identical(request$resolutions, rv$dataset_config$params$resolutions)
   }
+
+  output$clustering_recovery_control <- renderUI({
+    req(rv$pipeline_state, rv$paths_list)
+    if (dataset_storage_cache_is_retired(rv$storage_state)) return(NULL)
+    samples <- interrupted_clustering_candidates(rv$pipeline_state)
+    if (!length(samples)) return(NULL)
+    tags$div(class = "mt-2",
+      tags$p(class = "small mb-1", "Some clustering attempts may have been interrupted. Confirm the previous computation has stopped before recovering them."),
+      actionButton("btn_recover_clustering", "Recover Interrupted Clustering", class = "btn-outline-warning w-100"))
+  })
+
+  observeEvent(input$btn_recover_clustering, {
+    req(rv$pipeline_state, rv$paths_list)
+    reason <- clustering_block_reason()
+    if (!is.null(reason)) {
+      showNotification(reason, type = "warning"); return()
+    }
+    samples <- interrupted_clustering_candidates(rv$pipeline_state)
+    if (!length(samples)) return()
+    clustering_recovery_request(list(dataset = rv$dataset_dir_path,
+      generation = rv$dataset_generation, revision = rv$pipeline_state$revision,
+      samples = samples, dataset_id = rv$pipeline_state$dataset_id))
+    arm_app_confirmation(rv, "recover_clustering")
+    showModal(modalDialog(title = "Recover Interrupted Clustering", easyClose = FALSE,
+      tags$p("This marks selected interrupted attempts as failed so they can be retried. It does not restore caches, complete analysis, or change saved annotations."),
+      checkboxGroupInput("clustering_recovery_samples", "Samples to recover", choices = samples, selected = samples),
+      checkboxInput("clustering_recovery_stopped", "I have stopped the previous clustering computation for these samples.", FALSE),
+      textInput("clustering_recovery_dataset", paste("Type the dataset ID to confirm:", rv$pipeline_state$dataset_id)),
+      footer = tagList(modalButton("Cancel"), actionButton("confirm_recover_clustering", "Recover Selected Attempts", class = "btn-warning"))))
+  })
+
+  observeEvent(input$confirm_recover_clustering, {
+    if (!("recover_clustering" %in% rv$open_confirmations)) return()
+    request <- clustering_recovery_request()
+    if (is.null(request) || !identical(request$dataset, rv$dataset_dir_path) ||
+        !identical(request$generation, rv$dataset_generation)) return()
+    reason <- clustering_block_reason()
+    if (!is.null(reason)) { showNotification(reason, type = "warning"); return() }
+    samples <- input$clustering_recovery_samples
+    if (!length(samples) || anyNA(samples) || anyDuplicated(samples) ||
+        !all(samples %in% request$samples) || !isTRUE(input$clustering_recovery_stopped) ||
+        !identical(input$clustering_recovery_dataset, request$dataset_id)) {
+      showNotification("Select the interrupted samples, confirm the computation has stopped, and enter the exact dataset ID.", type = "warning")
+      return()
+    }
+    result <- tryCatch({
+      current <- load_pipeline_state(dirname(rv$pipeline_state_path), request$dataset_id,
+        state_filename = basename(rv$pipeline_state_path))
+      if (!identical(current$revision, request$revision) ||
+          !identical(rv$pipeline_state$revision, request$revision)) {
+        stop("Pipeline state changed. Reload the dataset and review recovery again.", call. = FALSE)
+      }
+      if (!claim_app_confirmation(rv, "recover_clustering")) return()
+      reconcile_interrupted_clustering(current, rv$pipeline_state_path, confirmed_samples = samples)
+    }, error = identity)
+    if (inherits(result, "error")) {
+      showNotification(conditionMessage(result), type = "error", duration = 15); return()
+    }
+    rv$pipeline_state <- result
+    clustering_recovery_request(NULL)
+    record_state_event(rv, stage = "clustering", event_type = "interrupted_clustering_recovered",
+      outcome = "recovered", parameters = list(samples = samples, mode = "explicit_confirmation"))
+    removeModal()
+    showNotification("Selected interrupted attempts can now be retried through the clustering actions.", type = "message")
+  })
 
   resolve_clustering_selection <- function() {
     request <- clustering_selection_context()
@@ -176,7 +242,11 @@ register_dashboard_server <- function(input, output, session, state, context) {
     pipeline_status_overview_ui(pipeline_overview_summary())
   })
 
-  persist_sample_step <- function(step, sample_name, status, reason = NULL, details = NULL) {
+  persist_sample_step <- function(step, sample_name, status, reason = NULL, details = NULL, execution_owner = NULL) {
+    if (identical(step, "clustering") && identical(status, "in_progress")) {
+      details <- utils::modifyList(if (is.null(details)) list() else details,
+        list(execution_owner = execution_owner))
+    }
     current <- get_pipeline_step(rv$pipeline_state, step, sample_name)
     invalidate <- identical(status, "in_progress") &&
       (identical(step, "clustering") || current$status %in% c("completed", "skipped"))
@@ -450,12 +520,14 @@ register_dashboard_server <- function(input, output, session, state, context) {
     }
     if (!claim_app_confirmation(rv, "single_sample_clustering")) return()
     if (!begin_app_action(rv, "single_sample_clustering")) return()
+    on.exit(finish_app_action(rv, "single_sample_clustering"), add = TRUE)
+    execution_owner <- begin_clustering_execution(rv$session_id)
+    on.exit(end_clustering_execution(execution_owner), add = TRUE)
 
     sample_name <- sample_names[[selected_index]]
     shinyjs::disable("btn_run_single_clustering")
     shinyjs::disable("btn_run_clustering")
     on.exit({
-      finish_app_action(rv, "single_sample_clustering")
       shinyjs::enable("btn_run_single_clustering")
       shinyjs::enable("btn_run_clustering")
     }, add = TRUE)
@@ -493,7 +565,8 @@ register_dashboard_server <- function(input, output, session, state, context) {
               sample_name,
               status,
               reason,
-              details
+              details,
+              execution_owner = execution_owner
             )
           },
           progress_callback = make_shiny_batch_progress_callback(progress_context),
@@ -558,13 +631,15 @@ register_dashboard_server <- function(input, output, session, state, context) {
     }
     if (!claim_app_confirmation(rv, "bulk_clustering")) return()
     if (!begin_app_action(rv, "bulk_clustering")) return()
+    on.exit(finish_app_action(rv, "bulk_clustering"), add = TRUE)
+    execution_owner <- begin_clustering_execution(rv$session_id)
+    on.exit(end_clustering_execution(execution_owner), add = TRUE)
     clustering_completion_context(NULL)
     claim_app_confirmation(rv, "after_clustering_navigation")
     completed_samples <- character()
     shinyjs::disable("btn_run_clustering")
     shinyjs::disable("btn_run_single_clustering")
     on.exit({
-      finish_app_action(rv, "bulk_clustering")
       shinyjs::enable("btn_run_clustering")
       shinyjs::enable("btn_run_single_clustering")
     }, add = TRUE)
@@ -599,7 +674,8 @@ register_dashboard_server <- function(input, output, session, state, context) {
               sample_name,
               status,
               reason,
-              details
+              details,
+              execution_owner = execution_owner
             )
             if (identical(status, "completed")) completed_samples <<- c(completed_samples, sample_name)
           },

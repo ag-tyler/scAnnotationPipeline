@@ -2,12 +2,16 @@
 
 register_cna_reset_server <- function(input, output, session, state, context) {
   rv <- state
+  reset_context <- reactiveVal(NULL)
 
   # --- STEP 7: RESET SAMPLE CNA ---
   observeEvent(input$btn_cna_reset, {
     req(input$cna_sample_idx, rv$paths_list)
-    s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
+    req(!isTRUE(rv$annotation_dirty), !length(rv$active_actions),
+      !dataset_storage_cache_is_retired(rv$storage_state))
+    s_name <- basename(rv$paths_list$sample_dir_paths)[app_sample_index(rv, input$cna_sample_idx)]
 
+    reset_context(cna_analysis_context(rv, s_name, "reset"))
     arm_app_confirmation(rv, "cna_reset")
     showModal(modalDialog(
       title = "Confirm CNA Reset",
@@ -27,6 +31,13 @@ register_cna_reset_server <- function(input, output, session, state, context) {
 
   observeEvent(input$confirm_cna_reset, {
     if (!claim_app_confirmation(rv, "cna_reset")) return()
+    req(rv$paths_list, !isTRUE(rv$annotation_dirty), !length(rv$active_actions),
+      !dataset_storage_cache_is_retired(rv$storage_state))
+    sample <- basename(rv$paths_list$sample_dir_paths[[app_sample_index(rv, input$cna_sample_idx)]])
+    if (!identical(reset_context(), cna_analysis_context(rv, sample, "reset"))) {
+      showNotification("The selected sample changed. Review Reset Sample CNA again before confirming.", type = "warning")
+      return()
+    }
     if (!begin_app_action(rv, "cna_reset")) return()
     shinyjs::disable("btn_cna_reset")
     on.exit({
@@ -35,7 +46,9 @@ register_cna_reset_server <- function(input, output, session, state, context) {
     }, add = TRUE)
     removeModal()
     req(input$cna_sample_idx, rv$paths_list, rv$live_selected_config)
-    s_name <- basename(rv$paths_list$sample_dir_paths)[as.numeric(input$cna_sample_idx)]
+    s_name <- basename(rv$paths_list$sample_dir_paths)[app_sample_index(rv, input$cna_sample_idx)]
+    rv$cna_view_context <- cna_analysis_context(rv, s_name, "cna_view_default")
+    nav_select("cna_main_views", "cna_view_default")
 
     id <- showNotification(paste("Resetting CNA pipeline for", s_name, "..."), duration = NULL, type = "message")
     on.exit(removeNotification(id), add = TRUE)
@@ -88,7 +101,7 @@ register_cna_reset_server <- function(input, output, session, state, context) {
     }
 
     # Revert the raw CSV as well
-    cells_raw_path <- rv$paths_list$cell_file_paths[as.numeric(input$cna_sample_idx)]
+    cells_raw_path <- rv$paths_list$cell_file_paths[app_sample_index(rv, input$cna_sample_idx)]
     if (file.exists(cells_raw_path)) {
       cells_raw <- data.table::fread(cells_raw_path)
       if ("cell_type_pre_cna" %in% names(cells_raw)) {
