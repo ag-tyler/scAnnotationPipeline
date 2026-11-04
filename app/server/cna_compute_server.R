@@ -206,6 +206,9 @@ register_cna_compute_server <- function(input, output, session, state, context) 
   observeEvent(input$btn_cna_batch_compute, {
     req(rv$paths_list)
     sample_names <- basename(rv$paths_list$sample_dir_paths)
+    sample_names <- sample_names[!vapply(sample_names, function(sample) {
+      pipeline_cna_is_omitted(rv$pipeline_state, sample)
+    }, logical(1))]
     status_labels <- vapply(sample_names, function(sample_name) {
       get_pipeline_step(rv$pipeline_state, "cna_compute", sample_name)$status
     }, character(1))
@@ -218,7 +221,7 @@ register_cna_compute_server <- function(input, output, session, state, context) 
     showModal(modalDialog(
       title = "Confirm Batch CNA Computation",
       p(
-        "Select the samples to run. Incomplete, skipped, stale, and failed samples are selected by default; completed samples remain available for an intentional rerun."
+        "Select the samples to run. Incomplete, skipped, stale, and failed samples are selected by default; completed samples remain available for an intentional rerun. Explicitly omitted samples are excluded; save a complete CNA configuration in Manual Annotation to include them again."
       ),
       checkboxGroupInput(
         "cna_batch_samples",

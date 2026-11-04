@@ -632,6 +632,19 @@ soon as DE completes. Save or discard any unsaved annotation edits first.
 
 ### CNA analysis
 
+Use **Omit CNA for This Sample** beside **Reset Sample CNA** to omit the
+selected CNA sample from any analysis view. Confirmation names that sample
+and explains that CNA decisions/calculation caches are invalidated while saved
+annotations, cell labels and historical plots/exports remain. This differs
+from Reset, which removes CNA plots and restores pre-CNA labels. Save or discard
+annotation edits first; omission is unavailable for archived datasets or while
+another operation runs. Cancel leaves the sample unchanged.
+
+Omitted samples return to CNA Pipeline Status, survive reload and are excluded
+from the ordinary batch sample list. To include one again, save a complete
+reference/candidate configuration in Manual Annotation and recompute CNA;
+previous computation/assignment statuses are not restored automatically.
+
 The CNA workflow is guarded by the persisted pipeline state and a shared
 sample preflight. Preflight verifies that manual annotation and CNA
 configuration are saved, reference and candidate populations are usable,

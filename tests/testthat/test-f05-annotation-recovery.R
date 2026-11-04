@@ -21,7 +21,8 @@ test_that("F05 retries the selected sample when DE becomes ready", {
     "get_pipeline_step", "pipeline_step_readiness", "app_sample_index",
     "pipeline_status_presentation", "load_cells",
     "validate_annotation_cell_alignment", "persist_pipeline_step_update",
-    "cache_save_data", "cache_invalidate_sample", "capture_snapshot_annotations"
+    "cache_save_data", "cache_invalidate_sample", "capture_snapshot_annotations",
+    "dataset_storage_cache_is_retired", "pipeline_cna_is_omitted", "cna_analysis_context"
   )) {
     test_env[[function_name]] <- get(function_name, inherits = TRUE)
   }

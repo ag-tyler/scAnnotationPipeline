@@ -2,8 +2,8 @@
 
 **Date:** 2026-11-03
 
-**Status:** C01–C06 implemented with synthetic regression/browser coverage;
-C07–C09 remain planned and C10 release acceptance remains open.
+**Status:** C01–C07 implemented with synthetic regression/browser coverage;
+C08/C09 remain planned and C10 release acceptance remains open.
 
 **Evidence:** [Completed manual review](CHE2021_COLORECTAL_MANUAL_REVIEW.md),
 especially stage notes and section 10. This plan extends the
@@ -440,7 +440,7 @@ C10 acceptance and the C07–C09 usability tasks remain open.
 
 ### C07 — Omit CNA from the analysis views
 
-- [ ] Implement and verify.
+- [x] Implement and verify on synthetic workspaces (2026-11-04).
 
 Add an explicit Omit CNA action near Reset Sample CNA, using the existing
 omission decision/state workflow and unsaved-edit guards. Explain the affected
@@ -449,6 +449,43 @@ annotation and upstream results intact; preserve the existing policy for
 retained historical outputs. Returning to status must not load unavailable
 caches. Test cancel, confirm once, reload, exclusion from ordinary unfinished
 CNA batches, and reversal through a complete valid configuration.
+
+**Implementation record (2026-11-04):** The CNA sidebar now has Omit CNA for
+This Sample beside Reset Sample CNA. Both annotation and CNA entry points share
+one confirmation/mutation flow. The CNA entry resolves its own selected sample
+independently of the loaded annotation sample. Confirmation captures dataset
+generation, sample, workflow records and relevant configuration; changed
+contexts, dirty annotations, active operations, invalid indices and archived
+storage cannot apply the reviewed action. Cancel disarms the action and a
+confirmation can execute only once.
+
+The dialog names the affected sample and explains invalidation. The existing
+omission policy clears references/candidates, records explicit skipped CNA
+configuration, invalidates dependent CNA states/calculation caches and retains
+upstream annotation/clustering data, cell labels, historical plots/exports and
+saved historical cut/threshold values. Omission does not perform Reset. CNA
+navigation returns to status, and existing view guards prevent missing-cache
+reads. Explicit omissions are excluded from the batch sample list; the backend
+omission preflight remains a guard against injected/stale batch selections.
+Saving complete configuration reverses omission and requires fresh computation.
+
+**Verification:** 3,112 regression assertions and 127 browser assertions passed,
+with zero failures/errors/test warnings/skips across the complete normal test
+directory in disjoint runs. C07 adds 44 server assertions and 23 browser
+assertions. Server coverage verifies a CNA sample different from the loaded
+annotation sample, retained-file hashes/upstream records, other-sample isolation,
+cancel, confirm once, reload, no unavailable-cache reads, batch exclusion,
+configuration reversal and dirty/busy/archived/changed-context guards.
+
+The real browser journey opens malignant-cluster selection, cancels omission,
+confirms it, checks the return to status and repeated-confirmation no-op, reviews
+batch exclusion, restarts and reverses omission through Manual Annotation's
+configuration save. It preserves standardized/results hashes and control
+samples. Existing C01–C04 browser journeys and screenshot baselines pass; no
+baseline image changed. Tests used R 4.5.3 with supported Windows UTF-8 and
+disposable synthetic data. The optional >4 GiB ZIP64 gate was not enabled.
+Diagnostics remain ignored under `artifacts/local-checks/`. Neither real Che
+dataset changed. C08/C09 and C10 acceptance remain open.
 
 ### C08 — Sample-specific defaults and threshold controls
 

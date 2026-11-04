@@ -123,6 +123,30 @@ failure stage. Supported Windows UTF-8 was used for the suite baseline; the
 optional >4 GiB ZIP64 gate was not enabled. Diagnostics remain ignored under
 `artifacts/local-checks/`. This does not close the C10 manual acceptance replay.
 
+**C07 implementation follow-up (2026-11-04):** CNA analysis now offers Omit CNA
+for This Sample beside Reset. The shared annotation/CNA confirmation flow binds
+the decision to its dataset generation, selected sample, workflow and relevant
+configuration. Cancel and duplicate confirmation do not mutate results;
+dirty/busy/archived contexts and obsolete selections are guarded. Existing
+omission behavior clears references/candidates and invalidates CNA states and
+calculation caches while preserving annotation/upstream records, cell labels,
+historical plots/exports and saved historical cut/threshold values. The view
+returns to status, omission survives restart and ordinary batch choices exclude
+explicit omissions. Complete configuration save reverses omission and requires
+new computation. No real dataset changed. C08/C09 and C10 acceptance remain open.
+
+Final C07 verification passed 3,112 regression plus 127 browser assertions, zero
+failures/errors/test warnings/skips. The disjoint runs cover the complete normal
+test directory. C07 contributes 44 server and 23 browser assertions for cancel,
+confirm once, target/context guards, preserved upstream/other-sample state and
+retained files, unavailable-cache guards, reload, batch exclusion and reversal.
+The real browser journey uses malignant selection, omission, application
+restart and Manual Annotation's configuration save. Existing C01–C04 browser
+journeys and all screenshot baselines pass; no baseline image changed.
+Supported Windows UTF-8 was used; the optional >4 GiB ZIP64 gate was not enabled.
+Diagnostics remain ignored under `artifacts/local-checks/`. This does not close
+the C10 human acceptance replay.
+
 This document defines the portable Milestone 7 release gate. Every automated
 check uses committed code/fixtures or deterministic synthetic data generated in
 a temporary directory. No named local dataset, private biological resource, or

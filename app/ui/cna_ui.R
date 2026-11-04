@@ -175,6 +175,11 @@ cna_panel <- function(sample_choices) {
         ),
         hr(),
         actionButton(
+          "btn_cna_omit",
+          "Omit CNA for This Sample",
+          class = "btn-outline-warning w-100 mb-2"
+        ),
+        actionButton(
           "btn_cna_reset",
           "Reset Sample CNA",
           icon = icon("trash-alt"),

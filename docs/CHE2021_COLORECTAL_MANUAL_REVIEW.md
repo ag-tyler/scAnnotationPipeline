@@ -979,3 +979,31 @@ leftovers with sanitized failure events rather than verified success. Real ZIP
 workers reached the publication fault hooks; the optional >4 GiB ZIP64 gate was
 not enabled. These are synthetic implementation checks, not a new human manual
 acceptance pass. The C10 gate remains open.
+
+**C07 implementation follow-up — 2026-11-04:** CNA-01/02 and ANN-04 now have
+an omission action directly in the CNA analysis sidebar beside Reset. Both
+entry points use the same existing omission policy. Confirmation names the CNA
+sample, explains invalidation and retains annotations, cell labels, historical
+plots/exports and historical cut/threshold values. The selected CNA sample is
+resolved independently of the loaded annotation sample. Cancel/duplicate
+confirmation and changed dataset/sample/configuration contexts cannot apply
+an obsolete decision; dirty, busy and archived workspaces are guarded.
+
+Omission returns to status, persists on reload and excludes the sample from the
+ordinary CNA batch list. Saving a complete reference/candidate configuration in
+Manual Annotation reverses omission and requires fresh computation. Synthetic
+checks preserve upstream/other-sample state and retained-file hashes; no real
+Che dataset was modified. This is implementation verification, not a new human
+manual acceptance replay. C08/C09 and the C10 gate remain open. See C07 in the
+[remediation plan](CHE2021_COLORECTAL_REMEDIATION_PLAN.md).
+
+Final C07 verification passed 3,112 regression plus 127 browser assertions with
+zero failures/errors/test warnings/skips, covering the complete normal test
+directory in disjoint runs. C07 adds 44 server and 23 browser assertions. The
+browser replay uses the actual malignant-selection view, cancel/confirm,
+status return, duplicate-confirmation rejection, batch choices, restart and
+configuration-save reversal. Server checks add dirty/busy/archived and obsolete
+context guards, selection independent of the annotation tab, and no unavailable
+cache reads. Retained-file hashes and other-sample/upstream records remain
+unchanged. Existing browser journeys and screenshot baselines pass without an
+image update. The optional >4 GiB ZIP64 gate was not enabled; C10 remains open.

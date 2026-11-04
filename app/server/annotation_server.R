@@ -21,9 +21,10 @@ register_annotation_server <- function(input, output, session, state, context) {
     reason = NULL,
     details = NULL,
     invalidate_downstream = FALSE,
-    invalidation_reason = NULL
+    invalidation_reason = NULL,
+    sample = rv$sample_name
   ) {
-    current <- get_pipeline_step(rv$pipeline_state, step, rv$sample_name)
+    current <- get_pipeline_step(rv$pipeline_state, step, sample)
     if (
       status %in% c("incomplete", "skipped") &&
         current$status %in% c("completed", "skipped") &&
@@ -34,7 +35,7 @@ register_annotation_server <- function(input, output, session, state, context) {
         rv$pipeline_state_path,
         step = step,
         status = "in_progress",
-        sample = rv$sample_name,
+        sample = sample,
         invalidate_downstream = invalidate_downstream,
         invalidation_reason = invalidation_reason
       )
@@ -46,7 +47,7 @@ register_annotation_server <- function(input, output, session, state, context) {
       rv$pipeline_state_path,
       step = step,
       status = status,
-      sample = rv$sample_name,
+      sample = sample,
       reason = reason,
       details = details,
       invalidate_downstream = invalidate_downstream,
@@ -817,42 +818,54 @@ register_annotation_server <- function(input, output, session, state, context) {
     request_annotation_save()
   })
 
-  observeEvent(input$btn_omit_cna, {
-    req(rv$sample_name, rv$pipeline_state)
+  # Both entry points use the same omission decision and retained-output policy.
+  omission_context <- reactiveVal(NULL)
+  omission_target <- function(source) {
+    req(rv$paths_list, rv$pipeline_state, rv$live_selected_config)
+    if (length(rv$active_actions) || dataset_storage_cache_is_retired(rv$storage_state)) {
+      showNotification("Omit CNA requires an editable dataset with no operation running.", type = "warning")
+      return(NULL)
+    }
     if (isTRUE(rv$annotation_dirty)) {
-      showNotification(
-        "Save the current annotation edits before omitting CNA.",
-        type = "error",
-        duration = 10
-      )
-      return()
+      showNotification("Save or discard the current annotation edits before omitting CNA.", type = "warning")
+      return(NULL)
     }
-    readiness <- pipeline_step_readiness(
-      rv$pipeline_state,
-      "cna_configuration",
-      rv$sample_name
-    )
+    if (identical(source, "cna")) req(identical(input$main_nav, "cna_tab"))
+    idx <- app_sample_index(rv, if (identical(source, "cna")) input$cna_sample_idx else input$sample_idx)
+    sample <- basename(rv$paths_list$sample_dir_paths[[idx]])
+    if (identical(source, "annotation")) req(identical(rv$sample_name, sample))
+    readiness <- pipeline_step_readiness(rv$pipeline_state, "cna_configuration", sample)
     if (!readiness$ready) {
-      showNotification(
-        paste(
-          "Save annotations before omitting CNA:",
-          paste(readiness$reasons, collapse = "; ")
-        ),
-        type = "error",
-        duration = 10
-      )
+      showNotification(paste("Save annotations before omitting CNA:", paste(readiness$reasons, collapse = "; ")), type = "warning")
+      return(NULL)
+    }
+    sample
+  }
+  omission_identity <- function(sample, source) list(
+    identity = cna_analysis_context(rv, sample, source),
+    steps = rv$pipeline_state$samples[[sample]],
+    configuration = lapply(rv$live_selected_config[c("resolutions", "cna_ref_cells", "cna_pot_mal_cells",
+      "cna_ward_ref_cluster", "cna_thresholds")], function(values) values[[sample]]))
+  request_cna_omission <- function(source) {
+    sample <- omission_target(source)
+    if (is.null(sample)) return()
+    if (pipeline_cna_is_omitted(rv$pipeline_state, sample)) {
+      showNotification(paste("CNA is already omitted for", sample), type = "message")
       return()
     }
+    omission_context(list(source = source, sample = sample, reviewed = omission_identity(sample, source)))
     arm_app_confirmation(rv, "omit_cna")
     showModal(modalDialog(
       title = "Omit CNA for this sample?",
       paste0(
-        "This records that CNA is intentionally omitted for ", rv$sample_name,
-        ". You can reverse this later by saving a complete CNA configuration."
+        "This records that CNA is intentionally omitted for ", sample,
+        ". Existing CNA decisions will be invalidated and CNA calculation caches removed. ",
+        "Saved annotations, cell labels and historical plots/exports are retained. ",
+        "You can reverse this later by saving a complete CNA configuration in Manual Annotation."
       ),
-      easyClose = TRUE,
+      easyClose = FALSE,
       footer = tagList(
-        modalButton("Cancel"),
+        actionButton("btn_cancel_omit_cna", "Cancel", class = "btn-secondary"),
         actionButton(
           "btn_confirm_omit_cna",
           "Omit CNA",
@@ -861,26 +874,36 @@ register_annotation_server <- function(input, output, session, state, context) {
         )
       )
     ))
+  }
+  observeEvent(input$btn_omit_cna, { request_cna_omission("annotation") })
+  observeEvent(input$btn_cna_omit, { request_cna_omission("cna") })
+  observeEvent(input$btn_cancel_omit_cna, {
+    claim_app_confirmation(rv, "omit_cna")
+    omission_context(NULL)
+    removeModal()
+  })
+  observe({
+    shinyjs::toggleState("btn_cna_omit", condition = !is.null(rv$paths_list) &&
+      !isTRUE(rv$annotation_dirty) && !length(rv$active_actions) &&
+      !dataset_storage_cache_is_retired(rv$storage_state))
   })
 
   observeEvent(input$btn_confirm_omit_cna, {
     if (!claim_app_confirmation(rv, "omit_cna")) return()
+    reviewed <- omission_context()
+    omission_context(NULL)
     removeModal()
-    current <- get_pipeline_step(
-      rv$pipeline_state,
-      "cna_configuration",
-      rv$sample_name
-    )
-    decision_changed <- !identical(current$status, "skipped")
-    if (!decision_changed) {
-      showNotification(
-        paste("CNA is already omitted for", rv$sample_name),
-        type = "message"
-      )
+    if (is.null(reviewed)) return()
+    sample <- omission_target(reviewed$source)
+    if (is.null(sample)) return()
+    if (!identical(reviewed$reviewed, omission_identity(sample, reviewed$source))) {
+      showNotification("The sample or its CNA inputs changed. Review Omit CNA again before confirming.", type = "warning")
       return()
     }
-    rv$live_selected_config$cna_ref_cells[[rv$sample_name]] <- list()
-    rv$live_selected_config$cna_pot_mal_cells[[rv$sample_name]] <- list()
+    if (!begin_app_action(rv, "omit_cna")) return()
+    on.exit(finish_app_action(rv, "omit_cna"), add = TRUE)
+    rv$live_selected_config$cna_ref_cells[[sample]] <- list()
+    rv$live_selected_config$cna_pot_mal_cells[[sample]] <- list()
     rv$config$selected <- rv$live_selected_config
     yaml::write_yaml(rv$live_selected_config, rv$selected_config_path)
     persist_annotation_step(
@@ -888,25 +911,26 @@ register_annotation_server <- function(input, output, session, state, context) {
       "skipped",
       reason = "User explicitly omitted CNA because it is not warranted for this sample.",
       details = list(omitted_by_user = TRUE),
-      invalidate_downstream = decision_changed,
-      invalidation_reason = if (decision_changed) {
-        "The CNA configuration was explicitly omitted."
-      } else NULL
+      invalidate_downstream = TRUE,
+      invalidation_reason = "The CNA configuration was explicitly omitted.",
+      sample = sample
     )
-    invalidated_cache <- if (decision_changed) {
-      cache_invalidate_sample(rv$sample_name, rv$dataset_dir_path)
-    } else character()
+    invalidated_cache <- cache_invalidate_sample(sample, rv$dataset_dir_path)
+    if (identical(reviewed$source, "cna")) {
+      rv$cna_view_context <- cna_analysis_context(rv, sample, "cna_view_default")
+      nav_select("cna_main_views", "cna_view_default")
+    }
     record_state_event(
       rv,
       stage = "cna_configuration",
       event_type = "cna_configuration_skipped",
       outcome = "skipped",
-      sample = rv$sample_name,
+      sample = sample,
       reason = "User explicitly omitted CNA because it is not warranted for this sample.",
       parameters = list(invalidated_cache_files = length(invalidated_cache))
     )
     showNotification(
-      paste("CNA omitted for", rv$sample_name),
+      paste("CNA omitted for", sample),
       type = "message"
     )
   })
