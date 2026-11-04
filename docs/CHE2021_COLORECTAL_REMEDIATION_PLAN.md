@@ -2,8 +2,8 @@
 
 **Date:** 2026-11-03
 
-**Status:** C01–C05 implemented with synthetic regression/browser coverage;
-C06–C09 remain planned and C10 release acceptance remains open.
+**Status:** C01–C06 implemented with synthetic regression/browser coverage;
+C07–C09 remain planned and C10 release acceptance remains open.
 
 **Evidence:** [Completed manual review](CHE2021_COLORECTAL_MANUAL_REVIEW.md),
 especially stage notes and section 10. This plan extends the
@@ -372,7 +372,7 @@ enabled. C06–C10, including the final acceptance replay, remain open.
 
 ## C06 — Snapshot rollback and Unicode
 
-- [ ] Implement and verify.
+- [x] Implement and verify on synthetic workspaces (2026-11-04).
 
 **Evidence:** Under the shell's unsupported `LC_ALL=C.UTF-8` setting, Windows R
 fell back to the C locale and a controlled Unicode-path failure left an owned
@@ -395,6 +395,46 @@ success, no owned leftovers when removal is possible, no overwritten earlier
 snapshot, unchanged source hashes and restored locale. Cover Both-mode partial
 publication and post-rename interruption. ZIP worker permission errors must be
 identified separately from application failures.
+
+**Implementation record (2026-11-04):** Snapshot work and its exit handlers now
+run in an inner function within the UTF-8 locale guard, so rollback finishes
+before the caller's filename locale is restored. Standalone owned-path removal
+also guards Unicode enumeration/deletion and restores its caller's locale.
+Locale restoration is armed before switching locales. Exact-parent, subtree,
+stage-prefix and link checks remain enforced, including broken links.
+
+Rollback attempts every owned target and staging directory even when another
+removal fails. A removal error, warning or interruption produces a path-free
+message that cleanup could not be completed and partial outputs may remain;
+it does not report successful rollback. The existing local notification and
+sanitized event flow carry this result. No destination registry is introduced.
+
+**Verification:** An isolated replay of the committed pre-fix code reproduced
+one owned staging-directory leftover after a controlled verification failure
+under C. The fixed regression run passed 3,068 assertions with zero
+failures/errors/test warnings/skips, including all 704 snapshot assertions.
+C06 adds 206 assertions: 162 for Unicode recovery/publication and locale
+restoration, 14 for independent cleanup/containment and 30 for simulated OS
+removal failure. The normal test directory was run except `app-ui-baseline`;
+snapshot review/completion browser geometry checks remain included and pass.
+
+UTF-8 and C `LC_CTYPE` callers were exercised with a Unicode source workspace,
+Unicode destination and nested long filenames. Copy errors/interruption,
+verification errors, partial Both publication, and interrupts after the first
+or second native rename leave no owned outputs when removal is possible.
+Folder/Archive/Both success paths also restore the complete caller locale.
+Source and earlier finished-snapshot hashes remain unchanged; the Unicode
+workspace's operation lock is removed. A simulated OS refusal leaves exactly
+the blocked owned folder, still clears staging, and reports possible leftovers
+without exposing destinations or emitting completed/verified success.
+Publication fault hooks are asserted as reached, so ZIP worker permission
+errors cannot masquerade as rollback coverage.
+
+R 4.5.3 used the supported Windows UTF-8 baseline with explicit C filename-locale
+subcases and permitted local workers. The optional >4 GiB ZIP64 gate was not
+enabled. Scripts/logs/results stay ignored in `artifacts/local-checks/`.
+Neither real Che dataset changed. This closes C06 implementation verification;
+C10 acceptance and the C07–C09 usability tasks remain open.
 
 ## Optional usability follow-up
 

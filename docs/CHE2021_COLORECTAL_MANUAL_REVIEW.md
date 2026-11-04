@@ -949,3 +949,33 @@ Tests use disposable synthetic workspaces and display paths. Neither real Che
 dataset was modified. C06–C10 remain open, including fallback-locale rollback
 and the final acceptance replay. See C05 in the
 [remediation plan](CHE2021_COLORECTAL_REMEDIATION_PLAN.md).
+
+**C06 implementation follow-up — 2026-11-04:** ERR-03/F17 supplemental
+fallback-locale rollback now runs before restoring the caller's filename
+locale. Independent cleanup calls also guard Unicode traversal/deletion.
+Removal remains limited to exact owned targets and staging, with the existing
+parent/subtree/prefix/link checks. One blocked removal no longer prevents
+attempting the other owned paths. If removal fails, the local error flow reports
+that partial outputs may remain rather than claiming successful rollback;
+events retain only a sanitized reason.
+
+An isolated replay of the committed pre-fix snapshot implementation reproduced
+one leftover owned staging directory after a controlled verification failure
+under C. The original manual notes remain historical evidence. New checks use
+synthetic Unicode source/destination paths and nested filenames in UTF-8 and C
+filename locales, including partial Both-mode publication, interruptions after
+either rename, standalone cleanup and a simulated OS removal failure. Neither
+real Che dataset was modified. C07–C09 and the C10 acceptance gate remain open.
+See C06 in the [remediation plan](CHE2021_COLORECTAL_REMEDIATION_PLAN.md).
+
+Final C06 verification passed 3,068 assertions with zero failures/errors/test
+warnings/skips, including 704 snapshot assertions and 206 new C06 checks. The
+normal test directory was run except the larger `app-ui-baseline` journeys;
+snapshot review/completion browser checks pass. Both filename locales preserve
+the full caller locale and source/prior-copy hashes. No owned partial outputs
+or Unicode workspace lock remain when removal is possible. A simulated OS
+refusal preserves the blocked folder, still clears staging and reports possible
+leftovers with sanitized failure events rather than verified success. Real ZIP
+workers reached the publication fault hooks; the optional >4 GiB ZIP64 gate was
+not enabled. These are synthetic implementation checks, not a new human manual
+acceptance pass. The C10 gate remains open.

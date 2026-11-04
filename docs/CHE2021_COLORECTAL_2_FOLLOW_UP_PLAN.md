@@ -20,8 +20,8 @@ below are historical and do not supersede these November findings.
 the next implementation work is defined in the
 [November remediation plan](CHE2021_COLORECTAL_REMEDIATION_PLAN.md).
 C01–C06 address the remaining required fixes, C07–C09 cover optional usability
-follow-up, and C10 defines the final acceptance gate. C01–C05 are implemented
-with synthetic server/browser regression coverage; C06–C09 remain planned and C10
+follow-up, and C10 defines the final acceptance gate. C01–C06 are implemented
+with synthetic server/browser regression coverage; C07–C09 remain planned and C10
 remains open. The original F01–F17 implementation history below remains valid;
 its completion does not close the newly reproduced failures.
 **Basis:** Manual test notes, follow-up console-launch testing, current source inspection, file-size inventory, `pipeline.log`, and `pipeline_state.yaml` from `Che2021_Colorectal_2`.
@@ -1856,7 +1856,7 @@ evidence that this newly planned feature has been tested.
 
 The original implementation milestones below are historical. Current required
 remediation and acceptance status is tracked as C01–C10 in the
-[November plan](CHE2021_COLORECTAL_REMEDIATION_PLAN.md). C01–C05 implementation and
+[November plan](CHE2021_COLORECTAL_REMEDIATION_PLAN.md). C01–C06 implementation and
 synthetic verification are complete; the remaining C tasks are open.
 
 | Milestone | Status | Completion criterion |
@@ -1867,7 +1867,7 @@ synthetic verification are complete; the remaining C tasks are open.
 | 3 — Onboarding and progress | Complete | Standardization guide and batch output accepted |
 | 4 — Ordering, optional controls, status, cleanup, and performance | Complete | Natural ordering, safe single-sample clustering, clear status overview, flexible CNA Y thresholds, unambiguous subtree selection, safe archive cleanup, and responsiveness targets met |
 | 5 — Integration and CNA replay | November manual replay complete; remediation open | Preserve checked R03–R06/R08/subset evidence; complete C01–C04 and the C10 recovery/navigation replay |
-| 6 — Finished-dataset review snapshots | Normal manual workflow confirmed; C05 verified synthetically | Complete C06 fallback-locale rollback, then C10 snapshot acceptance |
+| 6 — Finished-dataset review snapshots | Normal manual workflow confirmed; C05/C06 verified synthetically | Complete C10 snapshot acceptance |
 
 ### 12.2 Task status
 
@@ -1898,7 +1898,7 @@ synthetic verification are complete; the remaining C tasks are open.
 | F15-R07 | CNA final save/export stall | Complete | 2026-10-30 | Finalization and optional export/re-export manually exercised; optimized exporter and interruption/retry regressions pass |
 | F15-R08 | Compact threshold helper text | Manual evidence recorded | 2026-11-03 | THR-01–04 checked; proposed defaults/tick alignment are separate C08 scope |
 | F09 subset addendum | Selectable-subset clustering | Manual evidence recorded; C02 recovery verified synthetically | 2026-11-03 | CLU-02/03 and RER-05–08 checked; C02 adds owned-attempt recovery after process death plus guarded legacy recovery/retry |
-| F17 | Verified finished-dataset review snapshots | Normal workflow confirmed; C05 verified synthetically | — | SNP-01–11 checked by reviewer; C05 wraps review paths and shows the relative base/resolved destination. C06 fallback-locale rollback and C10 acceptance remain open; see recorded mode/coverage limits |
+| F17 | Verified finished-dataset review snapshots | Normal workflow confirmed; C05/C06 verified synthetically | — | SNP-01–11 checked by reviewer; C05 wraps review paths and shows destination guidance; C06 guards Unicode rollback/restores filename locale and reports blocked cleanup. C10 acceptance remains open; see recorded mode/coverage limits |
 
 ### 12.3 Progress history
 

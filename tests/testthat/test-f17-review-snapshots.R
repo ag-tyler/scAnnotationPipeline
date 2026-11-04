@@ -1,5 +1,5 @@
-make_f17_workspace <- function(cna = FALSE) {
-  root <- tempfile("f17-"); dir.create(root)
+make_f17_workspace <- function(cna = FALSE, root = tempfile("f17-")) {
+  dir.create(root)
   dataset <- file.path(root, "datasets", "Dataset")
   processed <- file.path(dataset, "standardized")
   sample <- "Sample_A"
@@ -370,6 +370,147 @@ test_that("F17 UTF-8 and nested long filenames survive archive readback", {
   }))), "Snapshot failed")
   expect_identical(Sys.getlocale("LC_CTYPE"), previous)
   expect_false(any(startsWith(list.files(args$destination, all.files = TRUE), ".review-snapshot-")))
+})
+
+test_that("C06 Unicode rollback restores UTF-8 and C callers across failure and publication", {
+  workspace <- make_f17_workspace(root = tempfile(paste0("f17-", intToUtf8(0x6d4b), "-")))
+  on.exit(.snapshot_with_utf8(unlink(workspace$root, recursive = TRUE)), add = TRUE)
+  args <- workspace$args
+  args$destination <- file.path(workspace$root, paste0("DESTINATION_PRIVATE_MARKER_", intToUtf8(c(0x5ba1, 0x9605))))
+  fs::dir_create(args$destination)
+  nested <- file.path(args$results_dir_path, "Sample_A", "diagnostics", "nested_123")
+  fs::dir_create(nested)
+  fs::file_create(file.path(nested, paste0(intToUtf8(0x6d4b), "_", paste(rep("long_name_", 3), collapse = ""), ".png")))
+  source <- as.character(fs::dir_ls(args$dataset_dir_path, recurse = TRUE, type = "file", all = TRUE))
+  hashes <- tools::md5sum(source)
+  prior <- do.call(create_review_snapshot, args)$outputs
+  prior_files <- as.character(fs::dir_ls(prior, recurse = TRUE, type = "file", all = TRUE))
+  prior_hashes <- tools::md5sum(prior_files)
+  for (locale in c(Sys.getlocale("LC_CTYPE"), "C")) withr::with_locale(c(LC_CTYPE = locale), {
+    caller <- Sys.getlocale()
+    for (failure in c("copy_error", "copy_interrupt", "verification_error", "both_partial", "post_rename", "both_second_rename")) {
+      events <- list(); renames <- 0L; reached <- FALSE
+      injected <- list(options = snapshot_options("both"),
+        event_callback = function(...) events[[length(events) + 1L]] <<- list(...))
+      if (failure %in% c("copy_error", "copy_interrupt", "verification_error")) {
+        injected$progress_callback <- function(stage, ...) {
+          target <- if (failure == "verification_error") "folder_verification" else "copy"
+          if (stage == target) {
+            reached <<- TRUE
+            if (failure == "copy_interrupt") stop(structure(list(message = "DESTINATION_PRIVATE_MARKER interrupted"), class = c("interrupt", "condition")))
+            stop("DESTINATION_PRIVATE_MARKER simulated I/O failure")
+          }
+        }
+      } else injected$rename_output <- function(from, to) {
+        renames <<- renames + 1L
+        if (failure == "both_partial" && renames == 2L) { reached <<- TRUE; return(FALSE) }
+        moved <- file.rename(from, to)
+        if ((failure == "post_rename" && renames == 1L) || (failure == "both_second_rename" && renames == 2L)) {
+          reached <<- TRUE
+          stop(structure(list(message = "DESTINATION_PRIVATE_MARKER interrupted after rename"), class = c("interrupt", "condition")))
+        }
+        moved
+      }
+      error <- tryCatch(do.call(create_review_snapshot, c(args, injected)), error = identity)
+      expect_true(inherits(error, "snapshot_error"), info = paste(locale, failure))
+      expect_true(reached, info = paste("injected failure reached, not a ZIP worker/permission failure:", locale, failure))
+      expect_identical(Sys.getlocale(), caller)
+      expect_match(conditionMessage(error), if (grepl("interrupt|rename", failure)) "interrupted" else if (failure == "both_partial") "rolled back" else "Snapshot failed")
+      expect_false(grepl("DESTINATION_PRIVATE_MARKER", conditionMessage(error), fixed = TRUE))
+      .snapshot_with_utf8({
+        expect_setequal(basename(fs::dir_ls(args$destination, all = TRUE)), basename(prior))
+        expect_false(dir.exists(file.path(args$dataset_dir_path, ".storage-operation.lock")))
+        expect_identical(tools::md5sum(source), hashes)
+        expect_identical(tools::md5sum(prior_files), prior_hashes)
+      })
+      expect_false(any(vapply(events, function(event) identical(event[[1]], "completed"), logical(1))))
+      expect_false(grepl("DESTINATION_PRIVATE_MARKER", paste(capture.output(str(events)), collapse = ""), fixed = TRUE))
+    }
+    for (mode in c("folder", "archive", "both")) {
+      result <- do.call(create_review_snapshot, c(args, list(options = snapshot_options(mode))))
+      expect_identical(Sys.getlocale(), caller)
+      expect_length(result$outputs, if (mode == "both") 2L else 1L)
+      .snapshot_with_utf8({
+        expect_true(all(file.exists(result$outputs)))
+        expect_identical(tools::md5sum(source), hashes)
+        for (path in result$outputs) .snapshot_remove_owned(path, args$destination)
+      })
+      expect_identical(Sys.getlocale(), caller)
+    }
+  })
+})
+
+test_that("C06 independent Unicode cleanup preserves locale and refuses unrelated paths", {
+  root <- withr::local_tempdir()
+  parent <- file.path(root, intToUtf8(c(0x5ba1, 0x9605)))
+  fs::dir_create(parent)
+  unrelated <- file.path(root, "unrelated.txt")
+  writeLines("keep", unrelated)
+  prior <- tools::md5sum(unrelated)
+  for (locale in c(Sys.getlocale("LC_CTYPE"), "C")) withr::with_locale(c(LC_CTYPE = locale), {
+    caller <- Sys.getlocale()
+    stage <- .snapshot_with_utf8({
+      path <- tempfile(".review-snapshot-", tmpdir = parent)
+      fs::dir_create(file.path(path, intToUtf8(0x6d4b)))
+      fs::file_create(file.path(path, intToUtf8(0x6d4b), "payload.txt"))
+      path
+    })
+    expect_no_error(.snapshot_remove_owned(stage, parent, stage = TRUE))
+    expect_identical(Sys.getlocale(), caller)
+    expect_false(file.exists(stage))
+    expect_error(.snapshot_remove_owned(unrelated, parent, stage = TRUE), "Refusing")
+    expect_identical(Sys.getlocale(), caller)
+    expect_identical(tools::md5sum(unrelated), prior)
+    expect_true(dir.exists(parent))
+  })
+})
+
+test_that("C06 failed removal reports possible leftovers and still cleans other owned paths", {
+  workspace <- make_f17_workspace()
+  on.exit(.snapshot_with_utf8(unlink(workspace$root, recursive = TRUE)), add = TRUE)
+  args <- workspace$args
+  prior <- file.path(args$destination, "prior-user-file.txt")
+  writeLines("keep", prior)
+  prior_hash <- tools::md5sum(prior)
+  source <- as.character(fs::dir_ls(args$dataset_dir_path, recurse = TRUE, type = "file", all = TRUE))
+  source_hash <- tools::md5sum(source)
+  env <- new.env(parent = environment(create_review_snapshot))
+  env$create_review_snapshot <- create_review_snapshot
+  environment(env$create_review_snapshot) <- env
+  remove_owned <- .snapshot_remove_owned
+  removed <- character()
+  env$.snapshot_remove_owned <- function(path, parent, stage = FALSE) {
+    if (!stage) stop("DESTINATION_PRIVATE_MARKER removal denied by simulated OS error")
+    removed <<- c(removed, path)
+    remove_owned(path, parent, stage)
+  }
+  for (locale in c(Sys.getlocale("LC_CTYPE"), "C")) withr::with_locale(c(LC_CTYPE = locale), {
+    caller <- Sys.getlocale(); renames <- 0L; events <- list()
+    error <- tryCatch(do.call(env$create_review_snapshot, c(args, list(options = snapshot_options("both"),
+      rename_output = function(from, to) {
+        renames <<- renames + 1L
+        if (renames == 2L) return(FALSE)
+        file.rename(from, to)
+      }, event_callback = function(...) events[[length(events) + 1L]] <<- list(...)))), error = identity)
+    expect_s3_class(error, "snapshot_error")
+    expect_match(conditionMessage(error), "partial outputs may remain", fixed = TRUE)
+    expect_false(grepl("rolled back|DESTINATION_PRIVATE_MARKER", conditionMessage(error)))
+    expect_identical(Sys.getlocale(), caller)
+    expect_true(length(removed) > 0L)
+    expect_false(any(file.exists(removed)))
+    entries <- as.character(fs::dir_ls(args$destination, all = TRUE))
+    leftovers <- entries[basename(entries) != basename(prior)]
+    expect_length(leftovers, 1L)
+    expect_true(dir.exists(leftovers))
+    expect_identical(tools::md5sum(prior), prior_hash)
+    expect_identical(tools::md5sum(source), source_hash)
+    expect_false(any(vapply(events, function(event) identical(event[[1]], "completed"), logical(1))))
+    expect_match(events[[length(events)]][[2]]$reason, "partial outputs may remain", fixed = TRUE)
+    expect_identical(events[[length(events)]][[2]]$outputs_verified, FALSE)
+    expect_false(grepl("DESTINATION_PRIVATE_MARKER", paste(capture.output(str(events)), collapse = ""), fixed = TRUE))
+    remove_owned(leftovers, args$destination)
+    expect_identical(Sys.getlocale(), caller)
+  })
 })
 
 test_that("F17 rejects tampered staged output, publication races, and post-rename interrupts", {

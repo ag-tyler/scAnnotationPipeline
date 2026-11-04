@@ -14,8 +14,8 @@ REVIEW_SNAPSHOT_IMPLEMENTATION <- "review-snapshot-v1"
   previous <- Sys.getlocale("LC_CTYPE")
   change <- .Platform$OS.type == "windows" && !isTRUE(l10n_info()$`UTF-8`)
   if (change) {
-    if (!nzchar(Sys.setlocale("LC_CTYPE", ".UTF-8"))) .snapshot_stop("UTF-8 filename handling is unavailable in this R session.")
     on.exit(Sys.setlocale("LC_CTYPE", previous), add = TRUE)
+    if (!nzchar(Sys.setlocale("LC_CTYPE", ".UTF-8"))) .snapshot_stop("UTF-8 filename handling is unavailable in this R session.")
   }
   force(code)
 }
@@ -450,7 +450,12 @@ snapshot_readme <- function(dataset_id, dataset_config, inventory, summaries, ti
 
 # Rollback is limited to exact new outputs and the unique operation-owned stage.
 .snapshot_remove_owned <- function(path, parent, stage = FALSE) {
-  if (!file.exists(path)) return(invisible(TRUE))
+  # Also safe when called independently after the caller's locale was restored.
+  .snapshot_with_utf8(.snapshot_remove_owned_utf8(path, parent, stage))
+}
+
+.snapshot_remove_owned_utf8 <- function(path, parent, stage = FALSE) {
+  if (!file.exists(path) && !isTRUE(fs::is_link(path))) return(invisible(TRUE))
   parent <- .snapshot_real(parent)
   if (!identical(.snapshot_real(dirname(path)), parent) ||
       isTRUE(fs::is_link(path)) || !.snapshot_inside(.snapshot_real(path), parent) ||
@@ -487,7 +492,10 @@ create_review_snapshot <- function(
   # Inner scope ensures rollback/on.exit also happens INSIDE the sanitizing boundary.
   operation_started <- proc.time()[["elapsed"]]
   verified_publication <- FALSE
-  run <- function() .snapshot_with_utf8(withCallingHandlers({
+  cleanup_incomplete <- FALSE
+  # Give cleanup its own function scope INSIDE the locale guard. An on.exit
+  # registered in run() would execute after .snapshot_with_utf8 restored C.
+  work <- function() withCallingHandlers({
     options <- do.call(snapshot_options, options)
     readiness <- dataset_snapshot_readiness(pipeline_state, storage_state, paths_list,
       selected_config, selected_config_path, results_dir_path, dataset_dir_path,
@@ -548,14 +556,21 @@ create_review_snapshot <- function(
     pending_publication <- NULL
     committed <- FALSE
     on.exit({
+      # Try every owned target even if an OS error/link blocks another one.
+      # Raw filesystem exceptions can contain private destination paths.
+      cleanup <- function(path, stage = FALSE) tryCatch(withCallingHandlers(
+        .snapshot_remove_owned(path, parent, stage),
+        warning = function(w) stop(simpleError("Snapshot cleanup warning"))),
+        error = function(e) { cleanup_incomplete <<- TRUE; invisible(NULL) },
+        interrupt = function(e) { cleanup_incomplete <<- TRUE; invisible(NULL) })
       # Handle an interrupt after the native rename succeeded but before R
       # returned to record it. A moved-away source establishes ownership.
       if (!committed && !is.null(pending_publication) &&
           !file.exists(pending_publication[[1L]]) && file.exists(pending_publication[[2L]])) {
-        .snapshot_remove_owned(pending_publication[[2L]], parent)
+        cleanup(pending_publication[[2L]])
       }
-      if (!committed) for (path in published) .snapshot_remove_owned(path, parent)
-      .snapshot_remove_owned(stage, parent, stage = TRUE)
+      if (!committed) for (path in published) cleanup(path)
+      cleanup(stage, stage = TRUE)
     }, add = TRUE, after = FALSE)
     payload <- file.path(stage, "payload"); dir.create(payload)
     copied <- 0
@@ -641,7 +656,8 @@ create_review_snapshot <- function(
       verified = TRUE, cna_values_sample_count = length(inventory$cna_included)))
     report("completed", 1, "All requested outputs verified and published")
     list(outputs = published, file_count = nrow(records), payload_bytes = sum(records$size_bytes), warnings = unique(c(warnings, logging_warnings)))
-  }, warning = function(warning) .snapshot_stop("Snapshot I/O reported a warning; check destination permissions, available space and source stability.")))
+  }, warning = function(warning) .snapshot_stop("Snapshot I/O reported a warning; check destination permissions, available space and source stability."))
+  run <- function() .snapshot_with_utf8(work())
   outcome <- tryCatch(run(),
   interrupt = function(e) structure(list(message = if (verified_publication) {
     "Snapshot interrupted after verified publication; completed outputs remain in the chosen destination."
@@ -649,7 +665,9 @@ create_review_snapshot <- function(
   error = identity)
   if (inherits(outcome, "error")) {
     # Only messages emitted by our own path-free validation are safe to expose.
-    safe <- if (inherits(outcome, c("snapshot_error", "snapshot_interrupt"))) {
+    safe <- if (cleanup_incomplete) {
+      "Snapshot cleanup could not be completed; operation-owned partial outputs may remain in the chosen destination. Inspect it before retrying."
+    } else if (inherits(outcome, c("snapshot_error", "snapshot_interrupt"))) {
       conditionMessage(outcome)
     } else "Snapshot failed; check source stability, destination permissions and free space, then retry. No scientific files were changed."
     if (is.function(event_callback)) tryCatch(

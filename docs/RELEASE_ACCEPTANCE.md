@@ -97,6 +97,32 @@ completion layout (SNP-06), source-preservation and destination-free provenance
 checks pass. Supported Windows UTF-8 was used; the optional >4 GiB ZIP64 gate
 was not enabled. Local diagnostic outputs are ignored in `artifacts/local-checks/`.
 
+**C06 implementation follow-up (2026-11-04):** Snapshot rollback now completes
+within the UTF-8 filename-locale scope, and standalone owned-path cleanup also
+guards Unicode traversal/deletion. The caller's locale is restored on exit.
+Cleanup retains exact ownership/containment/link checks, attempts the remaining
+owned paths after a removal fails, and reports possible partial outputs through
+the existing sanitized error/event flow. No destination is added to provenance
+or state. An isolated pre-fix replay reproduced a leftover stage under C;
+synthetic regression checks cover Unicode workspace/destination paths, nested
+filenames, Both-mode partial publication and interruptions after either rename.
+Simulated OS removal failure verifies honest failure reporting and preservation
+of prior files. No real dataset changed. C01–C06 implementation is complete;
+the C10 acceptance gate and C07–C09 usability work remain open.
+
+Final C06 verification passed 3,068 assertions with zero failures/errors/test
+warnings/skips, including all 704 snapshot assertions and 206 new C06 checks.
+The normal test directory was run except `app-ui-baseline`; snapshot layout
+browser checks are included. UTF-8 and C filename-locale cases preserve the
+complete caller locale, source/prior-copy hashes and exact cleanup containment.
+When removal is possible no owned partial output or Unicode workspace lock
+remains. Simulated OS refusal leaves only the blocked folder, still clears
+staging and emits a sanitized failure with `outputs_verified = FALSE`.
+Publication fault hooks confirm the real archive workers reached the intended
+failure stage. Supported Windows UTF-8 was used for the suite baseline; the
+optional >4 GiB ZIP64 gate was not enabled. Diagnostics remain ignored under
+`artifacts/local-checks/`. This does not close the C10 manual acceptance replay.
+
 This document defines the portable Milestone 7 release gate. Every automated
 check uses committed code/fixtures or deterministic synthetic data generated in
 a temporary directory. No named local dataset, private biological resource, or

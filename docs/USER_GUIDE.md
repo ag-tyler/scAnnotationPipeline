@@ -824,7 +824,11 @@ rejected with a request for a shorter destination/name, not silently truncated.
 Folder names are unique and existing outputs are never overwritten.
 
 Ordinary errors or R interrupts roll back only this operation's new staging and
-partial publication; the source and previous copies stay intact. A forced OS/R
+partial publication; the source and previous copies stay intact. Unicode cleanup
+uses UTF-8 filename handling and then restores the session's previous locale.
+If an OS error prevents removal, the app reports that cleanup could not be
+completed and partial outputs may remain; inspect the chosen destination before
+retrying. A forced OS/R
 process termination can leave hidden `.review-snapshot-*` staging directories;
 these are not successful exports. Inspect only the known destination if recovery
 is needed. Do not manually delete source/cache directories to resolve an export.
