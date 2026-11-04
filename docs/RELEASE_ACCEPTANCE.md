@@ -147,6 +147,31 @@ Supported Windows UTF-8 was used; the optional >4 GiB ZIP64 gate was not enabled
 Diagnostics remain ignored under `artifacts/local-checks/`. This does not close
 the C10 human acceptance replay.
 
+**C08 implementation follow-up (2026-11-04):** CNA cut controls now initialize
+per dataset/generation/sample/base computation. Fresh samples use k = 7 within
+tree bounds; current saved selections restore exact k/IDs without inheriting
+another sample's edit. The navigator waits for initialization acknowledgment,
+and changing k away/back clears the old selection. Heatmap reuse is retained.
+Unsaved Y views start at 0.5 instead of the former data-derived maximum with a
+floor of 1. Saved limits/thresholds retain their values, with expanded bounds
+and finer legacy precision where needed. Tick spacing updates with linked
+bounds; persistent styling suppresses fractional minor ticks. Equal-Y and
+strict-X classification rules are unchanged. No real dataset changed; C09 and
+the C10 human acceptance gate remain open.
+
+Final C08 verification passed 3,151 regression plus 598 browser assertions with
+zero failures/errors/test warnings/skips in combined results. The regression
+and browser runs, with a focused rerun of affected C08/baseline/C03 journeys,
+cover the normal test directory. C08 adds 39 portable and 471 browser assertions
+for sample defaults/exact saved cuts, cut changes, saved precision/expanded
+bounds, 0.5 initial views, clipping, save/reload, equal-Y/strict-X behavior and
+aligned major ticks after linked updates. Multi-subclone classifications and
+processed-file hashes stay unchanged. C03 retains one heavy heatmap build;
+existing screenshot baselines pass without image changes. Tests used supported
+Windows UTF-8 and synthetic inputs only. The optional >4 GiB ZIP64 gate was not
+enabled. Diagnostics remain ignored in `artifacts/local-checks/`; C09 and C10
+human acceptance remain open.
+
 This document defines the portable Milestone 7 release gate. Every automated
 check uses committed code/fixtures or deterministic synthetic data generated in
 a temporary directory. No named local dataset, private biological resource, or

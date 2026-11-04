@@ -435,6 +435,129 @@ make_cna_navigation_ui_fixture <- function(test_app) {
   invisible(list(dataset = dataset, samples = samples, config = config))
 }
 
+test_that("C08 browser restores sample cuts and precise threshold controls without changing assignments", {
+  skip_if_not_installed("shinytest2")
+  browser <- tryCatch(chromote::find_chrome(), error = function(e) NULL)
+  skip_if(is.null(browser) || !nzchar(browser), "no Chromium browser is configured")
+  withr::local_envvar(NOT_CRAN = "true")
+  test_app <- make_ui_baseline_app(normalizePath(testthat::test_path("..", ".."), winslash = "/"))
+  fx <- make_cna_navigation_ui_fixture(test_app); dataset <- fx$dataset
+  selected_path <- file.path(dataset, "selected_config.yaml")
+  selected <- yaml::read_yaml(selected_path); state <- load_pipeline_state(dataset)
+  original <- fx$samples[[1]]; unsaved <- "Z_omitted"; fresh_thresholds <- "Z_reset"
+  selected$cna_ward_ref_cluster[[original]] <- list(list(k = 12L, cluster = 1L), list(k = 12L, cluster = 2L))
+  selected$cna_ward_ref_cluster[[unsaved]] <- NULL
+  selected$cna_ward_ref_cluster[[fresh_thresholds]] <- list(list(k = 4L, cluster = 1L))
+  selected$cna_thresholds[[original]] <- list(
+    list(m_x = 0.43, nm_x = 0.4, m_y = 0.163, nm_y = 0.163, y_max = 0.47),
+    list(m_x = 0.7, nm_x = 0.2, m_y = 4.137, nm_y = 4.137, y_max = 0.47))
+  for (prefix in c("cna_matrix_", "hclust_")) {
+    cache_save_data(cache_load_data(paste0(prefix, original, ".qs2"), dataset), paste0(prefix, unsaved, ".qs2"), dataset)
+  }
+  for (step in c("cna_configuration", "cna_compute")) state <- transition_pipeline_step(state, step, "completed", unsaved,
+    details = list(omitted_by_user = FALSE), force = TRUE)
+  state <- reset_pipeline_steps(state, c("cna_cluster_selection", "cna_signal_correlation", "cna_thresholds", "cna_assignment"), unsaved)
+  for (sample in c(original, fresh_thresholds)) {
+    cells <- cache_load_data(paste0("cells_filt_clust_res_0.5_", sample, ".qs2"), dataset)
+    for (i in seq_along(selected$cna_ward_ref_cluster[[sample]])) {
+      signal <- cells[, .(cell_name, sample, ct = ifelse(is.na(cell_type), "Unassigned", cell_type),
+        cna_cor = ifelse(!is.na(cell_type) & cell_type == "B_cell", 0.1, 0.8),
+        cna_signal = ifelse(!is.na(cell_type) & cell_type == "B_cell", 0.05, 0.3))]
+      signal$cna_signal[[nrow(signal)]] <- 1.2
+      cache_save_data(signal, paste0("cna_sig_cor_", sample, "_subclone_", i, ".qs2"), dataset)
+    }
+    state <- transition_pipeline_step(state, "cna_signal_correlation", "completed", sample, force = TRUE)
+  }
+  state <- transition_pipeline_step(state, "cna_thresholds", "completed", original, force = TRUE)
+  yaml::write_yaml(selected, selected_path); save_pipeline_state_at_path(state, file.path(dataset, "pipeline_state.yaml"))
+  before_assignment <- apply_cna_thresholds(original, dataset, selected, save = FALSE)
+  scientific <- list.files(file.path(dataset, "processed_data"), recursive = TRUE, full.names = TRUE)
+  hashes <- tools::md5sum(scientific)
+  app <- shinytest2::AppDriver$new(app_dir = test_app, name = "c08-controls", seed = 3988, load_timeout = 60000, timeout = 60000)
+  on.exit(app$stop(), add = TRUE)
+  app$set_inputs(dataset_choice = "Synthetic_Demo", wait_ = FALSE)
+  app$click("btn_load_dataset", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  app$set_inputs(main_nav = "cna_tab", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  open_cut <- function(index) {
+    app$set_inputs(cna_sample_idx = as.character(index), wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+    app$click("btn_cna_go_malig_clust", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+    app$wait_for_js("$('#cna_selected_clusters input').length === $('#cna_k_clusters').data('ionRangeSlider').result.from", timeout = 60000)
+    app$wait_for_idle(timeout = 60000)
+  }
+  open_cut(1)
+  expect_equal(app$get_value(input = "cna_k_clusters"), 12)
+  expect_setequal(app$get_value(input = "cna_selected_clusters"), c("1", "2"))
+  app$set_inputs(cna_k_clusters = 13, wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  expect_length(app$get_value(input = "cna_selected_clusters"), 0L)
+  app$set_inputs(cna_k_clusters = 12, wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  expect_length(app$get_value(input = "cna_selected_clusters"), 0L)
+  open_cut(2)
+  expect_equal(app$get_value(input = "cna_k_clusters"), 7)
+  expect_length(app$get_value(input = "cna_selected_clusters"), 0L)
+  app$set_inputs(cna_k_clusters = 9, wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  open_cut(3)
+  expect_equal(app$get_value(input = "cna_k_clusters"), 4)
+  expect_equal(app$get_value(input = "cna_selected_clusters"), "1")
+  app$click("btn_cna_go_thresholds", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  expect_equal(app$get_value(input = "cna_shared_ymax"), 0.5)
+  expect_match(app$get_text("#cna_y_clip_notice"), "clips CNA signals above", fixed = TRUE)
+  open_cut(1)
+  expect_equal(app$get_value(input = "cna_k_clusters"), 12)
+  expect_setequal(app$get_value(input = "cna_selected_clusters"), c("1", "2"))
+  app$click("btn_cna_go_thresholds", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  expect_equal(app$get_value(input = "cna_shared_ymax"), 0.47)
+  expect_equal(app$get_value(input = "cna_thresh_mx_1"), 0.43)
+  expect_equal(app$get_value(input = "cna_thresh_nmx_1"), 0.4)
+  expect_equal(app$get_value(input = "cna_thresh_my_1"), 0.163)
+  expect_equal(app$get_value(input = "cna_thresh_nmy_1"), 0.163)
+  expect_equal(app$get_value(input = "cna_thresh_my_2"), 4.137)
+  expect_gte(app$get_js("$('#cna_thresh_my_2').data('ionRangeSlider').options.max"), 4.137)
+  check_ticks <- function() {
+    metrics <- app$get_js("Array.from(document.querySelectorAll('.cna-threshold-controls input.js-range-slider')).map(el => {
+      const slider = $(el).data('ionRangeSlider'); const o = slider.options;
+      return {min: o.min, max: o.max, step: o.step, aligned: slider.cnaAlignedTicks,
+        ticks: Array.from(slider.$cache.grid[0].querySelectorAll('.irs-grid-text')).map(node => ({
+          value: Number(node.textContent.replace(/,/g, '')), position: parseFloat(node.style.left)})),
+        minorVisible: Array.from(slider.$cache.grid[0].querySelectorAll('.irs-grid-pol.small')).some(node => getComputedStyle(node).display !== 'none')};
+    })")
+    expect_length(metrics, 9L)
+    for (metric in metrics) {
+      expect_true(metric$aligned)
+      expect_false(metric$minorVisible)
+      expect_true(length(metric$ticks) > 0L)
+      for (tick in metric$ticks) {
+        steps <- (tick$value - metric$min) / metric$step
+        expect_equal(steps, round(steps), tolerance = 1e-6)
+        expect_equal(tick$value, metric$min + tick$position / 100 * (metric$max - metric$min), tolerance = 1e-4)
+      }
+    }
+  }
+  check_ticks()
+  app$set_inputs(cna_thresh_nmx_1 = 0.35, cna_thresh_my_1 = 0.2, wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  check_ticks()
+  app$set_inputs(cna_thresh_nmx_1 = 0.4, cna_thresh_my_1 = 0.163, cna_shared_ymax = 0.2, wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  app$click("btn_cna_save_thresholds", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  saved <- yaml::read_yaml(selected_path)
+  for (i in 1:2) {
+    for (field in c("m_x", "nm_x", "m_y", "nm_y")) expect_equal(saved$cna_thresholds[[original]][[i]][[field]], selected$cna_thresholds[[original]][[i]][[field]])
+    expect_equal(saved$cna_thresholds[[original]][[i]]$y_max, 0.2)
+  }
+  expect_identical(apply_cna_thresholds(original, dataset, saved, save = FALSE), before_assignment)
+  expect_identical(tools::md5sum(scientific), hashes)
+  first_logs <- app$get_logs(); app$stop()
+  app <- shinytest2::AppDriver$new(app_dir = test_app, name = "c08-controls-reload", seed = 3988, load_timeout = 60000, timeout = 60000)
+  app$set_inputs(dataset_choice = "Synthetic_Demo", wait_ = FALSE)
+  app$click("btn_load_dataset", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  app$set_inputs(main_nav = "cna_tab", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  app$click("btn_cna_go_thresholds", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  expect_equal(app$get_value(input = "cna_shared_ymax"), 0.2)
+  expect_equal(app$get_value(input = "cna_thresh_my_2"), 4.137)
+  expect_equal(app$get_value(input = "cna_thresh_my_1"), app$get_value(input = "cna_thresh_nmy_1"))
+  logs <- rbind(first_logs, app$get_logs())
+  errors <- logs[logs$level == "error" | grepl("Error|Execution halted", logs$message, ignore.case = TRUE), , drop = FALSE]
+  expect_equal(nrow(errors), 0L, info = paste(errors$message, collapse = "\n"))
+})
+
 test_that("C07 browser omits CNA from analysis, preserves outputs and reverses through configuration", {
   skip_if_not_installed("shinytest2")
   browser <- tryCatch(chromote::find_chrome(), error = function(e) NULL)
@@ -1035,8 +1158,10 @@ test_that("C03 browser keeps status and unavailable samples free of main heatmap
   expect_identical(app$get_value(input = "cna_main_views"), "cna_view_default")
   started <- proc.time()[["elapsed"]]
   app$click("btn_cna_go_malig_clust", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
-  warm <- proc.time()[["elapsed"]] - started
   expect_equal(sum(trace() == "heatmap"), 1)
+  app$wait_for_js("$('#cna_selected_clusters input:checked').length === 1", timeout = 60000)
+  app$wait_for_idle(timeout = 60000)
+  warm <- proc.time()[["elapsed"]] - started
   expect_equal(app$get_value(input = "cna_selected_clusters"), "1")
   app$click("btn_cna_status", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
   expect_identical(app$get_value(input = "cna_main_views"), "cna_view_default")

@@ -105,12 +105,12 @@ register_cna_threshold_server <- function(input, output, session, state, context
                  card(
                    card_header(paste("Set Thresholds - Subclone", i, "—", cluster_label)),
                    card_body(
-                     helpText("Y thresholds use fixed 0.01 precision. The shared axis above changes only the visible range."),
+                     helpText("Y thresholds use 0.01 increments, with finer precision when needed to retain saved values. The shared axis changes only the visible range."),
                      cna_threshold_guidance_ui(),
-                     sliderInput(paste0("cna_thresh_mx_", i), "Malignant X (m_x):", min = -1, max = 1, value = def_mx, step = 0.05),
-                     sliderInput(paste0("cna_thresh_my_", i), "Malignant Y (m_y):", min = 0, max = axis$control_max, value = def_my, step = 0.01),
-                     sliderInput(paste0("cna_thresh_nmx_", i), "Non-Malignant X (nm_x):", min = -1, max = 1, value = def_nmx, step = 0.05),
-                     sliderInput(paste0("cna_thresh_nmy_", i), "Non-Malignant Y (nm_y):", min = 0, max = axis$control_max, value = def_nmy, step = 0.01)
+                     cna_threshold_slider(paste0("cna_thresh_mx_", i), "Malignant X (m_x):", min = -1, max = 1, value = def_mx, step = 0.05),
+                     cna_threshold_slider(paste0("cna_thresh_my_", i), "Malignant Y (m_y):", min = 0, max = axis$control_max, value = def_my, step = 0.01),
+                     cna_threshold_slider(paste0("cna_thresh_nmx_", i), "Non-Malignant X (nm_x):", min = -1, max = 1, value = def_nmx, step = 0.05),
+                     cna_threshold_slider(paste0("cna_thresh_nmy_", i), "Non-Malignant Y (nm_y):", min = 0, max = axis$control_max, value = def_nmy, step = 0.01)
                    )
                  )
           )
@@ -119,11 +119,11 @@ register_cna_threshold_server <- function(input, output, session, state, context
     })
 
     # Wrap tabs and add the unified save button at the bottom
-    tagList(
+    div(class = "cna-threshold-controls",
       card(
         card_header("Shared scatter-plot scale"),
         card_body(
-          sliderInput(
+          cna_threshold_slider(
             "cna_shared_ymax",
             "Y-axis maximum:",
             min = 0.1,
@@ -194,15 +194,17 @@ register_cna_threshold_server <- function(input, output, session, state, context
     # As Non-Malignant X moves, push the floor of Malignant X up
     observeEvent(input[[paste0("cna_thresh_nmx_", i)]], {
       req(input[[paste0("cna_thresh_nmx_", i)]])
+      x_step <- cna_threshold_control_step(c(input[[paste0("cna_thresh_mx_", i)]], input[[paste0("cna_thresh_nmx_", i)]]), 0.05)
       updateSliderInput(session, paste0("cna_thresh_mx_", i),
-                        min = input[[paste0("cna_thresh_nmx_", i)]] + 0.05)
+                        min = input[[paste0("cna_thresh_nmx_", i)]] + x_step, step = x_step)
     })
 
     # As Malignant X moves, push the ceiling of Non-Malignant X down
     observeEvent(input[[paste0("cna_thresh_mx_", i)]], {
       req(input[[paste0("cna_thresh_mx_", i)]])
+      x_step <- cna_threshold_control_step(c(input[[paste0("cna_thresh_mx_", i)]], input[[paste0("cna_thresh_nmx_", i)]]), 0.05)
       updateSliderInput(session, paste0("cna_thresh_nmx_", i),
-                        max = input[[paste0("cna_thresh_mx_", i)]] - 0.05)
+                        max = input[[paste0("cna_thresh_mx_", i)]] - x_step, step = x_step)
     })
 
     # --- Y-Axis Thresholds ---
@@ -213,13 +215,14 @@ register_cna_threshold_server <- function(input, output, session, state, context
       m_y <- input[[paste0("cna_thresh_my_", i)]]
       req(!is.null(nm_y), !is.null(m_y))
       normalized <- normalize_cna_y_threshold_pair(m_y, nm_y, changed = "nm_y")
+      y_step <- cna_threshold_control_step(c(m_y, nm_y), 0.01)
       if (normalized$m_y > m_y) {
         updateSliderInput(
           session, paste0("cna_thresh_my_", i),
-          min = nm_y, value = normalized$m_y
+          min = nm_y, value = normalized$m_y, step = y_step
         )
       } else {
-        updateSliderInput(session, paste0("cna_thresh_my_", i), min = nm_y)
+        updateSliderInput(session, paste0("cna_thresh_my_", i), min = nm_y, step = y_step)
       }
     })
 
@@ -229,13 +232,14 @@ register_cna_threshold_server <- function(input, output, session, state, context
       nm_y <- input[[paste0("cna_thresh_nmy_", i)]]
       req(!is.null(m_y), !is.null(nm_y))
       normalized <- normalize_cna_y_threshold_pair(m_y, nm_y, changed = "m_y")
+      y_step <- cna_threshold_control_step(c(m_y, nm_y), 0.01)
       if (normalized$nm_y < nm_y) {
         updateSliderInput(
           session, paste0("cna_thresh_nmy_", i),
-          max = m_y, value = normalized$nm_y
+          max = m_y, value = normalized$nm_y, step = y_step
         )
       } else {
-        updateSliderInput(session, paste0("cna_thresh_nmy_", i), max = m_y)
+        updateSliderInput(session, paste0("cna_thresh_nmy_", i), max = m_y, step = y_step)
       }
     })
   })

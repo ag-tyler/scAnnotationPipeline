@@ -3,6 +3,7 @@
 register_cna_cluster_server <- function(input, output, session, state, context) {
   rv <- state
   cluster_ui_context <- reactiveVal(NULL)
+  cut_ui_context <- reactiveVal(NULL)
   cna_cache_context <- reactiveVal(NULL)
   last_static_plots <- NULL
   # Track only the base computation identity, rather than invalidating the
@@ -11,6 +12,7 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
     if (is.null(rv$pipeline_state) || is.null(rv$paths_list)) {
       last_static_plots <<- NULL
       cna_cache_context(NULL)
+      cut_ui_context(NULL)
       return()
     }
     req(input$cna_sample_idx)
@@ -26,6 +28,7 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
     if (!identical(last_static_plots$key$dataset, key$dataset) ||
         !identical(last_static_plots$key$generation, key$generation)) last_static_plots <<- NULL
     previous_selection <- isolate(cluster_ui_context())
+    if (!identical(isolate(cut_ui_context())$key, key)) cut_ui_context(NULL)
     if (!identical(previous_selection$dataset, key$dataset) ||
         !identical(previous_selection$generation, key$generation) ||
         !identical(previous_selection$sample_name, sample)) cluster_ui_context(NULL)
@@ -155,9 +158,27 @@ register_cna_cluster_server <- function(input, output, session, state, context) 
   # One lightweight identity/order mapping feeds the plot bar, navigator, save
   # confirmation, and persisted selection for each debounced sample/k context.
   cna_cluster_identity <- reactive({
-    require_cna_analysis_view(rv, input, "cna_view_select_malignant", "cna_compute")
-    k_val <- k_debounced()
+    sample <- require_cna_analysis_view(rv, input, "cna_view_select_malignant", "cna_compute")
     static <- cna_static_plots()
+    key <- cna_cache_context()
+    cut_context <- isolate(cut_ui_context())
+    if (!identical(cut_context$key, key)) {
+      settings <- cna_cluster_cut_settings(length(static$hc$labels),
+        isolate(rv$live_selected_config$cna_ward_ref_cluster[[sample]]),
+        identical(isolate(get_pipeline_step(rv$pipeline_state, "cna_cluster_selection", sample))$status, "completed"))
+      updateSliderInput(session, "cna_k_clusters", min = settings$min, max = settings$max, value = settings$selected)
+      cut_context <- list(key = key, awaiting_k = settings$selected)
+      cut_ui_context(cut_context)
+    }
+    k_val <- k_debounced()
+    if (!is.null(cut_context$awaiting_k)) {
+      # Do not interpret a previous sample's slider/cluster IDs while the
+      # browser is still acknowledging this sample's initial cut.
+      req(identical(as.integer(input$cna_k_clusters), cut_context$awaiting_k),
+        identical(as.integer(k_val), cut_context$awaiting_k))
+      cut_context$awaiting_k <- NULL
+      cut_ui_context(cut_context)
+    }
     req(k_val, static)
     cna_cluster_identity_map(static$hc, k_val)
   })

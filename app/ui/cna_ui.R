@@ -1,5 +1,41 @@
 # Copy-number alteration analysis UI.
 
+cna_threshold_slider <- function(inputId, label, min, max, value, step) {
+  # Older saved values may need finer precision than today's default controls.
+  min <- min(min, value)
+  max <- max(max, value)
+  shiny::sliderInput(inputId, label, min, max, value,
+    step = cna_threshold_control_step(c(min, max, value), step))
+}
+
+cna_control_ticks_ui <- function() {
+  shiny::singleton(shiny::tagList(
+    shiny::tags$style(".cna-threshold-controls .irs-grid-pol.small, .cna-cut-controls .irs-grid-pol.small { display: none; }"),
+    shiny::tags$script(shiny::HTML("(function () {
+      $(document).on('shiny:bound.cnaThresholdTicks', function (event) {
+        const el = event.target;
+        if (!/^cna_(k_clusters$|thresh_|shared_ymax$)/.test(el.id || '')) return;
+        const slider = $(el).data('ionRangeSlider');
+        if (!slider || slider.cnaAlignedTicks) return;
+        slider.cnaAlignedTicks = true;
+        const update = slider.update;
+        slider.update = function (changes) {
+          const options = Object.assign({}, this.options, changes);
+          let steps = (options.max - options.min) / options.step;
+          if (Math.abs(steps - Math.round(steps)) < 1e-7) steps = Math.round(steps);
+          const stride = Math.max(1, Math.ceil(steps / 10));
+          // Major ticks are whole selectable increments. Recompute after linked
+          // min/max updates; the default widget retains its previous grid count.
+          return update.call(this, Object.assign({}, changes, {
+            grid_snap: false, grid_num: steps > 0 ? steps / stride : 1
+          }));
+        };
+        slider.update({});
+      });
+    })();"))
+  ))
+}
+
 
 cna_threshold_guidance_ui <- function() {
   tags$div(
@@ -113,6 +149,7 @@ cna_panel <- function(sample_choices) {
     page_sidebar(
       sidebar = sidebar(
         title = "CNA Pipeline Controls",
+        cna_control_ticks_ui(),
         selectInput(
           "cna_sample_idx",
           "1. Select Sample:",
@@ -216,14 +253,14 @@ cna_panel <- function(sample_choices) {
               card(
                 card_header("Cluster Settings"),
                 card_body(
-                  sliderInput(
+                  htmltools::tagAppendAttributes(sliderInput(
                     "cna_k_clusters",
                     "Number of Clusters (k):",
                     min = 2,
                     max = 20,
                     value = 7,
                     step = 1
-                  ),
+                  ), class = "cna-cut-controls"),
                   hr(),
                   helpText("Stable Cluster IDs are used in the saved configuration and later threshold views. The navigator orders them by their actual position in the heatmap bar."),
                   uiOutput("cna_cluster_navigator_ui"),

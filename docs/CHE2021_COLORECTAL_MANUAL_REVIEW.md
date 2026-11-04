@@ -1007,3 +1007,37 @@ context guards, selection independent of the annotation tab, and no unavailable
 cache reads. Retained-file hashes and other-sample/upstream records remain
 unchanged. Existing browser journeys and screenshot baselines pass without an
 image update. The optional >4 GiB ZIP64 gate was not enabled; C10 remains open.
+
+**C08 implementation follow-up — 2026-11-04:** SEL-02/03 and THR-01–04 now
+have per-sample cut initialization and revised display controls. Fresh cuts
+start at k = 7 within the current tree's range; current saved cuts restore exact
+k/IDs. Initialization waits for the browser/debounced value before interpreting
+IDs. Switching samples resets initialization, while changing k away/back clears
+selection under the existing exact-cut identity policy. Unrelated status
+updates no longer restore k over a user's edit.
+
+The previous unsaved Y maximum was the largest finite signal rounded up to
+0.1, with a floor of 1. Unsaved views now start at 0.5. Data-informed range
+expansion and saved display limits remain; saved threshold values retain their
+precision, including values requiring finer steps or expanded bounds. Major
+ticks follow selectable increments after linked-range updates, and fractional
+minor ticks are hidden. The persistent tick setup survives sample/tab rebuilds.
+Equal-Y and strict-X validation/classification rules are unchanged.
+
+Synthetic checks compare multi-subclone assignments across clipped and saved
+scales and exercise real controls, save and reload. Original manual notes
+remain historical evidence; neither real Che dataset was modified. C09 and the
+C10 human acceptance gate remain open. See C08 in the
+[remediation plan](CHE2021_COLORECTAL_REMEDIATION_PLAN.md).
+
+Final C08 verification passed 3,151 regression plus 598 browser assertions with
+zero failures/errors/test warnings/skips in combined full/focused runs covering
+the normal test directory. C08 adds 39 portable and 471 browser assertions.
+The browser checks saved/unsaved sample switches, exact cut/selection restore,
+changing k away/back, the 0.5 default, legacy precision/expanded controls,
+equal-Y thresholds, truthful clipping, saving a 0.2 view and reload. Major tick
+labels and positions are checked against selectable increments after linked
+updates. Multi-subclone classifications and processed-file hashes are
+unchanged. Existing screenshot baselines pass without image updates; C03
+still builds one heavy heatmap across warm re-entry/k changes. The optional
+>4 GiB ZIP64 gate was not enabled. C09/C10 remain open.

@@ -1481,6 +1481,15 @@ validate_cna_threshold_pair <- function(m_x, m_y, nm_x, nm_y) {
 }
 
 
+cna_threshold_control_step <- function(values, nominal_step) {
+  values <- as.numeric(values)
+  values <- values[is.finite(values)]
+  candidates <- unique(c(nominal_step, 10^-(0:12)))
+  candidates <- sort(candidates[candidates <= nominal_step], decreasing = TRUE)
+  for (step in candidates) if (all(abs(values / step - round(values / step)) < 1e-7)) return(step)
+  min(candidates)
+}
+
 cna_signal_axis_summary <- function(
   signal_tables,
   saved_thresholds = NULL,
@@ -1516,7 +1525,7 @@ cna_signal_axis_summary <- function(
   }
 
   recommended <- max(minimum_limit, ceiling(data_max / increment) * increment)
-  selected <- if (length(saved_limits) == 0L) recommended else max(saved_limits)
+  selected <- if (length(saved_limits) == 0L) 0.5 else max(saved_limits)
   control_max <- max(3, recommended, selected, saved_y_thresholds, na.rm = TRUE)
   list(
     data_max = data_max,

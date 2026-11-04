@@ -200,7 +200,8 @@ test_that("C01 CNA cache identity changes with datasets, not unrelated downstrea
   server <- function(input, output, session) fixture$register_cna_cluster_server(input, output, session, state, fixture$context)
   shiny::testServer(server, {
     state$cna_view_context <- cna_analysis_context(state, "shared", "cna_view_select_malignant")
-    session$setInputs(main_nav = "cna_tab", cna_main_views = "cna_view_select_malignant", cna_sample_idx = "1", cna_k_clusters = 2)
+    # A fresh three-cell tree initializes to min(7, n_cells).
+    session$setInputs(main_nav = "cna_tab", cna_main_views = "cna_view_select_malignant", cna_sample_idx = "1", cna_k_clusters = 3)
     output$cna_cluster_navigator_ui
     expect_length(reads, 2)
     state$pipeline_state <- transition_pipeline_step(state$pipeline_state,

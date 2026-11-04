@@ -270,9 +270,6 @@ register_cna_status_server <- function(input, output, session, state, context) {
     if (step2_done) {
       shinyjs::enable("btn_cna_compute_sig_cor")
 
-      saved_k <- ward_refs[[1]]$k
-
-      updateSliderInput(session, "cna_k_clusters", value = saved_k)
     }
     status_html <- c(
       status_html,

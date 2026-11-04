@@ -1036,6 +1036,19 @@ cna_cluster_identity_map <- function(hclust_result, k) {
 }
 
 
+cna_cluster_cut_settings <- function(n_cells, saved_refs = NULL, saved_completed = FALSE) {
+  n_cells <- as.integer(n_cells)
+  if (length(n_cells) != 1L || is.na(n_cells) || n_cells < 2L) stop("CNA cuts require at least two clustered cells.", call. = FALSE)
+  saved_k <- if (isTRUE(saved_completed) && length(saved_refs)) saved_refs[[1]]$k else NULL
+  if (!is.null(saved_k) && (length(saved_k) != 1L || !is.finite(saved_k) ||
+      saved_k != floor(saved_k) || saved_k < 2 || saved_k > n_cells ||
+      any(vapply(saved_refs, function(ref) !identical(as.numeric(ref$k), as.numeric(saved_k)), logical(1))))) {
+    stop("The saved CNA cut does not match the current tree; review the saved configuration before selecting clusters.", call. = FALSE)
+  }
+  list(min = 2L, max = min(n_cells, max(20L, saved_k)),
+    selected = if (is.null(saved_k)) min(7L, n_cells) else as.integer(saved_k))
+}
+
 reconcile_cna_cluster_selection <- function(
   current_selection,
   previous_context,

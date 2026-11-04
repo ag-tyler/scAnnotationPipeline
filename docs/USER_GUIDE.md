@@ -660,11 +660,21 @@ skipped with an actionable reason instead of entering a numerical failure.
    completed/skipped/failed groups, and can resume only unfinished samples.
 3. Cluster candidate malignant/unassigned cells. Canonical zero-padded cluster
    IDs are shared by the heatmap legend, selector, configuration, and preview,
-   including runs with more than ten clusters.
+   including runs with more than ten clusters. A sample without a saved cut
+   starts at k = 7, capped by its tree size. A saved current cut restores its
+   exact k and cluster IDs; larger saved cuts expand the control range. Changing
+   k clears the selection, including when changing back, so IDs from different
+   cuts are never reused implicitly. Switching samples restores that sample's
+   saved cut or fresh default, rather than another sample's unsaved edit.
 4. Select malignant subclone candidates and compute CNA signal/correlation
    metrics. Progress reports the current stage and real sample/subclone counts.
-5. Choose malignant/non-malignant thresholds on one shared, data-informed
-   y-axis. Display clipping is indicated and never changes saved assignments.
+5. Choose malignant/non-malignant thresholds on one shared y-axis. An unsaved
+   view starts at 0.5; a saved view restores its display maximum. The available
+   range accounts for the data and saved thresholds, and expands to keep saved
+   values representable. Display clipping is indicated and never changes
+   assignments. Default threshold increments are 0.05 for X and 0.01 for Y;
+   saved values retain finer precision when necessary. Ticks mark selectable
+   increments and stay aligned as linked bounds change.
 6. Open **Assign & Summary**. A current fingerprinted preview is generated or
    safely reused automatically, defaults to the scatter comparison, and also
    provides the summary heatmap plus saved pre-CNA and proposed post-CNA UMAPs.

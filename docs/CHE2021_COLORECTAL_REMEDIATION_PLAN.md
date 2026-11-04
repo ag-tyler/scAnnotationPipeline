@@ -2,8 +2,8 @@
 
 **Date:** 2026-11-03
 
-**Status:** C01–C07 implemented with synthetic regression/browser coverage;
-C08/C09 remain planned and C10 release acceptance remains open.
+**Status:** C01–C08 implemented with synthetic regression/browser coverage;
+C09 remains planned and C10 release acceptance remains open.
 
 **Evidence:** [Completed manual review](CHE2021_COLORECTAL_MANUAL_REVIEW.md),
 especially stage notes and section 10. This plan extends the
@@ -489,7 +489,7 @@ dataset changed. C08/C09 and C10 acceptance remain open.
 
 ### C08 — Sample-specific defaults and threshold controls
 
-- [ ] Implement and verify.
+- [x] Implement and verify on synthetic workspaces (2026-11-04).
 
 For a sample without a saved cut, initialize k to 7 within the valid range;
 restore a saved sample's exact k and selection. Never inherit the previous
@@ -505,6 +505,59 @@ malignant/non-malignant threshold values or classification rules. Align ticks
 with selectable slider increments. Test equal Y thresholds, X constraints,
 reload, multi-subclone classification and clipped views with identical saved
 scientific assignments.
+
+**Pre-change behavior (2026-11-04):** `cna_signal_axis_summary()` gathers finite
+signals across subclones and computes `recommended = max(1, ceiling(data_max /
+0.1) * 0.1)`. Without saved limits this is the initial view maximum; with saved
+limits the largest positive saved `y_max` wins. The control ceiling rounds up
+the maximum of 3, recommended, selected view limit and saved Y thresholds.
+Changing the view scale does not change classification inputs. The current
+status observer restores saved k repeatedly but leaves unsaved samples at the
+previous sample's k. Shiny's initial tick spacing is step-aware; subsequent
+linked-bound updates retain the old grid spacing and can create off-step ticks.
+
+**Implementation record (2026-11-04):** A cut initializes only for its current
+dataset/generation/sample/base-computation context after explicit heatmap entry.
+Unsaved cuts use min(7, number of clustered cells); current completed selections
+restore their exact saved k, with range expansion above 20 if necessary.
+Out-of-range or mixed saved cuts fail rather than clamping/reinterpreting IDs.
+The navigator waits for the browser/debounced cut to agree before interpreting
+cluster IDs. The status observer no longer resets k on unrelated updates.
+Switching samples resets initialization; changing k away/back clears selection
+under the existing exact-cut identity policy. Heavy heatmap reuse stays intact.
+
+Unsaved shared view maxima now start at 0.5. The existing data-derived
+recommendation and range expansion remain, as does maximum-positive-saved-limit
+selection for saved multi-subclone views. Saved scientific thresholds and
+display limits are retained; controls expand their bounds and use finer
+precision where legacy values require it. Equal Y and strictly separated X
+validation/classification rules are unchanged. Persistent CNA-panel tick setup
+recomputes major-grid spacing after linked-bound changes and hides fractional
+minor ticks. The same alignment applies to the integer k control.
+
+**Verification:** 3,151 regression and 598 browser assertions passed with zero
+failures/errors/test warnings/skips in the combined results. The normal test
+directory is covered by the regression/browser runs and a focused rerun of the
+layout-dependent C08, baseline and C03 journeys. C08 adds 39 portable assertions
+and 471 browser assertions, including point-by-point tick label/position checks
+on nine threshold/display sliders before and after linked-bound updates.
+
+Browser coverage switches among saved and unsaved cuts, restores exact IDs,
+changes k away/back, checks the 0.5 unsaved scale and saved 0.47 scale, and
+preserves legacy X = 0.43, equal Y = 0.163 and Y = 4.137 beyond the old range.
+It saves a clipped 0.2 display maximum, reloads, and confirms unchanged
+multi-subclone classifications and processed-file hashes. Unit checks also
+cover small trees, saved k above 20, invalid cuts, bounds below the default view
+minimum/above the default X maximum, and assignment equality across several
+clipped/wide scales. Existing equal-Y/strict-X and C01–C07 coverage passes.
+C03 still builds one heavy heatmap across warm re-entry/k changes. Existing
+screenshot baselines pass without image changes; the unwanted padding seen
+during development was corrected rather than accepted into the baseline.
+
+Tests used R 4.5.3 with supported Windows UTF-8 and disposable synthetic inputs.
+The optional >4 GiB ZIP64 gate was not enabled. Local diagnostics remain ignored
+under `artifacts/local-checks/`. Neither real Che dataset changed. C09 and the
+C10 human acceptance gate remain open.
 
 ### C09 — Annotation feedback and setup reminders
 
