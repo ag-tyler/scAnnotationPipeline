@@ -17,6 +17,8 @@ For installation and a concise project overview, see the repository **[README](.
 - [Running the Analysis Pipeline](#running-the-analysis-pipeline)
 - [Pipeline Event Logs](#pipeline-event-logs)
 - [Pipeline State](#pipeline-state)
+  - [Archiving a finished dataset](#archiving-a-finished-dataset)
+  - [Creating a review snapshot](#creating-a-review-snapshot)
 - [Testing](#testing)
   - [Running the tests](#running-the-tests)
   - [Test structure](#test-structure)
@@ -30,7 +32,9 @@ For installation and a concise project overview, see the repository **[README](.
 
 ## Repository Structure
 
-The application root contains the Shiny app, configuration, resources, datasets, templates, utility scripts, documentation, and tests:
+The application root contains the Shiny app, configuration, resources, datasets,
+templates, utility scripts, documentation, and tests. This is a representative
+layout; the test and utility listings are not exhaustive:
 
 ```text
 scAnnotationPipeline/
@@ -44,7 +48,8 @@ scAnnotationPipeline/
 │   ├── PIPELINE_LOGGING.md
 │   ├── PIPELINE_STATE.md
 │   ├── CACHE_VALIDITY.md
-│   ├── RELEASE_ACCEPTANCE.md
+│   ├── STANDARDIZATION_CHECKLIST.md
+│   ├── development/                   # Plans, manual replays and acceptance
 │   └── USER_GUIDE.md
 │
 ├── resources/
@@ -132,10 +137,12 @@ datasets/<dataset_id>/
 ├── selected_config.yaml
 ├── pipeline_state.yaml
 ├── storage_state.yaml
+├── STANDARDIZATION_CHECKLIST.md
 ├── standardize.R
 ├── cache/
 ├── data/
 ├── processed_data/
+│   ├── Samples.csv
 │   └── <sample_name>/
 │       ├── Exp_data_<matrix_state>.mtx
 │       ├── Genes.txt
@@ -144,13 +151,16 @@ datasets/<dataset_id>/
 │   └── <sample_name>/
 │       ├── 1_cluster_plots/
 │       ├── 2_de_plots/
-│       └── 3_cna_plots/
+│       ├── 3_cna_plots/
+│       └── 3_cna_results/              # Optional CNA values exports
 └── logs/
     ├── pipeline_events.jsonl
     └── pipeline.log
 ```
 
 The matrix filename depends on `std_names.expmat` in `dataset_config.yaml`.
+The paths shown use the default configuration. `storage_state.yaml` is
+initialized when needed, and archived datasets intentionally have no `cache/`.
 
 ---
 
@@ -264,7 +274,8 @@ and checklist paths, with actions to open its checklist immediately or return
 to the guide. The parent directory must already exist; create it first if
 needed. Existing workspace folders/files are not overwritten.
 
-A new dataset is created under:
+For normal use, keep the creation dialog's parent directory set to the configured
+`paths.datasets_dir` (default `datasets/`). The resulting workspace is:
 
 ```text
 datasets/<dataset_id>/
@@ -276,6 +287,11 @@ general standardization template copied to:
 ```text
 standardize.R
 ```
+
+The dialog also accepts another existing parent directory, but dataset loading
+scans and resolves names under `paths.datasets_dir`. An outside workspace is
+not automatically available for later loading: the configured datasets root
+must match its parent before restarting the app and loading it.
 
 The standard workflow is:
 
@@ -474,14 +490,17 @@ Exp_data_CPM.mtx
 Exp_data_TPM.mtx
 ```
 
-After adapting the settings and the region marked `BEGIN USER CODE` as described
-in the checklist, run the complete script from a clean R session:
+After adapting the settings and replacing the placeholder stop in the region
+marked `BEGIN USER CODE`, edit the script's own `RUN_STANDARDIZATION <- FALSE`
+line to `RUN_STANDARDIZATION <- TRUE`. Save it, then run the complete script
+from a clean R session:
 
 ```r
 source("standardize.R")
 ```
 
-from inside the dataset directory.
+from inside the dataset directory. Setting the flag only in the console before
+`source()` is insufficient because the script assigns it again.
 
 ---
 
@@ -570,6 +589,14 @@ and progress display as bulk clustering. The selected sample's saved resolution,
 DE, annotation, and CNA stages become stale, while other samples remain
 unchanged. After completion, continue directly to Resolution Selection with the
 processed sample preselected and save its resolution again.
+
+If clustering was interrupted, reload the dataset. The app automatically marks
+the attempt failed and retryable when it can verify that its recorded local
+execution ended. For older or unverifiable records, use **Recover Interrupted
+Clustering** on the Start Menu after confirming the original run has stopped.
+Recovery preserves files and attempt history; it does not complete the analysis.
+Then rerun the affected samples using the selection checklist. See
+[Interrupted clustering](PIPELINE_STATE.md#interrupted-clustering) for details.
 
 ### Resolution selection
 
@@ -934,7 +961,7 @@ configuration, state, results, or cache files.
 | `test-07_utils_state.R` | State schema and transitions, prerequisites, staleness, revisions, atomic persistence, backup recovery, legacy migration, and sample reconciliation |
 | `test-app-bootstrap.R` | Clean Shiny package-directory startup and application assembly |
 | `test-app-components.R` | Component graph, workflow guards/events, annotation behavior, batch/progress/threshold/preview integration |
-| `test-app-ui-baseline.R` | Edge/Chromium browser navigation for the five main screens, plus screenshot comparisons where a reviewed platform baseline exists |
+| `test-app-ui-baseline.R` | Edge/Chromium browser navigation and synthetic workflow mutations, plus screenshot comparisons where a reviewed platform baseline exists |
 | `test-golden_outputs.R` | Deterministic `compute_cna()` golden regression baseline |
 | `test-m0-cna-characterization.R` | Regression coverage for formerly exposed CNA numerical/cache failures |
 | `test-m5-cna-batch.R` | Mixed-validity batch isolation, subsets, progress, and retry behavior |
@@ -944,6 +971,11 @@ configuration, state, results, or cache files.
 | `test-regression_clustering.R` | Preprocessing → PCA → UMAP → Louvain integration/regression behavior |
 | `test-regression_cna_cache.R` | CNA compute/cache/load round trip and missing-cache behavior |
 | `test-standardize-general-template.R` | General-template safety, alignment, duplicate-gene preservation, and checklist contract |
+| `test-f15-r05-onboarding-documents.R` | Workspace checklist copies and in-app Markdown rendering, section selection, and download fallbacks |
+| `test-c01-*` through `test-c04-*` | Dataset transitions, interrupted-clustering recovery, CNA navigation, and post-reopen status |
+| `test-c07-*` through `test-c09-*` | CNA omission, cut/threshold controls, annotation feedback, and source reminders |
+| `test-f16-dataset-storage.R` | Dataset cleanup, archive audit, and reopening |
+| `test-f17-*` | Review snapshots, completion/review layouts, and snapshot rollback |
 | `test-t23-release-integration.R` | Multi-sample strict validation plus cache/state/log restart and recovery contracts |
 
 The helper files have distinct roles:
@@ -965,7 +997,9 @@ Coverage is strongest in:
 - **CNA analysis**: deterministic CNA arithmetic, hierarchical/HDBSCAN/UMAP helpers, signal/correlation, malignant/non-malignant/gray-zone threshold behavior, multi-subclone collisions, batch branches, heatmap/clustering outputs, and non-mutating preview behavior.
 - **Regression protection**: deterministic golden baseline, clustering integration/regression tests, and CNA cache integration/regression tests.
 - **Application/browser behavior**: clean app assembly, explicit component
-  integration, main-screen navigation, and tolerant reviewed screenshot
+  integration, navigation, interrupted-run recovery, selected-sample clustering,
+  annotation saves, CNA computation/configuration/reset, optional export,
+  omission, review snapshots, cleanup/reopen, and tolerant reviewed screenshot
   comparisons on platforms with an approved baseline and a configured Chromium
   browser.
 
@@ -973,8 +1007,9 @@ No numeric line/branch coverage percentage is currently claimed or enforced.
 
 Areas intentionally not exhaustively covered include:
 
-- compute, save, reset, and batch mutations through the browser (their handlers
-  and workflows are covered below the browser layer);
+- full biological acceptance through the browser: journeys use disposable
+  synthetic workspaces, and the archive/reopen replay republishes deterministic
+  numerical fixtures between real GUI decisions and saves;
 - pixel-identical plot snapshots (browser screenshots use a small comparison
   threshold to tolerate platform rendering differences);
 - Quarto rendering across every platform;
@@ -983,7 +1018,7 @@ Areas intentionally not exhaustively covered include:
 Plot tests generally validate construction/buildability and workflow side effects rather than rendered pixels.
 
 For the complete portable release gate and scenario-to-test map, see
-[Release Acceptance](RELEASE_ACCEPTANCE.md).
+[Release Acceptance](development/RELEASE_ACCEPTANCE.md).
 
 ### Golden fixtures
 
@@ -1022,8 +1057,11 @@ retain the committed golden fixture explicitly:
 The pipeline assumes:
 
 - **The raw expression matrix is not already log-normalized.** Downstream normalization occurs inside the analysis pipeline. Feeding already log-transformed values may result in unintended double transformation.
-- **Cell names are unique within a sample.**
-- **Ensembl gene IDs are unique within the raw gene list.** Duplicate gene symbols are allowed because gene-symbol mapping can be reconstructed from Ensembl IDs.
+- **Cell names are unique across the entire dataset.** Prefix or suffix raw
+  barcodes deterministically when samples reuse them.
+- **Standardized gene symbols are non-empty and unique per sample.** Map raw
+  identifiers before constructing `sample_input`; shared standardization removes
+  unmapped rows and sums duplicate gene-symbol rows with their expression values.
 - **Sample directory names under `processed_data/` are canonical sample identifiers** and should match `sample` values in `samples_config.yaml`.
 - **`samples_config.yaml` is structurally complete before standardization.**
 - **The generic marker set excludes `Malignant`.** Malignant marker handling is performed separately through `malignant_markers.csv` and `cancer_cell_map.json`.
@@ -1096,10 +1134,10 @@ Saving a new malignant-subclone selection clears stale threshold configuration a
 
 - Most biological resource files are not distributed with the repository and must be obtained/generated separately.
 - The general standardization template requires dataset-specific import and
-  sample-splitting logic in its two marked user-code functions.
+  sample-splitting logic in one linear `BEGIN USER CODE` region plus user settings.
 - Browser coverage uses a temporary synthetic workspace to verify application
-  startup and the five main navigation screens, but deliberately does not
-  trigger compute, save, reset, or batch actions through the browser.
+  startup, navigation, and workflow mutations. It does not replace manual review
+  of real biological results or platform-specific filesystem behavior.
 - Cache fingerprints cover the pipeline inputs, parameters, upstream artifacts,
   and saved decisions documented in [Cache Validity and Invalidation](CACHE_VALIDITY.md);
   newly introduced parameters must be added to the relevant dependency family.

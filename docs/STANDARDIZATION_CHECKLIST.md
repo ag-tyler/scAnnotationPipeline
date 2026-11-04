@@ -50,6 +50,7 @@ A dataset is standardized only when all of the following are true:
 ├── dataset_config.yaml
 ├── samples_config.yaml
 ├── selected_config.yaml
+├── pipeline_state.yaml
 ├── STANDARDIZATION_CHECKLIST.md
 └── standardize.R
 ```
@@ -267,11 +268,14 @@ their order and purpose visible through named calls and explanatory comments.
 
 - [ ] Save the completed dataset-specific `standardize.R`.
 - [ ] Start a clean R session.
-- [ ] Set:
+- [ ] Edit the flag inside the saved script to:
 
 ```r
 RUN_STANDARDIZATION <- TRUE
 ```
+
+Setting this only in the console before sourcing the script is insufficient:
+the script assigns its own flag when it starts.
 
 - [ ] Run the entire script from the beginning rather than isolated trailing
   sections.

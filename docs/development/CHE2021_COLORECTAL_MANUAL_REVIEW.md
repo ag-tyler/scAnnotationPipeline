@@ -107,7 +107,7 @@ Record run context here before starting:
   The app gives an actionable preparation message, does not crash and does not
   treat checklist marks as completed scientific work. (R05)
 - [x] `STD-01` Adapt this dataset's `standardize.R` using the
-  [standardization checklist](STANDARDIZATION_CHECKLIST.md): inspect raw layout,
+  [standardization checklist](../STANDARDIZATION_CHECKLIST.md): inspect raw layout,
   confirm counts/TPM/CPM and gene identifiers, map canonical samples and retain
   justified source annotations/metadata. Raw inputs remain unchanged.
 - [x] `STD-02` Run the complete adapted script from a clean R session. It reaches

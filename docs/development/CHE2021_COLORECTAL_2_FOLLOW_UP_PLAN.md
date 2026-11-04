@@ -998,7 +998,7 @@ changes an annotation in its disposable synthetic workspace, saves it through
 the UI, verifies the standardized table, clustering cache, and pipeline state,
 restarts the application, and confirms the saved annotation is restored. The
 manual replay target is the new 9-sample `Liu2022_Liver` workspace; use
-`docs/F15_LIU2022_LIVER_MANUAL_REPLAY.md` to record the run. The destructive
+`docs/development/F15_LIU2022_LIVER_MANUAL_REPLAY.md` to record the run. The destructive
 F16 lifecycle remains restricted to a safe copy after scientific outputs have
 been checked.
 
@@ -1535,7 +1535,7 @@ without changing controls/plots. Manual wording acceptance remains pending.
 
 #### Final replay summary and subsequent fixes — 2026-10-30
 
-The user has finished docs/F15_LIU2022_LIVER_MANUAL_REPLAY.md, with all workflow
+The user has finished docs/development/F15_LIU2022_LIVER_MANUAL_REPLAY.md, with all workflow
 checklist items marked complete. This includes optional export and re-export,
 warned cleanup with missing exports, retained exported values, archived reload,
 and explicit reopen with the intended stale statuses. Earlier dated "pending"

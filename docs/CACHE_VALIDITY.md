@@ -53,9 +53,13 @@ when a saved resolution, annotation, CNA configuration, or malignant-cluster
 selection changes. Reset Sample CNA uses the same manifest-aware invalidation.
 Unchanged decisions do not invalidate reusable artifacts.
 
-On dataset load, completed workflow states are reconciled with the manifest.
-Missing, legacy-untracked, corrupt, or dependency-mismatched caches make the
-corresponding step and its completed downstream steps visibly `stale`.
+Dataset loading uses a fast metadata reconciliation against manifest records,
+cache file sizes/modification times, and recorded source-file sizes. It does not
+read and hash every large cache. Source changes with unchanged size are checked
+on first use. Full integrity, structure, and dependency validation is
+performed when an artifact is consumed; validated checksums can be reused while
+file metadata remains unchanged. Missing, untracked, changed, or invalid caches
+make the affected completed work and its completed downstream steps `stale`.
 
 ## Recovery and migration
 
@@ -76,8 +80,12 @@ keep artifacts, workflow state, and logging aligned.
 
 Do not delete a completed dataset's cache manually. Use the **Dataset Storage**
 card on the Start Menu. Cleanup is enabled only when every sample has durable
-final tables and plots, completed CNA has a current CNA values export, and the
-cache inventory contains only recognized manifest/artifact files.
+final tables and plots, every sample has finalized CNA or explicitly omitted it,
+and the cache inventory contains only recognized manifest/artifact files.
+CNA values exports are optional: missing or outdated exports produce warnings
+but do not block cleanup. Existing exports are retained and audited. Export any
+values you need before cleanup; exporting afterward requires reopening and
+recomputing the required caches.
 
 The app writes a revisioned `storage_state.yaml` cleanup journal, records the
 cache inventory and retained-output checksums, renames the whole cache to a
@@ -95,5 +103,5 @@ untracked artifacts, failed replacement, artifact/manifest recovery,
 family-specific invalidation, and clearing. Workflow and state tests cover
 dependency registration, restart reconciliation, CNA reuse, and regression
 behavior. `test-f16-dataset-storage.R` covers cleanup readiness, explicit CNA
-omission, the F13 export gate, retirement/retry/rollback, archive auditing, and
+omission, optional-export warnings, retirement/retry/rollback, archive auditing, and
 reopening.

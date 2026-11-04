@@ -9,14 +9,15 @@ The application stores the latest workflow status for each dataset in
 - `logs/pipeline_events.jsonl` and `logs/pipeline.log` preserve **what happened
   over time?**
 
-The state file must not be edited while the app is running.
+Use the app's save, reset, rerun, and recovery actions rather than editing the
+state file manually.
 
 ## Statuses
 
 | Status | Meaning |
 | --- | --- |
 | `not_started` | No attempt or saved decision has been recorded. |
-| `in_progress` | The current attempt started but has not reached an outcome. |
+| `in_progress` | An attempt started without a recorded outcome; it may still be running or require interrupted-work recovery. |
 | `incomplete` | Required input or output is missing; `reason` explains what is needed. |
 | `completed` | The step reached its defined completion boundary. |
 | `skipped` | The step was explicitly or validly excluded; `reason` explains why. |
@@ -91,6 +92,27 @@ marked `incomplete`.
   `cna_assignment` to `not_started`.
 - Event logs remain append-only; state updates never replace prior log lines.
 
+Explicitly omitting CNA is a saved terminal decision and excludes that sample
+from ordinary batch CNA computation. Historical downstream records can remain
+stale; the overview recognizes the omission without treating those records as
+current scientific results. Omission retains saved cell labels, plots, and
+exports. Reset CNA instead restores pre-CNA manual labels where available and
+removes CNA caches and plots; existing values exports may then be outdated.
+To resume an omitted sample, save a valid CNA configuration and complete the
+required downstream stages again.
+
+### Interrupted clustering
+
+On load, the app automatically recovers an unfinished clustering attempt when
+it can verify that its recorded local execution has ended. For older or
+unverifiable execution records, use **Recover Interrupted Clustering** on the
+Start Menu, confirm that the previous run has stopped, and enter the dataset
+identifier. Recovery is blocked when the recorded execution is still live.
+It marks the interrupted attempt failed and retryable, preserving its files and
+attempt history. Rerun the affected samples at all configured resolutions with
+**Select Samples for Clustering**. Do not delete caches or edit YAML to unlock
+an interrupted attempt.
+
 The implementation and unit tests are in `util_scripts/07_utils_state.R` and
 `tests/testthat/test-07_utils_state.R`.
 
@@ -98,12 +120,16 @@ The implementation and unit tests are in `util_scripts/07_utils_state.R` and
 
 The Start Menu's **Dataset Storage** card can archive a fully finished dataset
 after it verifies durable final outputs for every sample. Explicit user CNA
-omission is a valid terminal branch; completed CNA requires a current reusable
-CNA values export. Cleanup retires only the dataset `cache/` directory and
-leaves scientific statuses and final outputs unchanged.
+omission is a valid terminal branch. CNA values exports are optional; missing
+or outdated exports warn but do not block cleanup. Cleanup retires only the
+dataset `cache/` directory and leaves scientific statuses and final outputs
+unchanged.
 
 `storage_state.yaml` records this separate lifecycle atomically as `active`,
 `cleaning`, `cleanup_failed`, or `archived`. Archived datasets skip cache
 reconciliation and are read-only. **Reopen Dataset for Editing** preserves the
 results, creates a fresh cache directory, and marks previously completed or
 skipped cache-dependent sample steps stale so recomputation is explicit.
+The overview derives the next actionable step from the remaining prerequisites;
+after those prerequisites are rebuilt, it directs you to unfinished CNA work.
+This guidance does not turn historical stale records into completed results.

@@ -45,23 +45,31 @@ Example:
 
 ## Recorded events
 
-The initial event catalog includes:
+The event catalog includes:
 
 | Stage | Event types |
 | --- | --- |
-| Dataset | `workspace_created`, `dataset_load` |
+| Dataset | `workspace_created`, `dataset_load`, `app_session_started`, `change_dataset`, `sample_note_saved` |
 | Standardization | `standardization_validated` |
-| Clustering | `clustering_run` |
+| Clustering | `clustering_run`, `single_sample_clustering`, `interrupted_clustering_recovered` |
 | Resolution | `resolution_saved` |
 | Differential expression | `de_run`, `single_sample_de` |
-| Annotation | `annotation_changed`, `annotations_saved` |
-| CNA configuration | `cna_configuration_saved` |
-| CNA analysis | `cna_compute`, `cna_batch_compute`, `malignant_clusters_saved`, `cna_signal_correlation`, `cna_thresholds_saved`, `cna_assignments_saved`, `cna_reset` |
+| Annotation | `annotation_load`, `annotation_navigation`, `annotation_changed`, `annotations_saved` |
+| CNA configuration | `cna_configuration_saved`, `cna_configuration_skipped` |
+| CNA analysis | `cna_preflight`, `cna_compute`, `cna_batch_compute`, `cna_preview`, `cna_values_export`, `malignant_clusters_saved`, `cna_signal_correlation`, `cna_thresholds_saved`, `cna_assignments_saved`, `cna_reset` |
 | Cache | `cna_matrix_cache`, `cna_signal_cache`, `cna_cache` |
+| Storage | `dataset_cleanup`, `dataset_cleanup_retry`, `dataset_reopen` |
+| Review snapshots | `review_snapshot` |
 
 Long-running operations emit `started` followed by `completed` or `failed`.
+An abruptly terminated R process can leave a `started` event without a terminal
+event; use pipeline state and interrupted-clustering recovery to assess it.
 Batch CNA also records sample-specific `completed` and `skipped` outcomes.
 Saved decisions record the parameters needed to understand what changed.
+Session-start and dataset-load/change events include session context in their
+parameters. A session identifier is not a required field of every event.
+Review-snapshot events record safe options, counts, and outcomes, without
+recording the destination path or maintaining a snapshot-location registry.
 
 ## Reading events in R
 
@@ -87,4 +95,4 @@ itself fails.
   unnecessary absolute paths.
 - Do not edit or truncate the JSON Lines file during normal operation.
 - Treat the structured log as history, not as the source of current workflow
-  state. Milestone 3 step-state files are defined separately by T09.
+  state. See [Pipeline State](PIPELINE_STATE.md) for `pipeline_state.yaml`.

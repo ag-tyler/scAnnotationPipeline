@@ -24,7 +24,7 @@ install.packages(c(
   "shiny", "bslib", "shinyjs", "data.table", "yaml", "jsonlite", "DT",
   "ggplot2", "cowplot", "viridis", "Matrix", "irlba", "uwot", "Seurat",
   "stringr", "caTools", "RColorBrewer", "scales", "dbscan", "ggdendro",
-  "randomcoloR", "docstring", "qs2", "magrittr", "devtools", "R.utils",
+  "randomcoloR", "docstring", "qs2", "magrittr", "R.utils",
   "commonmark", "zip", "processx", "R6", "ps", "fs"
 ))
 ```
@@ -32,13 +32,14 @@ install.packages(c(
 The pipeline also depends on the custom `matkot` package:
 
 ```r
+install.packages("pak")
 pak::pak("m20ty/matkot")
 ```
 
 For development/testing:
 
 ```r
-install.packages(c("testthat", "withr", "shinytest2"))
+install.packages(c("devtools", "testthat", "withr", "shinytest2"))
 ```
 
 ## Installation
@@ -57,15 +58,16 @@ The standard directory layout is:
 ```text
 scAnnotationPipeline/
 ├── app.R
-├── general\_config.yaml
+├── general_config.yaml
 ├── DESCRIPTION
 ├── README.md
 ├── docs/
-│   └── USER\_GUIDE.md
+│   ├── USER_GUIDE.md
+│   └── development/          # Plans, manual replays and release acceptance
 ├── resources/
 ├── datasets/
 ├── templates/
-├── util\_scripts/
+├── util_scripts/
 └── tests/
 ```
 
@@ -109,10 +111,10 @@ configuring autoreload. Ordinary pipeline runs do not require the optional
 
 On startup, the app:
 
-1. loads `general\_config.yaml`;
-2. sources all `.R` files in `util\_scripts/`;
+1. sources all `.R` utilities in `util_scripts/` and the application components;
+2. reads `general_config.yaml`;
 3. validates and loads the required resource files;
-4. creates/scans `datasets/`;
+4. creates/scans the configured datasets directory (default `datasets/`);
 5. displays available datasets in the Dataset Selection screen.
 
 ## CNA Values Results
@@ -124,9 +126,10 @@ The separate, optional **Export/Re-export CNA Values Table** action publishes
 a reusable long-format table at `results/<sample>/3_cna_results/cna_values_<sample>.csv.gz`, with the
 columns `gene`, `chr`, `start_pos`, `cell_name`, and `cna`. A neighboring
 `.metadata.yaml` file records dimensions and the validated cache provenance.
-The CNA summary view can export or refresh this table later without recomputing
-CNA. The optimized `.qs2` cache remains authoritative and the CSV is never used
-as pipeline input.
+The CNA summary view can export or refresh this table while the required caches
+remain current, without recomputing CNA. The optimized `.qs2` cache remains
+authoritative and the CSV is never used as pipeline input. `R.utils` supports
+reading gzip-compressed tables with `data.table::fread()`.
 
 Large exports report writing and validation progress with elapsed time. If an
 export fails or is interrupted after assignments were saved, use **Export/Re-export
@@ -171,10 +174,11 @@ space/path constraints and manual checks.
 
 ## Creating a Dataset
 
-Use **Create New Dataset** in the app. A dataset is created under:
+Use **Create New Dataset** in the app. Use the configured datasets directory
+(default `datasets/`) as its parent so the app can discover it on later loads:
 
 ```text
-datasets/<dataset\_id>/
+datasets/<dataset_id>/
 ```
 
 with configuration files, data/result/log directories, an initialized pipeline
@@ -191,6 +195,14 @@ can explicitly create a checklist copy without overwriting existing notes.
 The standardization template must be run before the dataset can enter the downstream clustering/annotation workflow.
 
 See [Setting Up a New Dataset](docs/USER_GUIDE.md#setting-up-a-new-dataset) and [Standardization Pipeline](docs/USER_GUIDE.md#standardization-pipeline) for details.
+
+For an existing dataset, load it and follow the Start Menu's pipeline overview.
+Use **Select Samples for Clustering** to rerun only the required samples.
+If a stopped run still appears in progress, follow
+[interrupted-clustering recovery](docs/PIPELINE_STATE.md#interrupted-clustering).
+Save annotations explicitly; pending edits are not counted as saved progress.
+CNA can be explicitly omitted per sample. Cleanup and reopening are separate
+storage actions; see [Pipeline State](docs/PIPELINE_STATE.md#archived-datasets).
 
 ## Testing
 
@@ -236,14 +248,17 @@ set still run all functional browser assertions.
 
 See the [Testing](docs/USER_GUIDE.md#testing) section for the test-file breakdown and coverage summary.
 
-See [Release Acceptance](docs/RELEASE_ACCEPTANCE.md) for the complete portable
+See [Release Acceptance](docs/development/RELEASE_ACCEPTANCE.md) for the complete portable
 automated gate and scenario-to-test map.
+
+Development plans and manual review/replay records are indexed in
+[Development Documentation](docs/development/README.md).
 
 ## Repository Notes
 
 * `datasets/` contains local runtime data and should remain outside version control.
 * Most biological resource files under `resources/` are also intentionally untracked.
-* `general\_config.yaml`, source code, templates, tests, documentation, and the committed CNA golden fixture are version-controlled.
+* `general_config.yaml`, source code, templates, tests, documentation, and the committed CNA golden fixture are version-controlled.
 * The app uses validated, dependency-aware `.qs2` caches for expensive intermediate results; see [Cache Validity and Invalidation](docs/CACHE_VALIDITY.md).
 
 ## Documentation
@@ -259,7 +274,7 @@ append-only processing history is described in
 dependency fingerprints, recovery, and migration are described in
 [**docs/CACHE\_VALIDITY.md**](docs/CACHE_VALIDITY.md). The reproducible release
 gate is described in
-[**docs/RELEASE\_ACCEPTANCE.md**](docs/RELEASE_ACCEPTANCE.md).
+[**Release Acceptance**](docs/development/RELEASE_ACCEPTANCE.md).
 
 It covers:
 
