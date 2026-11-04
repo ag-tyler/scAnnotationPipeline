@@ -749,13 +749,17 @@ copy exists. Finished active and cache-cleaned/archived datasets are supported;
 copying never cleans caches, reopens a dataset or changes scientific statuses.
 
 1. Enter an **existing destination directory outside the app-managed datasets
-   directory**. Use a reasonably short path, especially on Windows.
+   directory**. Use a reasonably short path, especially on Windows. Relative
+   destinations start from the directory shown in the dialog (normally the
+   application root).
 2. Choose **Folder**, **Compressed archive (.zip)** or **Both**. Both produces
    identical scientific contents in an independent folder and ZIP.
 3. Choose **Include logs** (default on) and **Include existing CNA values**
    (default off). These are the only content choices; all ordinary plots remain.
-4. Click **Review Contents**. Check included relative paths, omissions, source
-   bytes and the conservative extra-space estimate, then acknowledge warnings.
+4. Click **Review Contents**. Check the resolved destination directory, included
+   relative paths, omissions, source bytes and the conservative extra-space
+   estimate, then acknowledge warnings. Long paths wrap and remain fully
+   selectable. Changing the destination requires another review.
 5. Click **Create Verified Snapshot**. Progress reports copy bytes, verification,
    compression/readback and elapsed time. Wait for **Review snapshot verified**.
 

@@ -2,8 +2,8 @@
 
 **Date:** 2026-11-03
 
-**Status:** C01–C04 implemented with synthetic regression/browser coverage;
-C05–C09 remain planned and C10 release acceptance remains open.
+**Status:** C01–C05 implemented with synthetic regression/browser coverage;
+C06–C09 remain planned and C10 release acceptance remains open.
 
 **Evidence:** [Completed manual review](CHE2021_COLORECTAL_MANUAL_REVIEW.md),
 especially stage notes and section 10. This plan extends the
@@ -317,7 +317,7 @@ C10 acceptance replay.
 
 ## C05 — Snapshot review layout and destination guidance
 
-- [ ] Implement and verify.
+- [x] Implement and verify on synthetic workspaces (2026-11-04).
 
 **Evidence:** Included relative paths overflow the review modal; the separate
 completion-modal wrapping check passed. Relative destinations lack clear base
@@ -339,6 +339,36 @@ overflow or clipping; copy/select yields the original path. Both slash styles
 and relative paths still validate, invalid/overlapping destinations still fail,
 and opening the review never starts copying. Retest SNP-06 and destination-free
 logging/provenance; screenshots shared for review must omit private locations.
+
+**Implementation record (2026-11-04):** Review and completion paths share one
+display helper that wraps at any character without inserting, truncating or
+interpreting path text as HTML. Included files remain inside their list and
+modal. The review dialog shows the current working directory as the base for
+relative input, then the validated absolute destination after Review Contents.
+Changing input clears the reviewed destination. Confirmation validates that the
+resolved destination still matches the reviewed location before publishing.
+These locations exist only in the transient review, never in stored scientific
+state, events or generated snapshot provenance.
+
+**Verification:** 2,862 assertions passed across the regression run and a
+corrected focused layout rerun, with zero failures/errors/test warnings/skips
+in the combined results. This covers the normal test directory except
+`app-ui-baseline`, whose larger navigation journeys were not rerun for C05.
+The snapshot subset contributes 498 assertions; C05 adds 80 assertions,
+including 57 real-browser checks of the complete production review modal at
+1280px and 375px. The reported COL07 PNG path, an unbroken filename, relative
+base and resolved destination fit without path/modal/document horizontal
+overflow; selecting each path returns its original text. Existing completion
+layout checks (SNP-06) pass with the shared helper.
+
+Real server-handler tests verify no copying on review, both Windows slash
+styles and relative input, rejection of invalid/overlapping destinations,
+review invalidation and refusal when a relative destination resolves elsewhere.
+Existing source-preservation and destination-free events/README/manifest tests
+pass. Tests used R 4.5.3 with supported Windows UTF-8 and disposable synthetic
+inputs only; neither real Che dataset changed. Local scripts/logs/results are
+ignored under `artifacts/local-checks/`. The optional >4 GiB ZIP64 gate was not
+enabled. C06–C10, including the final acceptance replay, remain open.
 
 ## C06 — Snapshot rollback and Unicode
 

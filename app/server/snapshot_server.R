@@ -27,6 +27,40 @@ snapshot_server_arguments <- function(state, context, fresh = FALSE) {
   )
 }
 
+snapshot_display_path_ui <- function(path, class = "review-snapshot-path") {
+  shiny::tags$code(class = class,
+    # Preserve the full selectable text, including unbroken filenames.
+    style = paste("display: block; min-width: 0; max-width: 100%; white-space: normal;",
+      "overflow-wrap: anywhere; word-break: break-word;"), path)
+}
+
+snapshot_review_preview_ui <- function(current, base_directory = getwd()) {
+  shiny::tagList(
+    shiny::p(class = "small mb-1", "Relative destination paths start from this directory:"),
+    snapshot_display_path_ui(if (is.null(current)) base_directory else current$base_directory,
+      "review-snapshot-base-path"),
+    if (is.null(current)) {
+      shiny::p(class = "small", "Review Contents validates the destination and previews the snapshot before copying.")
+    } else shiny::tagList(
+      shiny::p(class = "small mb-1 mt-2", "Validated destination directory (the snapshot will be created inside it):"),
+      snapshot_display_path_ui(current$destination, "review-snapshot-destination-path"),
+      shiny::tags$dl(shiny::tags$dt("Source files / uncompressed bytes"),
+        shiny::tags$dd(paste(nrow(current$inventory$files), "/", format_storage_bytes(current$inventory$size_bytes))),
+        shiny::tags$dt("Conservative additional destination space (including staging/readback)"),
+        shiny::tags$dd(format_storage_bytes(current$inventory$required_space_bytes + 1024^2)),
+        shiny::tags$dt("Generated files"), shiny::tags$dd("README, annotation summary, filtering summary and integrity manifest")),
+      shiny::p(class = "small", "No compression ratio is promised. Both uses the same payload in both forms."),
+      shiny::tags$details(shiny::tags$summary("Included files"),
+        shiny::tags$ul(class = "review-snapshot-included-paths",
+          style = "min-width: 0; max-width: 100%; padding-left: 1.25rem;",
+          lapply(current$inventory$files$path, function(path) shiny::tags$li(
+            snapshot_display_path_ui(path, "review-snapshot-included-path"))))),
+      shiny::tags$ul(lapply(current$inventory$omissions, shiny::tags$li)),
+      if (length(current$warnings)) shiny::div(class = "alert alert-warning", shiny::tags$ul(lapply(current$warnings, shiny::tags$li)))
+    )
+  )
+}
+
 snapshot_completion_dialog_ui <- function(result) {
   shiny::modalDialog(title = "Review snapshot verified", easyClose = TRUE,
     shiny::p("Every requested output was verified and published. Scientific statuses are unchanged."),
@@ -35,12 +69,23 @@ snapshot_completion_dialog_ui <- function(result) {
     shiny::tags$ul(class = "review-snapshot-output-paths",
       style = "min-width: 0; max-width: 100%; padding-left: 1.25rem;",
       lapply(result$outputs, function(path) shiny::tags$li(class = "mb-2",
-        shiny::tags$code(class = "review-snapshot-output-path",
-          # Wrap for display without changing/truncating the selectable path.
-          style = paste("display: block; max-width: 100%; white-space: normal;",
-            "overflow-wrap: anywhere; word-break: break-word;"),
-          path)))),
+        snapshot_display_path_ui(path, "review-snapshot-output-path")))),
     footer = shiny::modalButton("Done"))
+}
+
+snapshot_review_dialog_ui <- function() {
+  shiny::modalDialog(title = "Create Review Snapshot", size = "l", easyClose = FALSE,
+    shiny::p("Complete processed data and all ordinary results/plots are copied. Raw inputs and caches are not. This is not a resumable workspace."),
+    shiny::textInput("snapshot_destination", "Existing destination directory (outside app-managed datasets)", value = ""),
+    shiny::selectInput("snapshot_mode", "Output", c("Folder" = "folder", "Compressed archive (.zip)" = "archive", "Both" = "both"), selected = "folder"),
+    shiny::checkboxInput("snapshot_include_logs", "Include logs", value = TRUE),
+    shiny::checkboxInput("snapshot_include_cna_values", "Include existing CNA values (never recompute)", value = FALSE),
+    shiny::p(class = "small text-muted", "Optional origin: set project_info.source_doi and/or source_url in dataset_config.yaml. Metadata is not anonymized by packaging."),
+    shiny::uiOutput("review_snapshot_preview"),
+    shiny::checkboxInput("snapshot_acknowledge", "I reviewed and accept the listed omissions and unavailable metadata", value = FALSE),
+    footer = shiny::tagList(shiny::actionButton("btn_cancel_review_snapshot", "Cancel", class = "btn-secondary"),
+      shiny::actionButton("btn_preview_review_snapshot", "Review Contents", class = "btn-outline-primary"),
+      shinyjs::disabled(shiny::actionButton("btn_confirm_review_snapshot", "Create Verified Snapshot", class = "btn-primary"))))
 }
 
 register_snapshot_server <- function(input, output, session, state, context) {
@@ -67,19 +112,7 @@ register_snapshot_server <- function(input, output, session, state, context) {
     }
     preview(NULL)
     arm_app_confirmation(rv, "review_snapshot")
-    showModal(modalDialog(title = "Create Review Snapshot", size = "l", easyClose = FALSE,
-      p("Complete processed data and all ordinary results/plots are copied. Raw inputs and caches are not. This is not a resumable workspace."),
-      textInput("snapshot_destination", "Existing destination directory (outside app-managed datasets)", value = ""),
-      selectInput("snapshot_mode", "Output", c("Folder" = "folder", "Compressed archive (.zip)" = "archive", "Both" = "both"), selected = "folder"),
-      checkboxInput("snapshot_include_logs", "Include logs", value = TRUE),
-      checkboxInput("snapshot_include_cna_values", "Include existing CNA values (never recompute)", value = FALSE),
-      p(class = "small text-muted", "Optional origin: set project_info.source_doi and/or source_url in dataset_config.yaml. Metadata is not anonymized by packaging."),
-      uiOutput("review_snapshot_preview"),
-      checkboxInput("snapshot_acknowledge", "I reviewed and accept the listed omissions and unavailable metadata", value = FALSE),
-      footer = tagList(actionButton("btn_cancel_review_snapshot", "Cancel", class = "btn-secondary"),
-        actionButton("btn_preview_review_snapshot", "Review Contents", class = "btn-outline-primary"),
-        shinyjs::disabled(actionButton("btn_confirm_review_snapshot", "Create Verified Snapshot", class = "btn-primary")))
-    ))
+    showModal(snapshot_review_dialog_ui())
   })
   observeEvent(input$btn_cancel_review_snapshot, {
     claim_app_confirmation(rv, "review_snapshot")
@@ -97,19 +130,7 @@ register_snapshot_server <- function(input, output, session, state, context) {
       condition = !is.null(current) && (!length(current$warnings) || isTRUE(input$snapshot_acknowledge)))
   })
   output$review_snapshot_preview <- renderUI({
-    current <- preview()
-    if (is.null(current)) return(p(class = "small", "Review Contents validates the destination and previews the snapshot before copying."))
-    tagList(
-      tags$dl(tags$dt("Source files / uncompressed bytes"),
-        tags$dd(paste(nrow(current$inventory$files), "/", format_storage_bytes(current$inventory$size_bytes))),
-        tags$dt("Conservative additional destination space (including staging/readback)"),
-        tags$dd(format_storage_bytes(current$inventory$required_space_bytes + 1024^2)),
-        tags$dt("Generated files"), tags$dd("README, annotation summary, filtering summary and integrity manifest")),
-      p(class = "small", "No compression ratio is promised. Both uses the same payload in both forms."),
-      tags$details(tags$summary("Included files"), tags$ul(lapply(current$inventory$files$path, tags$li))),
-      tags$ul(lapply(current$inventory$omissions, tags$li)),
-      if (length(current$warnings)) div(class = "alert alert-warning", tags$ul(lapply(current$warnings, tags$li)))
-    )
+    snapshot_review_preview_ui(preview())
   })
   observeEvent(input$btn_preview_review_snapshot, {
     preview(NULL)
@@ -127,7 +148,7 @@ register_snapshot_server <- function(input, output, session, state, context) {
       summaries <- build_snapshot_summaries(args$pipeline_state, args$paths_list, args$selected_config)
       missing_origin <- !nzchar(.snapshot_default(args$dataset_config$project_info$source_doi, "")) &&
         !nzchar(.snapshot_default(args$dataset_config$project_info$source_url, ""))
-      preview(list(inventory = inventory, options = options,
+      preview(list(inventory = inventory, options = options, destination = parent, base_directory = getwd(),
         warnings = unique(c(inventory$warnings, summaries$warnings,
           if (missing_origin) "Dataset origin not provided; optional DOI/link fields can be filled before export."))))
       setProgress(1)
@@ -140,6 +161,13 @@ register_snapshot_server <- function(input, output, session, state, context) {
     # Recheck current state and the reviewed inventory before claiming the action.
     result <- tryCatch({
       args <- snapshot_server_arguments(rv, context, fresh = TRUE)
+      destination <- validate_snapshot_destination(input$snapshot_destination, args$dataset_dir_path, args$datasets_dir_path)
+      if (!identical(destination, reviewed$destination)) {
+        preview(NULL)
+        arm_app_confirmation(rv, "review_snapshot")
+        showNotification("The resolved destination changed. Review Contents again before copying.", type = "warning")
+        return()
+      }
       current <- inventory_for(args, options_now())
       if (!identical(current, reviewed$inventory) || !readiness_for(args)$ready) {
         preview(NULL)
@@ -149,7 +177,6 @@ register_snapshot_server <- function(input, output, session, state, context) {
       }
       if (length(rv$active_actions) || !begin_app_action(rv, "review_snapshot")) return()
       on.exit(finish_app_action(rv, "review_snapshot"), add = TRUE)
-      destination <- input$snapshot_destination
       preview(NULL)
       removeModal()
       # Clear the browser input as well as the server's preview after this operation.

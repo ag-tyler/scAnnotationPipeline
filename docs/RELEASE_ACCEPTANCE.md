@@ -77,6 +77,26 @@ refreshed and visually inspected. Supported Windows UTF-8 was used; the optional
 >4 GiB ZIP64 gate was not enabled. Neither real Che dataset changed.
 C05/C06 and the C10 release gate remain open; C07–C09 are separate usability work.
 
+**C05 implementation follow-up (2026-11-04):** Snapshot review now wraps the
+reported COL07 PNG path and unbroken filenames inside the modal, preserving
+their complete selectable text. The dialog displays the relative-path base and,
+after validation, the resolved destination directory. Destination changes
+invalidate review; confirmation refuses a changed resolved location. Completion
+paths share the display helper. Locations remain transient and are excluded
+from scientific state, events and generated provenance. Neither real Che
+dataset changed. C06 and the C10 acceptance gate remain open; C07–C09 remain
+separate usability work.
+
+Final C05 verification passed 2,862 assertions in disjoint regression/focused
+layout runs, zero failures/errors/test warnings/skips. This excludes
+`app-ui-baseline`; the snapshot subset passed 498 assertions. C05 adds 80,
+including 57 browser checks at 1280px/375px for overflow and exact text
+selection, plus server checks for relative input, both Windows slash styles,
+review invalidation, changed destination resolution and no copying during review. Existing
+completion layout (SNP-06), source-preservation and destination-free provenance
+checks pass. Supported Windows UTF-8 was used; the optional >4 GiB ZIP64 gate
+was not enabled. Local diagnostic outputs are ignored in `artifacts/local-checks/`.
+
 This document defines the portable Milestone 7 release gate. Every automated
 check uses committed code/fixtures or deterministic synthetic data generated in
 a temporary directory. No named local dataset, private biological resource, or

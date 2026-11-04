@@ -924,3 +924,28 @@ screenshot was visually inspected. Neither real Che dataset was modified.
 Original manual failure notes remain historical evidence. C05–C10, including
 the final acceptance replay, remain open. See C04 in the
 [remediation plan](CHE2021_COLORECTAL_REMEDIATION_PLAN.md).
+
+**C05 implementation follow-up — 2026-11-04:** SNP-03/04 now have a wrapped
+included-path list and visible destination guidance. The review dialog shows
+the directory from which relative input resolves, then the validated absolute
+destination before copying. Changing input clears the previous review;
+confirmation rejects a destination that now resolves somewhere else. The full
+path remains selectable without inserted characters or truncation. Completion
+paths use the same display helper; the original SNP-06 manual result remains
+historical evidence. Destination locations stay in transient UI only.
+
+Final C05 verification passed 2,862 assertions across disjoint regression and
+focused layout runs, with zero failures/errors/test warnings/skips. The larger
+`app-ui-baseline` journeys were excluded; all 498 snapshot assertions pass.
+C05 adds 80 assertions, including 57 browser checks of the production review
+modal at 1280px and 375px. The reported COL07 path and an unbroken filename
+remain contained and selectable verbatim. Existing completion-layout (SNP-06),
+source-preservation and destination-free events/provenance checks pass. Real
+server-handler checks cover both Windows slash styles, relative resolution,
+invalid/overlapping destinations, changed review context and no copying during
+review. This is implementation verification, not a new human acceptance pass.
+
+Tests use disposable synthetic workspaces and display paths. Neither real Che
+dataset was modified. C06–C10 remain open, including fallback-locale rollback
+and the final acceptance replay. See C05 in the
+[remediation plan](CHE2021_COLORECTAL_REMEDIATION_PLAN.md).
