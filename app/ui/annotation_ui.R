@@ -7,11 +7,12 @@ annotation_panel <- function(sample_choices) {
     page_sidebar(
       sidebar = sidebar(
         title = "Annotation Controls",
-        selectInput(
+        selectizeInput(
           "sample_idx",
           "1. Select Sample:",
           choices = sample_choices,
-          selected = sample_choices[1]
+          selected = sample_choices[1],
+          options = app_annotation_dropdown_options()
         ),
         uiOutput("anno_status_badge"),
         textAreaInput(
@@ -94,6 +95,7 @@ annotation_panel <- function(sample_choices) {
       ),
       navset_card_underline(
         id = "annotation_view",
+        header = card_body(uiOutput("annotation_progress"), fill = FALSE, class = "py-0"),
         nav_panel(
           title = "Cluster Exploration",
           value = "annotation_cluster",

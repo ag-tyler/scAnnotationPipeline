@@ -315,6 +315,11 @@ Important fields include:
 - `params.umap.*`
 - `params.de.*`
 
+Workspace selection and the dashboard show an optional reminder when neither
+`project_info.source_doi` nor `project_info.source_url` is recorded. Add either
+field to `dataset_config.yaml` and reload to clear it. Missing origin does not
+prevent standardization, processing or review-snapshot creation.
+
 `std_names.*` defines the standardized files expected by the downstream pipeline.
 
 `std_names.expmat` is updated during standardization according to the detected/selected matrix state.
@@ -616,6 +621,17 @@ independent of the later CNA decision: save the cell types first, then either
 save a complete reference/candidate CNA configuration or use **Omit CNA for
 This Sample**. Omission is explicit and reversible by saving a complete CNA
 configuration later.
+
+The progress strip counts samples with saved, currently valid annotations.
+Pending edits are shown separately and do not advance saved progress. A last-
+cluster notice means review/preview/save is next; **Sample annotation saved**
+confirms persistence. Rerunning upstream work can reduce the saved count until
+annotations are reviewed and saved again. Archived datasets show read-only
+progress and reject annotation writes.
+
+Annotation dropdowns retain search, keyboard selection and scrolling. Their
+expanded menus fit available viewport space, including narrow windows and long
+cell-type vocabularies.
 
 If clustering or DE was rerun, a stale annotation can be reopened once DE is
 complete. The currently selected sample is retried automatically when its DE

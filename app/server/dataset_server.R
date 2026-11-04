@@ -48,6 +48,17 @@ register_dataset_server <- function(input, output, session, state, context) {
     normalizePath(path, winslash = "/", mustWork = TRUE)
   }
 
+  output$workspace_origin_reminder <- renderUI({
+    workspace <- tryCatch(selected_standardization_workspace(), error = function(e) NULL)
+    if (is.null(workspace)) return(NULL)
+    path <- file.path(workspace, config$config_files$dataset)
+    if (!file.exists(path)) return(NULL)
+    dataset_config <- tryCatch(yaml::read_yaml(path), error = function(e) NULL)
+    if (is.null(dataset_config)) return(NULL)
+    reminder <- dataset_origin_reminder(dataset_config)
+    if (!is.null(reminder)) tags$p(reminder, class = "small text-body-secondary mb-2")
+  })
+
   observeEvent(input$btn_view_standardization_checklist, {
     workspace <- tryCatch(selected_standardization_workspace(), error = identity)
     if (inherits(workspace, "error")) {

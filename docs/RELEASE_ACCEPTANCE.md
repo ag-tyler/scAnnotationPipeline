@@ -172,6 +172,33 @@ Windows UTF-8 and synthetic inputs only. The optional >4 GiB ZIP64 gate was not
 enabled. Diagnostics remain ignored in `artifacts/local-checks/`; C09 and C10
 human acceptance remain open.
 
+**C09 implementation follow-up (2026-11-04):** Manual Annotation now shows quiet
+saved progress across configured samples and identifies pending edits separately.
+Last-cluster and saved notices explicitly distinguish review/save readiness
+from disk persistence. Larger body-attached dropdowns remain within viewport
+space and retain Selectize search, scrolling and keyboard selection. Workspace
+selection and the dashboard remind about missing optional DOI/URL metadata;
+either field clears the reminder, without changing standardization or snapshot
+eligibility. Archived annotation loads avoid caches and queued mutations are
+rejected. No biological decisions are written by the presentation code and no
+real dataset changed. C01–C09 implementation is complete; C10 human acceptance
+remains open.
+
+Final C09 verification passed 3,182 regression plus 632 browser assertions with
+zero failures/errors/test warnings/skips in the combined full/focused results.
+The complete normal test directory is covered; replacement C09/baseline rerun
+cases are counted once. C09 adds 31 regression and 34 browser assertions covering
+saved/dirty progress, rerun/reload, archived write/cache guards, optional origin,
+and 600-entry vocabulary search/scroll/native keyboard selection at desktop and
+narrow widths with viewport geometry checks. Protected input hashes remain
+unchanged; only explicit synthetic assign/save actions write labels. Existing
+missing-origin standardization and snapshot checks pass. Four reviewed UI
+baselines (`01`, `02`, `04`, `06`) reflect the new feedback/reminders. An
+exploratory Chrome startup failure occurred before app execution; the final
+rerun executed without skips. Tests used supported Windows UTF-8; the optional
+>4 GiB ZIP64 gate was not enabled. Local diagnostics remain ignored under
+`artifacts/local-checks/`. This does not close C10 human acceptance.
+
 This document defines the portable Milestone 7 release gate. Every automated
 check uses committed code/fixtures or deterministic synthetic data generated in
 a temporary directory. No named local dataset, private biological resource, or

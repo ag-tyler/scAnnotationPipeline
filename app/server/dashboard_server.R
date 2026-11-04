@@ -66,6 +66,11 @@ format_batch_failure <- function(operation_label, progress_context, error) {
 
 register_dashboard_server <- function(input, output, session, state, context) {
   rv <- state
+  output$dataset_origin_reminder <- renderUI({
+    req(rv$dataset_config)
+    reminder <- dataset_origin_reminder(rv$dataset_config)
+    if (!is.null(reminder)) tags$p(reminder, class = "small text-body-secondary mb-3")
+  })
   single_clustering_completed_index <- reactiveVal(NULL)
   de_completion_context <- reactiveVal(NULL)
   clustering_dialog_serial <- reactiveVal(0L)

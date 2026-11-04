@@ -53,6 +53,24 @@ make_c07_fixture <- function(root) {
   env
 }
 
+test_that("C09 archived annotation feedback remains read-only even for queued actions", {
+  fx <- make_c07_fixture(withr::local_tempdir()); rv <- fx$state
+  rv$storage_state <- utils::modifyList(shiny::isolate(rv$storage_state), list(status = "archived"))
+  files <- shiny::isolate(c(rv$selected_config_path, rv$pipeline_state_path, rv$paths_list$cell_file_paths))
+  hashes <- tools::md5sum(files)
+  shiny::testServer(fx$server, {
+    session$setInputs(main_nav = "anno_tab", sample_idx = "1", cna_sample_idx = "1")
+    expect_match(output$annotation_progress$html, "Saved annotations: 2 of 2 samples", fixed = TRUE)
+    expect_match(output$annotation_progress$html, "read-only", fixed = TRUE)
+    session$setInputs(assign_btn = 1, cluster = "1", cell_type_input = "Changed", save_btn = 1,
+      btn_save_refs = 1, cna_refs_input = "Changed", cna_pot_mal_input = "Changed", btn_save_anno_notes = 1, anno_sample_notes = "Changed")
+    expect_identical(tools::md5sum(files), hashes)
+    expect_false(rv$annotation_dirty)
+    expect_length(fx$reads, 0L)
+    expect_length(rv$active_actions, 0L)
+  })
+})
+
 test_that("C07 CNA-view omission cancels or confirms once, preserving upstream files and other samples", {
   fx <- make_c07_fixture(withr::local_tempdir()); rv <- fx$state
   original <- shiny::isolate(rv$pipeline_state)

@@ -2,6 +2,22 @@
 # observed after its replacement paths have been published. Invalid/transient
 # selection is a waiting state; workflow corruption is still reported by the
 # normal pipeline/preflight validators once a valid sample is selected.
+app_annotation_dropdown_options <- function(...) {
+  utils::modifyList(list(dropdownParent = "body", dropdownClass = "selectize-dropdown annotation-dropdown",
+    onInitialize = I("function() {
+      this.positionDropdown = function() {
+        const rect = this.$control[0].getBoundingClientRect();
+        const below = Math.max(0, window.innerHeight - rect.bottom - 8);
+        const above = Math.max(0, Math.min(window.innerHeight, rect.top) - 8);
+        const upward = above > below && below < Math.min(360, window.innerHeight * 0.5);
+        this.$dropdown_content.css({maxHeight: Math.min(360, window.innerHeight * 0.5, upward ? above : below) + 'px', overflowY: 'auto'});
+        const height = this.$dropdown.outerHeight();
+        const top = Math.max(8, Math.min(upward ? rect.top - height : rect.bottom, window.innerHeight - height - 8));
+        this.$dropdown.css({position: 'fixed', top: top + 'px', left: Math.max(8, rect.left) + 'px', width: Math.min(rect.width, window.innerWidth - 16) + 'px'});
+      };
+    }"), onDropdownOpen = I("function() { this.positionDropdown(); requestAnimationFrame(() => this.positionDropdown()); }")), list(...))
+}
+
 app_sample_index <- function(state, value) {
   shiny::req(state$paths_list, !("dataset_load" %in% shiny::isolate(state$active_actions)))
   shiny::req(length(value) == 1L, is.numeric(value) || is.character(value))

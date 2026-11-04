@@ -1041,3 +1041,33 @@ updates. Multi-subclone classifications and processed-file hashes are
 unchanged. Existing screenshot baselines pass without image updates; C03
 still builds one heavy heatmap across warm re-entry/k changes. The optional
 >4 GiB ZIP64 gate was not enabled. C09/C10 remain open.
+
+**C09 implementation follow-up — 2026-11-04:** PRE-03 and ANN-06/08 now have
+saved-annotation progress, explicit notices and larger viewport-bounded
+dropdowns. Progress counts saved, prerequisite-ready annotation records across
+configured samples; pending edits are named separately and do not advance it.
+The last-cluster notice says review/save is still required, while the saved
+notice names the sample and confirms disk persistence. Menu layout retains
+Selectize search, scroll and keyboard behavior for large vocabularies.
+
+Workspace selection and the dashboard show an optional reminder when neither
+source DOI nor URL is recorded; either field clears it after reload. No
+standardization or snapshot eligibility requirement changed. Archived annotation
+loads avoid caches and mutation handlers reject queued assign/save/config/note
+actions. These presentation changes do not write biological decisions. Tests
+use disposable synthetic data only; neither real Che dataset was modified.
+The C10 human acceptance gate remains open. See C09 in the
+[remediation plan](CHE2021_COLORECTAL_REMEDIATION_PLAN.md).
+
+Final C09 verification passed 3,182 regression plus 632 browser assertions with
+zero failures/errors/test warnings/skips in the combined full/focused results;
+replacement rerun cases are counted once. C09 adds 31 regression and 34 browser
+assertions. Saved/dirty counts, rerun/reload, archived write/cache guards,
+600-entry vocabulary search/scroll/native keyboard selection at desktop and
+narrow widths, viewport geometry, explicit save notices and optional origin
+reminders are covered. Missing-origin standardization and snapshot cases pass.
+Protected scientific input hashes stay unchanged; intended assign/save writes
+occur only in the synthetic browser sample. Four UI baselines (`01`, `02`, `04`,
+`06`) were refreshed and visually inspected. One exploratory browser startup
+could not open a debugging port; the final checks executed without skips.
+The optional >4 GiB ZIP64 gate was not enabled. C10 remains open.

@@ -310,6 +310,7 @@ dashboard_panel <- function() {
         class = "btn-outline-primary btn-lg w-100 mb-4"
       ),
       uiOutput("pipeline_status_overview"),
+      uiOutput("dataset_origin_reminder"),
       uiOutput("dataset_storage_status"),
       card(
         card_header(h4("Utilities", class = "mb-0")),

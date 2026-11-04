@@ -2,8 +2,8 @@
 
 **Date:** 2026-11-03
 
-**Status:** C01–C08 implemented with synthetic regression/browser coverage;
-C09 remains planned and C10 release acceptance remains open.
+**Status:** C01–C09 implemented with synthetic regression/browser coverage;
+C10 release acceptance remains open.
 
 **Evidence:** [Completed manual review](CHE2021_COLORECTAL_MANUAL_REVIEW.md),
 especially stage notes and section 10. This plan extends the
@@ -561,7 +561,7 @@ C10 human acceptance gate remain open.
 
 ### C09 — Annotation feedback and setup reminders
 
-- [ ] Implement and verify.
+- [x] Implement and verify on synthetic workspaces (2026-11-04).
 
 Show quiet progress based on saved annotation completion across configured
 samples, with the current sample's unsaved state clearly distinguished. Make
@@ -571,6 +571,54 @@ scrolling and keyboard access for large vocabularies. Add a nonblocking reminder
 for missing source DOI/URL in setup/status. Missing origin must still permit
 standardization and snapshots. Verify counts after save/rerun/reload and keep
 archived views read-only. These UI changes must not write biological decisions.
+
+**Implementation record (2026-11-04):** Manual Annotation shows a quiet native
+progress indicator derived from saved, prerequisite-ready annotation records
+across the configured sample paths. Extra historical state samples do not
+inflate the denominator, and unsaved edits are named separately without
+advancing saved completion. Saving, upstream invalidation and reload use the
+existing persisted workflow as authority; rendering adds no cache/file I/O.
+The last-cluster notice is bold and warning-styled, explicitly saying labels
+must still be reviewed/saved. The saved notice names the sample and confirms
+disk persistence instead of implying that reaching the last cluster saved it.
+
+Sample/cluster/cell-type and CNA cell-type dropdowns use the existing Selectize
+search, scrolling, creation policy and keyboard bindings. Their body-attached
+menus use available viewport space above/below the control, up to 360px or half
+the viewport, and fixed positioning avoids sidebar clipping. No biological
+values are selected or written by this layout code.
+
+Workspace selection and the loaded dashboard show a small reminder only when
+both source DOI and URL are missing. Either field satisfies it; no validation,
+standardization, scientific-state or snapshot eligibility rule changed. The
+reminder reads local metadata and writes nothing. Archived annotation loads
+avoid caches, mutation buttons are disabled and queued assign/save/config/note
+events are rejected server-side; progress remains read-only.
+
+**Verification:** 3,182 regression and 632 browser assertions passed with zero
+failures/errors/test warnings/skips in the combined results. The normal test
+directory is covered by full regression/browser runs with the final compact
+header and dropdown geometry verified in a replacement C09/baseline rerun;
+rerun cases are not counted twice. C09 adds 31 regression assertions (including
+two saved-feedback checks in F05) and 34 browser assertions.
+
+Tests verify configured-sample denominators, saved versus dirty counts,
+upstream rerun invalidation and reload, pure no-I/O derivation, queued archived
+write rejection and no archived cache reads. The browser uses a 600-entry
+vocabulary at 1280px/500px, checks usable width and both viewport boundaries,
+searches and selects with native keyboard events, assigns/saves on a disposable
+sample, and verifies progress/notices and restart persistence. Source DOI or URL
+clears the optional reminder; missing-origin load, standardization onboarding
+and snapshot cases pass. Protected scientific inputs retain their hashes;
+presentation code does not introduce scientific writes.
+
+Workspace, dashboard, annotation and clustering-dialog background baselines
+(`01`, `02`, `04`, `06`) were refreshed and visually inspected. A transient
+exploratory Chrome debugging-port startup failure occurred before application
+execution; the final rerun executed successfully without skips. R 4.5.3 used
+supported Windows UTF-8; the optional >4 GiB ZIP64 gate was not enabled.
+Diagnostics remain ignored under `artifacts/local-checks/`. Neither real Che
+dataset changed. C01–C09 implementation is complete; C10 remains open.
 
 ## C10 — Verification and acceptance gate
 

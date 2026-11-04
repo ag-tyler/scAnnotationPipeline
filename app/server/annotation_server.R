@@ -3,6 +3,26 @@
 register_annotation_server <- function(input, output, session, state, context) {
   rv <- state
 
+  output$annotation_progress <- renderUI({
+    req(rv$pipeline_state, rv$paths_list)
+    progress <- annotation_progress_summary(rv$pipeline_state,
+      basename(rv$paths_list$sample_dir_paths), rv$sample_name, rv$annotation_dirty)
+    div(class = "annotation-progress small text-body-secondary p-2", role = "status", `aria-live` = "polite",
+      tags$div(paste0("Saved annotations: ", progress$saved, " of ", progress$total, " samples")),
+      tags$progress(value = progress$saved, max = max(1L, progress$total),
+        style = "width: 100%; height: 0.5rem;", `aria-label` = "Samples with saved annotations"),
+      if (!is.null(progress$unsaved_sample)) tags$div(class = "text-warning-emphasis fw-semibold",
+        paste0("Unsaved changes: ", progress$unsaved_sample, ". Pending edits are not included in saved progress.")),
+      if (dataset_storage_cache_is_retired(rv$storage_state)) tags$div("Archived dataset: annotations are read-only.")
+    )
+  })
+  observe({
+    editable <- !is.null(rv$paths_list) && !dataset_storage_cache_is_retired(rv$storage_state)
+    for (id in c("assign_btn", "save_btn", "btn_save_refs", "btn_omit_cna", "btn_save_anno_notes")) {
+      shinyjs::toggleState(id, condition = editable)
+    }
+  })
+
   register_single_sample_de_handlers(
     input = input,
     session = session,
@@ -155,6 +175,7 @@ register_annotation_server <- function(input, output, session, state, context) {
   })
 
   observeEvent(input$btn_save_anno_notes, {
+    req(!dataset_storage_cache_is_retired(rv$storage_state))
     req(rv$sample_name, rv$live_selected_config)
     rv$live_selected_config <- save_sample_note(
       rv$live_selected_config,
@@ -236,7 +257,7 @@ register_annotation_server <- function(input, output, session, state, context) {
                      choices = current_types,
                      selected = rv$live_selected_config$cna_ref_cells[[rv$sample_name]],
                      multiple = TRUE,
-                     options = list(placeholder = 'Select annotated types...'))
+                     options = app_annotation_dropdown_options(placeholder = 'Select annotated types...'))
     )
   })
 
@@ -259,10 +280,11 @@ register_annotation_server <- function(input, output, session, state, context) {
                    choices = all_choices,
                    selected = rv$live_selected_config$cna_pot_mal_cells[[rv$sample_name]],
                    multiple = TRUE,
-                   options = list(create = TRUE, placeholder = 'Select or type new...'))
+                   options = app_annotation_dropdown_options(create = TRUE, placeholder = 'Select or type new...'))
   })
 
   observeEvent(input$btn_save_refs, {
+    req(!dataset_storage_cache_is_retired(rv$storage_state))
     req(rv$sample_name)
 
     if (isTRUE(rv$annotation_dirty)) {
@@ -399,6 +421,10 @@ register_annotation_server <- function(input, output, session, state, context) {
   }
 
   observeEvent(annotation_load_trigger(), {
+    if (dataset_storage_cache_is_retired(rv$storage_state)) {
+      rv$cells_filt <- NULL; rv$all_matches <- NULL; rv$annotation_loaded_index <- NULL
+      return()
+    }
     trigger <- annotation_load_trigger()
     if (!identical(trigger$nav, "anno_tab")) return()
     idx <- trigger$index
@@ -498,7 +524,7 @@ register_annotation_server <- function(input, output, session, state, context) {
   output$cluster_selector <- renderUI({
     req(rv$cells_filt)
     clusters <- natural_cluster_order(rv$cells_filt$clust)
-    selectInput("cluster", "2. Select Cluster:", choices = clusters)
+    selectizeInput("cluster", "2. Select Cluster:", choices = clusters, options = app_annotation_dropdown_options())
   })
 
   # Render dynamically based on selected dataset marker filters
@@ -506,7 +532,7 @@ register_annotation_server <- function(input, output, session, state, context) {
     req(rv$complete_markers)
     selectizeInput("cell_type_input", "Cell Type:",
                    choices = c("NA", unique(rv$complete_markers$cell_type)),
-                   options = list(create = TRUE, placeholder = 'Select or type new...'))
+                   options = app_annotation_dropdown_options(create = TRUE, placeholder = 'Select or type new...'))
   })
 
   output$current_cluster_annotation <- renderUI({
@@ -571,6 +597,7 @@ register_annotation_server <- function(input, output, session, state, context) {
   }, server = FALSE)
 
   observeEvent(input$assign_btn, {
+    req(!dataset_storage_cache_is_retired(rv$storage_state))
     req(rv$cells_filt, input$cluster, input$cell_type_input)
     curr_annotation <- ifelse(input$cell_type_input == "NA", NA_character_, input$cell_type_input)
 
@@ -607,7 +634,9 @@ register_annotation_server <- function(input, output, session, state, context) {
       next_cluster <- clusters[curr_idx + 1]
       updateSelectInput(session, "cluster", selected = next_cluster)
     } else {
-      showNotification("All clusters annotated! You can now preview and save.", type = "message", duration = 5)
+      showNotification(tagList(tags$strong("Sample ready to save: "), rv$sample_name,
+        ". Last cluster reached; review the labels, then preview and save. Changes are not saved yet."),
+        type = "warning", duration = 10)
     }
   })
 
@@ -692,6 +721,7 @@ register_annotation_server <- function(input, output, session, state, context) {
   }, ignoreInit = TRUE)
 
   save_current_annotations <- function() {
+    req(!dataset_storage_cache_is_retired(rv$storage_state))
     req(rv$paths_list, rv$cells_filt, rv$cells_raw, rv$sample_name, rv$res, rv$results_dir_path)
     idx <- app_sample_index(rv, input$sample_idx)
     req(identical(basename(rv$paths_list$sample_dir_paths[[idx]]), rv$sample_name))
@@ -804,7 +834,8 @@ register_annotation_server <- function(input, output, session, state, context) {
     )
 
     rv$annotation_dirty <- FALSE
-    showNotification("Successfully saved annotations to disk!", type = "default")
+    showNotification(tagList(tags$strong("Sample annotation saved: "), rv$sample_name,
+      ". Annotations are saved to disk; this sample is included in saved progress."), type = "default", duration = 8)
     TRUE
   }
 

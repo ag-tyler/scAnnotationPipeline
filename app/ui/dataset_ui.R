@@ -189,6 +189,7 @@ dataset_selection_panel <- function(available_datasets, clipboard_text) {
               choices = available_datasets,
               width = "100%"
             ),
+            uiOutput("workspace_origin_reminder"),
             actionButton(
               "btn_load_dataset",
               "Load Dataset",

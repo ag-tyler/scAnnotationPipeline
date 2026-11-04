@@ -22,7 +22,8 @@ test_that("F05 retries the selected sample when DE becomes ready", {
     "pipeline_status_presentation", "load_cells",
     "validate_annotation_cell_alignment", "persist_pipeline_step_update",
     "cache_save_data", "cache_invalidate_sample", "capture_snapshot_annotations",
-    "dataset_storage_cache_is_retired", "pipeline_cna_is_omitted", "cna_analysis_context"
+    "dataset_storage_cache_is_retired", "pipeline_cna_is_omitted", "cna_analysis_context",
+    "annotation_progress_summary", "app_annotation_dropdown_options"
   )) {
     test_env[[function_name]] <- get(function_name, inherits = TRUE)
   }
@@ -139,6 +140,8 @@ test_that("F05 retries the selected sample when DE becomes ready", {
 
     session$setInputs(save_btn = 1)
     session$flushReact()
+    expect_match(output$annotation_progress$html, "Saved annotations: 1 of 1 samples", fixed = TRUE)
+    expect_true(any(grepl("Sample annotation saved", notifications, fixed = TRUE)))
     expect_identical(
       get_pipeline_step(state$pipeline_state, "annotation", "sample1")$status,
       "completed", info = paste(notifications, collapse = "; ")

@@ -4,6 +4,26 @@
 # ==================================================================================================
 
 
+annotation_progress_summary <- function(state, sample_names = names(state$samples), current_sample = NULL, dirty = FALSE) {
+  sample_names <- unique(as.character(sample_names))
+  saved <- sample_names[vapply(sample_names, function(sample) {
+    sample %in% names(state$samples) &&
+      identical(get_pipeline_step(state, "annotation", sample)$status, "completed") &&
+      pipeline_step_readiness(state, "annotation", sample)$ready
+  }, logical(1))]
+  list(saved = length(saved), total = length(sample_names), samples = saved,
+    unsaved_sample = if (isTRUE(dirty) && length(current_sample) == 1L && !is.na(current_sample) && current_sample %in% sample_names) current_sample else NULL)
+}
+
+dataset_origin_reminder <- function(dataset_config) {
+  if (!is.list(dataset_config)) return(NULL)
+  origin <- dataset_config$project_info
+  if (!is.list(origin)) origin <- list()
+  present <- function(value) length(value) == 1L && !is.na(value) && nzchar(trimws(as.character(value)))
+  if (present(origin$source_doi) || present(origin$source_url)) return(NULL)
+  "Optional source DOI or URL is not recorded. Add project_info.source_doi or source_url in dataset_config.yaml and reload. Processing and review snapshots remain available."
+}
+
 PIPELINE_OVERVIEW_STAGES <- list(
   clustering = list(label = "Clustering", step = "clustering"),
   resolution = list(label = "Resolution", step = "resolution"),
