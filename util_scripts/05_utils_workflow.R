@@ -319,12 +319,13 @@ report_batch_progress <- function(
   detail,
   sample_fraction,
   outcome = NULL,
-  elapsed_seconds = NULL
+  elapsed_seconds = NULL,
+  console = TRUE
 ) {
   sample_fraction <- max(0, min(1, as.numeric(sample_fraction)))
   fraction <- ((sample_index - 1) + sample_fraction) / sample_total
 
-  message(
+  if (console) message(
     "[", sample_index, "/", sample_total, "] ", sample_name,
     " | ", stage, " | ", detail,
     if (!is.null(elapsed_seconds)) {
@@ -604,16 +605,22 @@ single_de_analysis <- function(sample_idx, paths_list, dataset_config, selected_
   genes_file_path <- paths_list$genes_file_paths[sample_idx]
   
   # Load cells table to get current sample name
-  cells <- load_cells(cell_file_path)
-  sample_name <- unique(cells$sample)
-  message('Working on sample: ', sample_name)
-  if (is.function(progress_callback)) {
-    progress_callback(
+  own_progress <- !is.function(progress_callback)
+  if (own_progress) {
+    sample_name <- basename(paths_list$sample_dir_paths[[sample_idx]])
+    console_progress <- new_console_step_timer(paste0("[1/1] ", sample_name, " | DE"))
+    on.exit(console_progress("failed", "DE did not complete"), add = TRUE)
+    progress_callback <- function(stage, detail, fraction, outcome = NULL) {
+      console_progress(stage, detail, outcome)
+    }
+  }
+  progress_callback(
       "input_loading",
       "Loading validated clustered inputs and caches",
       0.05
     )
-  }
+  cells <- load_cells(cell_file_path)
+  sample_name <- unique(cells$sample)
   
   cells_filt_file_name <- paste0('cells_filt_clust_res_', selected_config$resolutions[[sample_name]], 
                                  '_', sample_name, '.qs2')
@@ -657,7 +664,6 @@ single_de_analysis <- function(sample_idx, paths_list, dataset_config, selected_
   result_sample_dir_path <- file.path(results_dir_path, sample_name)
   dir.create(result_sample_dir_path, showWarnings = FALSE)
   
-  message('Starting differential expression analysis')
   if (is.function(progress_callback)) {
     progress_callback(
       "differential_expression",
@@ -749,7 +755,7 @@ single_de_analysis <- function(sample_idx, paths_list, dataset_config, selected_
   all_matches[, cluster_display_order := NULL]
   data.table::fwrite(all_matches, file = all_matches_path)
   
-  message('Finished ', sample_name)
+  if (own_progress) console_progress("completed", paste0("Finished ", sample_name, "; differential-expression outputs complete"))
 }
 
 
@@ -815,9 +821,11 @@ de_analysis <- function(
     sample_stage <- "starting"
     message(strrep("#", 80))
     message("[", i, "/", sample_total, "] Starting sample ", sample_name)
+    console_progress <- new_console_step_timer(paste0("[", i, "/", sample_total, "] ", sample_name, " | DE"))
     report <- function(stage, detail, fraction, outcome = NULL) {
       sample_fraction <<- fraction
       sample_stage <<- stage
+      console_progress(stage, detail, outcome)
       report_batch_progress(
         progress_callback = progress_callback,
         operation = "differential_expression",
@@ -828,7 +836,8 @@ de_analysis <- function(
         detail = detail,
         sample_fraction = fraction,
         outcome = outcome,
-        elapsed_seconds = proc.time()[["elapsed"]] - sample_started_at
+        elapsed_seconds = proc.time()[["elapsed"]] - sample_started_at,
+        console = FALSE
       )
     }
     if (is.function(state_callback)) state_callback(sample_name, "in_progress")
@@ -981,16 +990,21 @@ compute_cna_and_cache <- function(expmat, gene_positions, ref_cells, sample_name
   #'
   #' @return None. The function saves the serialized CNA matrix to disk.
   
+  report <- new_console_step_timer(paste0(sample_name, " | CNA matrix"))
+  on.exit(report("failed", "CNA matrix computation did not complete"), add = TRUE)
+  report("computation", "Computing CNA profiles")
   expdt <- compute_cna(expmat, gene_positions, ref_cells)
   
   # Save CNA matrix:
+  report("reshaping", "Reshaping and ordering CNA matrix")
   cna_mat <- data.table::dcast(
     expdt[, .(gene, chr, start_pos, cell_name, cna = round(cna, 4))],
     gene + chr + start_pos ~ cell_name
   )[order(chr, start_pos)]
   
   cna_mat_file_name <- paste0('cna_matrix_', sample_name, '.qs2')
-  cache_save_data(
+  report("cache_writing", "Writing CNA matrix cache and dependencies")
+  result <- cache_save_data(
     cna_mat,
     cna_mat_file_name,
     dataset_dir_path,
@@ -1002,6 +1016,8 @@ compute_cna_and_cache <- function(expmat, gene_positions, ref_cells, sample_name
     ),
     producer = "compute_cna_and_cache"
   )
+  report("completed", "CNA matrix cached")
+  invisible(result)
 }
 
 
@@ -1098,6 +1114,9 @@ hclust_cluster_heatmap <- function(
   #'
   #' @return None. Saves the clustering object to cache and the plot to disk.
   
+  report <- new_console_step_timer(paste0(sample_name, " | CNA heatmaps"))
+  on.exit(report("failed", "CNA clustering/heatmaps did not complete"), add = TRUE)
+  report("input_preparation", "Validating and reshaping heatmap inputs")
   required_hdata_columns <- c("gene", "cell_name", "cna")
   missing_hdata_columns <- setdiff(required_hdata_columns, names(hdata))
   if (length(missing_hdata_columns) > 0L) {
@@ -1130,6 +1149,7 @@ hclust_cluster_heatmap <- function(
     cna_abort("CNA heatmap casting produced missing or non-finite values.")
   }
   hclust_file_name <- paste0('hclust_', sample_name, '.qs2')
+  report("clustering", "Checking cached Ward clustering")
   if (cache_check_valid(hclust_file_name, dataset_dir_path, dependencies)) {
     clust_hclust <- cache_load_data(
       hclust_file_name,
@@ -1137,6 +1157,7 @@ hclust_cluster_heatmap <- function(
       dependencies = dependencies
     )
     if (!setequal(clust_hclust$labels, colnames(hdata_cast))) {
+      report("clustering", "Recomputing Ward clustering after cell membership changed")
       cache_invalidate_artifacts(hclust_file_name, dataset_dir_path)
       clust_hclust <- hierarchical_clustering_cna(hdata_cast, method = 'ward.D2')
       cache_save_data(
@@ -1146,8 +1167,11 @@ hclust_cluster_heatmap <- function(
         dependencies = dependencies,
         producer = "hclust_cluster_heatmap"
       )
+    } else {
+      report("clustering", "Reusing validated Ward clustering")
     }
   } else {
+    report("clustering", "Computing Ward clustering and caching results")
     clust_hclust <- hierarchical_clustering_cna(hdata_cast, method = 'ward.D2')
     cache_save_data(
       clust_hclust,
@@ -1159,6 +1183,7 @@ hclust_cluster_heatmap <- function(
   }
   
   # Extract levels safely outside of data.table to prevent NSE scoping crashes
+  report("plotting", "Building dendrogram, CNA heatmap, and annotation bars")
   ordered_cells <- clust_hclust$labels[clust_hclust$order]
   hdata[, cell_num_hclust := as.numeric(factor(cell_name, levels = ordered_cells))]
   
@@ -1181,8 +1206,11 @@ hclust_cluster_heatmap <- function(
                                             dend_hclust_plot)
   # Save final plots
   combined_hclust_plot_path <- file.path(cna_plots_dir_path, 'hclust.png')
-  ggplot2::ggsave(combined_hclust_plot_path, combined_hclust_plot, width = 300, height = 400, 
+  report("output_writing", "Writing CNA clustering heatmap")
+  result <- ggplot2::ggsave(combined_hclust_plot_path, combined_hclust_plot, width = 300, height = 400,
                   units = 'mm', bg = 'white')
+  report("completed", "CNA clustering heatmap saved")
+  invisible(result)
 }
 
 
@@ -1309,6 +1337,9 @@ compute_signal_cor_cna <- function(sample_name, subclone_i, ref_cells, selected_
   #' @return None. Saves a \code{data.table} containing the calculated metrics 
   #'   to the cache directory as a \code{.qs2} file.
   
+  report <- new_console_step_timer(paste0(sample_name, " | CNA signal/correlation | subclone ", subclone_i))
+  on.exit(report("failed", "CNA signal/correlation did not complete"), add = TRUE)
+  report("input_loading", "Loading CNA matrix and clustering")
   cna_mat_file_name <- paste0('cna_matrix_', sample_name, '.qs2')
   cna_mat <- cache_load_data(cna_mat_file_name, dataset_dir_path)
   if (!all(c("gene", "chr", "start_pos") %in% names(cna_mat)) || nrow(cna_mat) == 0L) {
@@ -1350,6 +1381,7 @@ compute_signal_cor_cna <- function(sample_name, subclone_i, ref_cells, selected_
   }
   
   # Genes with highest CNA values in candidate malignant cells:
+  report("hotspot_selection", "Selecting hotspot genes and malignant mean profile")
   hotspot_genes <- expdt[cell_name %in% cell_names, .(m2 = mean(cna^2)), by = gene]
   if (nrow(hotspot_genes) == 0L || any(!is.finite(hotspot_genes$m2))) {
     cna_abort("The selected malignant subclone has no finite CNA signal values.")
@@ -1376,6 +1408,7 @@ compute_signal_cor_cna <- function(sample_name, subclone_i, ref_cells, selected_
   }
   
   # CNA signal and correlation:
+  report("signal_correlation", "Calculating cell signals and correlations")
   dt <- expdt[gene %in% hotspot_genes, .(cna_signal = mean(cna^2)), by = cell_name]
   correlations <- suppressWarnings(stats::cor(cna_mat, mal_mean))
   correlations <- correlations[, 1]
@@ -1399,7 +1432,8 @@ compute_signal_cor_cna <- function(sample_name, subclone_i, ref_cells, selected_
   data.table::setcolorder(dt, c('sample', 'subclone'))
   
   signal_cor_dt_name <- paste0('cna_sig_cor_', sample_name, '_subclone_', subclone_i, '.qs2')
-  cache_save_data(
+  report("cache_writing", "Writing signal/correlation cache and dependencies")
+  result <- cache_save_data(
     dt,
     signal_cor_dt_name,
     dataset_dir_path,
@@ -1412,6 +1446,8 @@ compute_signal_cor_cna <- function(sample_name, subclone_i, ref_cells, selected_
     ),
     producer = "compute_signal_cor_cna"
   )
+  report("completed", "CNA signal/correlation cached")
+  invisible(result)
 }
 
 
@@ -2153,8 +2189,22 @@ batch_compute_cna_and_heatmaps <- function(
   }
   sample_dirs <- sample_dirs[available_samples %in% sample_names]
   sample_total <- length(sample_dirs)
+  batch_started <- proc.time()[["elapsed"]]
+  console_progress <- NULL
+  sample_finished <- TRUE
+  on.exit({
+    if (!sample_finished) {
+      console_progress("failed", "CNA batch did not complete this sample")
+      failed_samples[[s_name]] <- "CNA batch did not complete this sample"
+    }
+    message("CNA batch finished: completed=", length(processed_samples),
+      ", failed=", length(failed_samples), ", skipped=", length(skipped_samples),
+      ", not_run=", sample_total - length(processed_samples) - length(failed_samples) - length(skipped_samples),
+      ", elapsed=", sprintf("%.1f", proc.time()[["elapsed"]] - batch_started), "s")
+  }, add = TRUE)
 
   report_progress <- function(sample_name, sample_index, stage, detail = NULL) {
+    console_progress(stage, if (is.null(detail)) stage else detail)
     if (!is.function(progress_callback)) return(invisible(NULL))
     progress_callback(
       sample_name = sample_name,
@@ -2168,6 +2218,10 @@ batch_compute_cna_and_heatmaps <- function(
   
   for (i in seq_along(sample_dirs)) {
     s_name <- basename(sample_dirs[i])
+    sample_finished <- FALSE
+    message(strrep("#", 80))
+    message("[", i, "/", sample_total, "] Starting CNA for sample ", s_name)
+    console_progress <- new_console_step_timer(paste0("[", i, "/", sample_total, "] ", s_name, " | CNA"))
     report_progress(s_name, i, "preflight", "Checking CNA eligibility")
     
     preflight <- cna_sample_preflight(
@@ -2198,10 +2252,10 @@ batch_compute_cna_and_heatmaps <- function(
         )
       }
       report_progress(s_name, i, "skipped", preflight$reason)
+      sample_finished <- TRUE
+      message(strrep("#", 80))
       next
     }
-    
-    message("Batch processing CNA & Heatmaps for sample: ", s_name)
     
     if (is.function(state_callback)) state_callback(s_name, "in_progress")
     tryCatch({
@@ -2236,8 +2290,6 @@ batch_compute_cna_and_heatmaps <- function(
 
       cna_clustering_and_heatmaps(ref_cells, s_name, selected_config, cna_plots_dir_path, dataset_dir_path)
 
-      processed_samples <- c(processed_samples, s_name)
-      report_progress(s_name, i, "completed", "CNA and heatmaps complete")
       if (is.function(state_callback)) {
         state_callback(
           s_name,
@@ -2245,6 +2297,8 @@ batch_compute_cna_and_heatmaps <- function(
           details = list(reference_cell_count = nrow(ref_cells), batch = TRUE)
         )
       }
+      processed_samples <- c(processed_samples, s_name)
+      report_progress(s_name, i, "completed", "CNA and heatmaps complete")
     }, error = function(error) {
       failed_samples[[s_name]] <<- conditionMessage(error)
       report_progress(s_name, i, "failed", conditionMessage(error))
@@ -2253,6 +2307,8 @@ batch_compute_cna_and_heatmaps <- function(
       }
       message("CNA batch failed for ", s_name, ": ", conditionMessage(error))
     })
+    sample_finished <- TRUE
+    message(strrep("#", 80))
   }
   
   return(list(

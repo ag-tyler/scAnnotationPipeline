@@ -58,6 +58,9 @@ register_cna_compute_server <- function(input, output, session, state, context) 
     }
 
 
+    console_progress <- new_console_step_timer(paste0("[1/1] ", s_name, " | CNA"))
+    on.exit(console_progress("failed", "CNA computation did not complete"), add = TRUE)
+    console_progress("preflight", "Checking CNA eligibility and loading validated inputs")
     preflight <- cna_sample_preflight(
       s_name,
       rv$live_selected_config,
@@ -67,6 +70,7 @@ register_cna_compute_server <- function(input, output, session, state, context) 
       validate_expression = TRUE
     )
     if (!isTRUE(preflight$eligible)) {
+      console_progress("skipped", preflight$reason)
       state_status <- if (identical(preflight$status, "ineligible")) {
         "skipped"
       } else {
@@ -100,6 +104,7 @@ register_cna_compute_server <- function(input, output, session, state, context) 
 
     state_started <- tryCatch(persist_cna_compute(s_name, "in_progress"), error = identity)
     if (inherits(state_started, "error")) {
+      console_progress("failed", conditionMessage(state_started))
       showNotification(
         paste("CNA could not start because workflow state failed:", conditionMessage(state_started)),
         type = "error",
@@ -124,6 +129,7 @@ register_cna_compute_server <- function(input, output, session, state, context) 
         ref_cells <- preflight$ref_cells
 
         # Compute CNA
+        console_progress("cna_matrix", "Checking CNA matrix cache and dependencies")
         setProgress(value = 1 / 3, detail = "Stage 2 of 3: computing or validating CNA matrix")
         cna_mat_file_name <- paste0('cna_matrix_', s_name, '.qs2')
         cna_dependencies <- cna_matrix_cache_dependencies(
@@ -133,6 +139,7 @@ register_cna_compute_server <- function(input, output, session, state, context) 
           ref_cells
         )
         if (!cache_check_valid(cna_mat_file_name, rv$dataset_dir_path, cna_dependencies)) {
+          console_progress("cna_matrix", "Computing CNA matrix")
           cache_invalidate_sample(
             s_name,
             rv$dataset_dir_path,
@@ -140,6 +147,7 @@ register_cna_compute_server <- function(input, output, session, state, context) 
           )
           compute_cna_and_cache(expmat_filt, context$resources$gene_positions, ref_cells, s_name, rv$dataset_dir_path)
         } else {
+          console_progress("cna_matrix", "Reusing validated CNA matrix")
           record_state_event(
             rv,
             stage = "cache",
@@ -151,6 +159,7 @@ register_cna_compute_server <- function(input, output, session, state, context) 
         }
 
         # Compute Heatmaps
+        console_progress("heatmaps", "Generating CNA clustering and heatmaps")
         setProgress(value = 2 / 3, detail = "Stage 3 of 3: generating clustering and heatmaps")
         cna_plots_dir_path <- file.path(rv$results_dir_path, s_name, '3_cna_plots')
         dir.create(cna_plots_dir_path, showWarnings = FALSE)
@@ -172,6 +181,7 @@ register_cna_compute_server <- function(input, output, session, state, context) 
           sample = s_name,
           parameters = list(reference_cell_count = nrow(ref_cells))
         )
+        console_progress("completed", "CNA and heatmaps complete")
         setProgress(value = 1, detail = "CNA and heatmaps complete")
         showNotification("CNA and Heatmaps computed successfully!", type = "default")
         shinyjs::enable("btn_cna_go_malig_clust")
@@ -182,6 +192,7 @@ register_cna_compute_server <- function(input, output, session, state, context) 
     }, error = function(error) {
       ineligible <- inherits(error, "cna_ineligible_error")
       outcome <- if (ineligible) "skipped" else "failed"
+      console_progress(outcome, conditionMessage(error))
       try(persist_cna_compute(s_name, outcome, reason = conditionMessage(error)), silent = TRUE)
       record_state_event(
         rv,

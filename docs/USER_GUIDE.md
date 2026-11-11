@@ -559,6 +559,29 @@ matching, scoring/plot generation, and output writing. If either bulk workflow
 fails, the notification and structured event identify the sample and last real
 stage reached; processing remains fail-fast.
 
+Batch and single-sample DE print sample/stage progress in the R console. Stage
+completion lines show both the completed step's duration and cumulative sample
+time, measured in elapsed seconds. For example:
+
+```text
+[2/3] sample_B | DE | marker_matching | completed | step 1.8s | elapsed 14.2s
+```
+
+Single-sample and batch CNA use the same convention for preflight, matrix
+computation/cache reuse, and heatmaps. Nested CNA messages name matrix
+computation/reshaping/cache writing, Ward clustering, plot construction/writing,
+and signal/correlation steps (including the subclone). Cache hits are labeled
+as reuse; skips/failures name their outcome instead of claiming completion.
+DE and CNA batch summaries include completed, failed, skipped, not-run counts,
+and total elapsed time. DE remains fail-fast; batch CNA isolates computation
+failures and continues with other samples.
+
+Step durations are reported when a stage finishes or fails, rather than as a
+live countdown. Nested timers measure their own operation and overlap the outer
+sample/batch timer; do not add them together as independent durations. These
+console diagnostics do not add records to persistent event logs or alter
+scientific results, caches, or workflow decisions.
+
 On successful DE completion, the dialog reports how many processed samples
 still need annotation review and names the first one ready to open, in
 processing order. **Go to Manual Annotation** selects that sample rather than
@@ -914,6 +937,7 @@ configuration, state, results, or cache files.
 | `test-m0-cna-characterization.R` | Regression coverage for formerly exposed CNA numerical/cache failures |
 | `test-m5-cna-batch.R` | Mixed-validity batch isolation, subsets, progress, and retry behavior |
 | `test-f07-batch-progress.R` | Shared clustering/DE progress contract, monotonic fractions, Shiny formatting, and failure-stage reporting |
+| `test-p06a-console-progress.R` | Deterministic step/sample timing, terminal outcomes, standalone DE failure, CNA reuse/skips/isolated failures, and completion-state failure totals |
 | `test-f08-natural-cluster-ordering.R` | Numeric-aware 13-cluster ordering across UMAP legends/colours, DE axes/lists, and annotation controls; long DE score-plot titles and explicit export dimensions |
 | `test-f09-single-sample-clustering.R` | Targeted clustering index/resolution coverage, sample-scoped state/cache invalidation, failure isolation, duplicate guards, completion navigation, and shared targeted-DE recovery from Manual Annotation |
 | `test-regression_clustering.R` | Preprocessing → PCA → UMAP → Louvain integration/regression behavior |

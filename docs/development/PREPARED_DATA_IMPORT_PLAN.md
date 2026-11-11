@@ -1,7 +1,7 @@
 # Prepared-data import and workflow entry overhaul
 
 **Date:** 2026-11-04  
-**Status:** In progress; P01-P06 implemented and verified on Windows
+**Status:** In progress; P01-P06 and P06a implemented and verified on Windows
 (latest: 2026-11-11). P07 remains pending.
 
 **Scope:** Replace mandatory app-directed standardization with import of an
@@ -141,6 +141,7 @@ analysis-time errors and cache safeguards remain in place.
 | P04 | Remove standardization and prompt UI/dependencies. | No app screen or startup dependency requires the optional preparation materials. |
 | P05 | Integrate workflow state, existing workspaces, storage, and snapshots. | Imported and existing workspaces use the analysis/storage lifecycle without a preparation script or YAML requirement. |
 | P06 | Update guidance and the optional metadata prompt. | Documentation and helper outputs match the actual CSV import contract. |
+| P06a | Align DE/CNA computation console progress and timing with clustering. | Batch and single-sample computation report stages, step/sample elapsed time, outcomes, and batch totals without changing scientific behavior. |
 | P07 | Complete focused regressions, full checks, and platform acceptance. | Evidence satisfies the completion requirements in section 6. |
 
 ### Implementation progress checklist
@@ -155,6 +156,7 @@ unchecked. Step completion is separate from the final acceptance in section 6.
 - [x] **P04:** Standardization/prompt UI and mandatory preparation resources removed.
 - [x] **P05:** Workflow state, existing workspaces, storage, and snapshots integrated.
 - [x] **P06:** User guidance and optional metadata extraction prompt aligned.
+- [x] **P06a:** DE/CNA console progress, step timing, and batch summaries aligned.
 - [ ] **P07:** Full regression suite, browser review, and Windows/Linux acceptance.
 
 ### P01: Contract and structural checking
@@ -658,6 +660,70 @@ screenshot references were needed. The full suite was not rerun for P06.
 The final full regression, browser/platform acceptance, Linux execution, and
 representative-data timings remain P07; section 6 acceptance stays open.
 
+### P06a: DE/CNA console progress and timing (added 2026-11-11)
+
+- Follow clustering's sample/stage/detail console format for DE and CNA, in both
+  batch and single-sample computation. Console output must work without a UI
+  progress callback and must not duplicate DE messages when a batch wrapper runs it.
+- Report elapsed time for completed steps, cumulative sample time, and batch
+  totals with completed/failed/skipped/not-run counts. Label cache reuse, skipped
+  samples, and failures accurately; do not print success for interrupted work.
+- Include DE input loading, differential expression, marker matching,
+  scoring/plots, and output writing; CNA preflight, matrix computation/reuse,
+  matrix reshaping/cache writing, clustering/heatmaps, and signal/correlation.
+- Use monotonic elapsed-time measurements at real stage boundaries. No invented
+  percentages, timing thresholds, background telemetry, or new dependencies.
+- Preserve existing progress-callback signatures, scientific calculations,
+  outputs, cache/state rules, and error/continuation policy. Existing persistent
+  event logs remain distinct from human-readable console diagnostics.
+- Verify deterministic step/sample durations with a controlled clock, real
+  numerical workflow regressions, and batch success/reuse/skip/failure behavior.
+  Record focused tests here; final platform/full acceptance remains P07.
+
+**Implementation record (2026-11-11):**
+
+- [x] Add [console step timing](../../util_scripts/19_utils_console_progress.R)
+  using the monotonic R elapsed-time clock. Stage starts show sample/operation,
+  stage and detail; closing a stage reports its duration separately from total
+  sample/operation elapsed time. Failure/skip outcomes close the active step
+  without printing success, and a terminal reporter cannot emit a second outcome.
+- [x] Connect standalone and batch DE in
+  [05_utils_workflow.R](../../util_scripts/05_utils_workflow.R). Cover input
+  loading, DE, marker matching, scoring/plotting, and output writing. Batch
+  wrappers own console reporting without duplicate inner DE stage messages;
+  their existing UI callback fields/fractions and fail-fast behavior remain.
+- [x] Add always-on batch CNA sample boundaries, stage messages and totals,
+  including skips, matrix reuse, isolated failures, not-run counts and elapsed
+  time. Add the same high-level timing to single-sample CNA in
+  [cna_compute_server.R](../../app/server/cna_compute_server.R). Count/report
+  successful batch completion after its workflow-state callback succeeds, so a
+  failed state save cannot produce a misleading completed message/count.
+- [x] Time nested CNA matrix computation, reshaping/cache writing, Ward
+  clustering/cache reuse, plot construction/output writing, and subclone-specific
+  signal/correlation steps. Preserve calculations, output files, helper return
+  values, cache rules, error classes, state transitions, and existing progress
+  callback signatures. Failure/interruption cleanup reports incomplete work
+  rather than success; no persistent event schema or timing store was added.
+- [x] Extend the User Guide and logging reference with console examples, timing
+  interpretation, nested-timer overlap, and the distinction from persistent logs.
+- [x] Add [P06a regressions](../../tests/testthat/test-p06a-console-progress.R)
+  for exact step versus cumulative durations with an injected clock, same-stage
+  updates, terminal guards, standalone DE input failure, preserved CNA interrupt
+  conditions, and callback-compatible CNA reuse/skip/failure/state-save behavior.
+- [x] Final focused selection passed **668 assertions**, with **zero failures,
+  errors, test warnings, or skips**, on Windows/R 4.5.3 with a UTF-8 locale.
+  Coverage includes real DE/CNA/clustering helpers, golden numerical outputs,
+  cache regressions, batch/progress callbacks, navigation/recovery, and application
+  bootstrap/components. `git diff --check` passes. No UI layout or screenshot
+  reference changed; full browser/platform acceptance remains P07.
+
+Reproduce with `testthat::test_dir("tests/testthat", filter =
+"^(p06a-console-progress|05_utils_workflow.*|02_utils_annotation.*|f07-batch-progress|m[05]-.*|f03-navigation-hardening|c04-cna-recovery-status|golden_outputs|regression_clustering|regression_cna_cache|app-bootstrap|app-components)$",
+reporter = "summary")`. Gitignored local evidence:
+`artifacts/local-checks/p06a_check.R`, `p06a_focused_checks.log`, and
+`p06a_focused_results.rds`. The full suite and Linux execution were not rerun
+for this added step; P07 and section 6 final acceptance remain open.
+
 ## 5. Verification plan
 
 Use deterministic synthetic fixtures and temporary workspaces. Tests should
@@ -674,6 +740,7 @@ incorrect dataset or every external modification can be detected.
 | UI and optional files | Standardization/prompt panels and menu actions are absent; browser/path inputs are usable; no obsolete clipboard/navigation observer remains; startup/import work with the prompt/checklist/preparation template files absent. |
 | Dataset transitions | Switch between imported and existing workspaces, reload, and fail a load without carrying metadata or selections across datasets. Preserve unsaved-annotation guards and archived-state behavior. |
 | Analysis regression | On a valid small fixture, run clustering, resolution, DE, annotation save/reload, and CNA finalize or explicit omission. Saving annotations does not incorrectly invalidate clustering. |
+| Console computation progress | DE/CNA batch and single-sample stages show real step/sample elapsed time; cache reuse, skips, failures and batch counts are accurate. Verify callback compatibility and no false success on interruption/state-save failure. |
 | Snapshots/storage | An imported finished workspace without preparation files or YAML can create folder/ZIP snapshots containing unchanged prepared matrices/genes, current cells, and authoritative CSV; manifests verify. Existing optional preparation provenance can be retained; cleanup/reopen and required-damage guards remain correct. |
 | Windows and Linux | Exercise browsing/path selection, spaces/Unicode paths, readable shared/mounted locations, import/reload, exact case matching, and destination discovery behavior. Record each platform actually exercised; a Windows-only run cannot close Linux acceptance. |
 | Performance | Measure structural checking separately from copying and existing cache/state reconciliation on representative data. Confirm the checker does not scale with matrix bytes; avoid a hardware-specific hard time limit or a new performance subsystem. |

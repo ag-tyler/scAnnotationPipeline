@@ -93,6 +93,12 @@ optional legacy helpers' deeper validation and is not required for import or
 analysis. Historical preparation events remain in existing logs. Preparation
 scripts, notes, source links, and AI usage are not mandatory provenance inputs.
 
+DE/CNA console messages also report completed-step, sample, and batch elapsed
+time. They are transient human-readable diagnostics, separate from this event
+schema and the append-only logs. Nested CNA helper timers overlap the enclosing
+sample timer. See the [DE workflow guide](USER_GUIDE.md#differential-expression)
+for console examples and timing interpretation.
+
 ## Reading events in R
 
 The logging helpers are sourced with the other utilities:
