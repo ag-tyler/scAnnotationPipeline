@@ -219,6 +219,105 @@ Prepared input contents must be ordinary files and directories. Resolve child
 symbolic links into copied files/directories before importing, so the workspace
 does not depend on linked source data.
 
+### Preparing a smaller demonstration dataset
+
+Use `scripts/downsample_processed_data.R` to create a separate import-ready
+subset from an existing `processed_data` directory. From the repository root:
+
+```r
+source("scripts/downsample_processed_data.R")
+downsample_processed_data(
+  input_dir = "datasets/Tang2026_Colorectal/processed_data",
+  output_dir = "datasets/Tang2026_Colorectal_demo_input",
+  n_cells = 3000,
+  samples = c("CRC_T3", "CRC_LM3"), # NULL includes every sample
+  stratify_by = "cell_type",
+  min_genes = 500,
+  reset_annotations = TRUE,
+  seed = 3988
+)
+```
+
+Alternatively, edit the `settings` list at the top of the script and run
+`Rscript scripts/downsample_processed_data.R`, or source it and call
+`do.call(downsample_processed_data, settings)`.
+
+The cell cap applies **per sample after filtering**. Smaller samples retain all
+eligible cells. The default filter matches the app's default minimum of 500
+expressed genes; set `min_genes = 0` to sample all input cells. Counts and genes
+are preserved, with matrix columns and cell rows kept in their original order.
+Each selected sample gets a folder and a matching `Samples.csv` row with its
+updated `n_cells`; other sample metadata is retained. A root-level
+`downsampling_report.csv` records input/eligible/output counts and settings.
+
+Sampling allocates cells proportionally to existing cell types, then randomly
+samples without replacement within each type. Integer rounding can omit rare
+types; there is no minimum quota or deliberate enrichment. Set `stratify_by =
+NULL` for uniform sampling or supply multiple column names for finer strata.
+Blank labels form their own stratum. Selection is reproducible for the same
+input order, sample selection, settings and seed.
+
+After sampling, annotation reset blanks `cell_type`, `cell_subtype`, `subclone`
+and `cell_type_pre_cna` where present, and removes prior `clust`, `umap1` and
+`umap2` columns. Extend `annotation_columns` to include any additional annotation
+fields in your input. Set `reset_annotations = FALSE` to retain them. No caches,
+workflow state or results are copied. The input is unchanged, existing output
+folders are refused, and failed runs do not publish partial datasets. Import
+the output folder using the app's new-dataset workflow.
+
+### Saving resumable presentation checkpoints
+
+After saving edits, finishing all computations and **stopping the app**, use
+`scripts/copy_dataset_checkpoint.R` to preserve an active workspace at its
+current pipeline stage:
+
+```r
+source("scripts/copy_dataset_checkpoint.R")
+copy_dataset_checkpoint(
+  source_dir = "datasets/Tang_Demo_Working",
+  output_dir = "datasets/Tang_Demo_01_Clustered"
+)
+```
+
+Run from the repository root, or supply `app_dir` explicitly. Alternatively,
+edit `checkpoint_settings` at the top of the script and run
+`Rscript scripts/copy_dataset_checkpoint.R`. The output folder name becomes
+the new dataset ID. Choose a new destination every time; existing folders and
+destinations nested inside the source are refused.
+
+The script copies the entire workspace, including processed inputs, results,
+caches, recovery backups, notes and logs. It updates dataset IDs in configuration
+and state, redirects cache input paths to the copy, and adjusts recorded file
+timestamps to the destination filesystem's actual precision. Scientific cache
+fingerprints, sample IDs, saved decisions and pipeline statuses remain unchanged.
+Historical logs and preparation scripts keep their original contents and paths.
+A `checkpoint_copy.yaml` records the new workspace's origin and verification.
+
+Before publishing the destination, it verifies copied file checksums, reads and
+structurally validates caches one at a time, checks their recorded file/upstream
+dependencies, and checks that the app's workflow reconciliation would not make
+completed stages stale. It also verifies that the source remained unchanged.
+This is an integrity/resume check, not a new scientific analysis or a guarantee
+that different app versions/resources will produce identical results. The source
+is never repaired or changed. Invalid/stale caches, running stages, links,
+temporary operation files, and archived or mid-cleanup sources are rejected.
+
+For this showcase, preserve checkpoints after clustering, DE, base CNA, and
+finalization. Continue in a working copy and keep master checkpoints untouched;
+use another copy of the finished master to demonstrate cleanup. Every sample
+in the finished version must have CNA finalized or explicitly omitted.
+
+If transferring a workspace between computers, copy its complete folder first
+and then run this script on the destination computer to create the usable
+checkpoint. Standardized expression/gene dependencies are automatically mapped
+from old Windows or macOS paths. For other recorded internal file dependencies,
+provide `original_source_dir = "C:/old/location/OriginalDataset"` (the old path
+does not need to exist). Content checks still apply. Reopen the app and select
+the new checkpoint; verify the intended screens on the presentation Mac.
+
+These are resumable **workspace copies**. The app's **Review Snapshot** export
+is a separate feature and deliberately excludes resumable caches.
+
 ### Sample metadata: Samples.csv
 
 Supply CSV with a header and at least one sample row, using UTF-8 for non-ASCII
