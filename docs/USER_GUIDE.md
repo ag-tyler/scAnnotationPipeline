@@ -278,7 +278,7 @@ checklist-copy action. Existing dataset scripts and checklist notes are retained
 After loading, use the Start Menu's prepared-input readiness and analysis
 progress overview. Structural checks do not audit expression values, dimensions,
 or gene/cell alignment; those remain preparation responsibilities. Review
-snapshot provenance is being updated separately in P05 of the import plan.
+snapshots also work without sample YAML, preparation scripts, or checklist files.
 
 ### `dataset_config.yaml`
 
@@ -813,8 +813,9 @@ The output contains:
   CNA-values switch; no scientific computation is started.
 - Optional `logs/`, including existing text and structured event logs. They
   capture the export-start point; the final success event is in the source logs.
-- `provenance/`: historical dataset/sample/selected configuration, pipeline
-  state, and available preparation script/checklist. This state is not live
+- `provenance/`: historical dataset/selected configuration and pipeline state,
+  plus sample YAML and preparation script/checklist when present. Absent optional
+  preparation files do not produce warnings. This state is not live
   cache evidence and must not be treated as an active app workspace.
 - `README.md`, `annotation_summary.csv`, `filtering_summary.csv` and
   `snapshot_manifest.yaml` (relative paths, sizes and MD5 checksums, excluding

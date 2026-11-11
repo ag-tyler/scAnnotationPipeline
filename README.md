@@ -180,7 +180,8 @@ P01 provides the contract and reusable structure checker; P02 connects it to
 dataset loading; P03 imports prepared data and opens the resulting workspace.
 Sample membership, order, and metadata come exclusively from the sample CSV.
 P04 removes preparation guide/prompt screens and their startup dependencies.
-Snapshot provenance requirements are still being updated in P05.
+P05 integrates workflow/storage state and makes preparation provenance optional
+in review snapshots. Documentation alignment and platform acceptance remain P06-P07.
 
 Prepare data with your own scripts and tools. The input is a directory containing
 the authoritative `Samples.csv` and one immediate subdirectory per sample:
@@ -340,7 +341,8 @@ The checklist in `docs/`, preparation templates, and metadata extraction prompt
 in `resources/` are optional files for use outside the app. No prompt, checklist,
 or preparation-template usage is required for startup, import, or analysis.
 The app has no standardization guide or metadata-prompt screen. Review snapshots
-still have their legacy sample-YAML provenance requirement until P05.
+also work without sample YAML, preparation scripts, or checklist files; existing
+preparation provenance is included when available, without warnings for absence.
 
 For an existing dataset, load it and follow the Start Menu's pipeline overview.
 Use **Select Samples for Clustering** to rerun only the required samples.

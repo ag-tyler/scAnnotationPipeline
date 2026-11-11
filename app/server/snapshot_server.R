@@ -4,7 +4,8 @@ snapshot_server_arguments <- function(state, context, fresh = FALSE) {
   dataset <- state$dataset_dir_path
   config_paths <- list(
     "dataset_config.yaml" = file.path(dataset, config$config_files$dataset),
-    "samples_config.yaml" = file.path(dataset, config$config_files$samples),
+    "samples_config.yaml" = file.path(dataset,
+      .pipeline_value_or(config$config_files$samples, "samples_config.yaml")),
     "selected_config.yaml" = state$selected_config_path,
     "pipeline_state.yaml" = state$pipeline_state_path,
     "standardize.R" = file.path(dataset, "standardize.R"),

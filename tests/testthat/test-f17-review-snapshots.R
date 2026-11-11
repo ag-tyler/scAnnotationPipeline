@@ -76,6 +76,113 @@ f17_inventory <- function(args, options = snapshot_options()) {
 }
 f17_readiness <- function(args) do.call(dataset_snapshot_readiness, args[names(args) %in% names(formals(dataset_snapshot_readiness))])
 
+test_that("P05 absent preparation provenance is silent and existing files remain byte-identical", {
+  workspace <- make_f17_workspace()
+  on.exit(unlink(workspace$root, recursive = TRUE), add = TRUE)
+  args <- workspace$args
+  optional <- c("samples_config.yaml", "standardize.R", "STANDARDIZATION_CHECKLIST.md")
+  inventory <- f17_inventory(args)
+  expect_true(all(paste0("provenance/", optional) %in% inventory$files$path))
+  hashes <- tools::md5sum(unlist(args$config_paths[optional]))
+  result <- do.call(create_review_snapshot, c(args, list(options = snapshot_options("both"))))
+  expect_identical(unname(tools::md5sum(file.path(result$outputs[[1]], "provenance", optional))),
+    unname(hashes))
+  expect_identical(tools::md5sum(unlist(args$config_paths[optional])), hashes)
+  unlink(unlist(args$config_paths[optional]))
+  expect_length(f17_inventory(args)$warnings, 0L)
+  for (name in c("dataset_config.yaml", "selected_config.yaml", "pipeline_state.yaml")) {
+    path <- args$config_paths[[name]]
+    contents <- readBin(path, "raw", n = file.size(path))
+    unlink(path)
+    expect_error(f17_inventory(args), "required configuration|not ready")
+    writeBin(contents, path)
+  }
+})
+
+test_that("P05 real CSV-only imports produce verified snapshots before and after cleanup", {
+  workspace <- make_f17_workspace()
+  on.exit(unlink(workspace$root, recursive = TRUE), add = TRUE)
+  original <- workspace$args
+  source <- original$processed_dir_path
+  file.rename(original$paths_list$expmat_file_paths, file.path(source, "Sample_A", "Exp_data_UMIcounts.mtx"))
+  metadata <- build_samples("Sample_A")
+  metadata$patient <- "0007"
+  metadata$n_cells <- 2L
+  metadata$extra_note <- 'Colon, "ascending"'
+  data.table::fwrite(metadata, file.path(source, "Samples.csv"))
+  source_files <- list.files(source, recursive = TRUE, full.names = TRUE)
+  source_hashes <- tools::md5sum(source_files)
+  config <- yaml::read_yaml(testthat::test_path("..", "..", "general_config.yaml"))
+  config$config_files$samples <- NULL # Optional legacy provenance setting too.
+  parent <- file.path(workspace$root, "imported workspaces")
+  dir.create(parent)
+  imported <- import_prepared_dataset(source, parent, "Dataset", config,
+    testthat::test_path("..", "..", "templates", "dataset_config_template.yaml"))
+  state <- load_pipeline_state(imported$path)
+  expect_identical(get_pipeline_step(state, "standardization")$details$validation_scope, "structure_only")
+  expect_true(pipeline_step_readiness(state, "clustering", "Sample_A")$ready)
+  expect_true(all(vapply(state$samples$Sample_A, function(step) identical(step$status, "not_started"), logical(1))))
+  events <- lapply(readLines(file.path(imported$path, "logs", "pipeline_events.jsonl")), jsonlite::fromJSON)
+  creation <- Filter(function(event) identical(event$event_type, "workspace_created"), events)
+  expect_length(creation, 1L)
+  expect_identical(creation[[1]]$parameters$validation_scope, "structure_only")
+  # Install deterministic finished scientific decisions/results, without running
+  # analysis here; the real clustering/browser journey is covered by P03.
+  state$samples <- original$pipeline_state$samples
+  state_path <- file.path(imported$path, config$config_files$state)
+  state <- save_pipeline_state_at_path(state, state_path)
+  selected_path <- file.path(imported$path, config$config_files$selected)
+  yaml::write_yaml(original$selected_config, selected_path)
+  results <- file.path(imported$path, config$dataset_paths$results_dir)
+  expect_true(all(file.copy(list.files(original$results_dir_path, full.names = TRUE), results, recursive = TRUE)))
+  processed <- file.path(imported$path, config$dataset_paths$processed_dir)
+  checked <- check_prepared_data(processed)
+  expect_true(checked$valid)
+  cache_save_data(data.table::fread(checked$paths_list$cell_file_paths)[1],
+    "cells_filt_clust_res_0.5_Sample_A.qs2", imported$path)
+  env <- new.env(parent = environment())
+  sys.source(testthat::test_path("..", "..", "app", "server", "snapshot_server.R"), env)
+  live <- list(dataset_dir_path = imported$path, pipeline_state_path = state_path,
+    selected_config_path = selected_path, paths_list = checked$paths_list, results_dir_path = results,
+    annotation_dirty = FALSE, active_actions = character())
+  context <- list(config = config, paths = list(datasets_dir = parent))
+  expected_data <- tools::md5sum(list.files(processed, recursive = TRUE, full.names = TRUE))
+  saved_state <- tools::md5sum(c(state_path, selected_path))
+  for (archived in c(FALSE, TRUE)) {
+    if (archived) {
+      ready <- dataset_cleanup_readiness(state, checked$paths_list, original$selected_config,
+        selected_path, results, imported$path)
+      expect_true(ready$ready)
+      archive_dataset_cache(imported$path, state, load_dataset_storage_state(imported$path), ready)
+      expect_false(dir.exists(file.path(imported$path, "cache")))
+    }
+    args <- env$snapshot_server_arguments(live, context, fresh = TRUE)
+    expect_identical(args$storage_state$status, if (archived) "archived" else "active")
+    expect_true(f17_readiness(args)$ready)
+    expect_length(f17_inventory(args)$warnings, 0L)
+    result <- do.call(create_review_snapshot, c(args, list(destination = original$destination,
+      options = snapshot_options("both"), acknowledge_warnings = FALSE)))
+    expect_length(result$warnings, 0L)
+    extracted <- tempfile("readback-", tmpdir = workspace$root)
+    zip::unzip(result$outputs[[2]], exdir = extracted)
+    for (payload in c(result$outputs[[1]], extracted)) {
+      paths <- list.files(payload, recursive = TRUE)
+      expect_false(any(grepl("samples_config.yaml|standardize.R|STANDARDIZATION_CHECKLIST.md", paths, fixed = FALSE)))
+      expect_true(all(c("annotation_summary.csv", "filtering_summary.csv") %in% paths))
+      manifest <- yaml::read_yaml(file.path(payload, "snapshot_manifest.yaml"))
+      for (record in manifest$files) {
+        expect_identical(.cache_md5(file.path(payload, record$path)), record$checksum)
+      }
+      relative <- as.character(fs::path_rel(names(expected_data), start = processed))
+      expect_identical(unname(tools::md5sum(file.path(payload, "processed_data", relative))), unname(expected_data))
+      expect_identical(read_prepared_samples(file.path(payload, "processed_data", "Samples.csv"))$patient, "0007")
+    }
+    expect_identical(tools::md5sum(c(state_path, selected_path)), saved_state)
+    expect_identical(tools::md5sum(source_files), source_hashes)
+    if (archived) expect_false(dir.exists(file.path(imported$path, "cache")))
+  }
+})
+
 test_that("F17 all twelve mode/toggle combinations preserve full processed data and ordinary results", {
   workspace <- make_f17_workspace(cna = TRUE)
   on.exit(unlink(workspace$root, recursive = TRUE), add = TRUE)
@@ -320,7 +427,7 @@ test_that("F17 provenance defaults, exclusions, bounded copy, and destination-fr
   writeLines("ordinary standardized metadata", file.path(ordinary, "extra.csv"))
   inventory <- f17_inventory(args)
   expect_false(any(grepl("exclude|cache_manifest|diagnostic.png.bak|local_config|[.]env|x.lock|old_snapshot", inventory$files$path)))
-  expect_true(any(grepl("standardize.R", inventory$warnings, fixed = TRUE)))
+  expect_false(any(grepl("standardize.R", inventory$warnings, fixed = TRUE)))
   expect_true("processed_data/Sample_A/data/extra.csv" %in% inventory$files$path)
   expect_identical(snapshot_options(), list(mode = "folder", include_logs = TRUE, include_cna_values = FALSE))
   expect_error(snapshot_options(include_logs = NA), "true or false")

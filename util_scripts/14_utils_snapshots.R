@@ -276,10 +276,11 @@ build_snapshot_inventory <- function(
   for (name in names(config_paths)) {
     source <- config_paths[[name]]
     if (!file.exists(source)) {
-      if (name %in% c("dataset_config.yaml", "samples_config.yaml", "selected_config.yaml", "pipeline_state.yaml")) {
+      if (name %in% c("dataset_config.yaml", "selected_config.yaml", "pipeline_state.yaml")) {
         .snapshot_stop("A required configuration or historical workflow-state file is missing.")
       }
-      warnings <- c(warnings, paste0("Optional preparation provenance unavailable: ", name))
+      # Preparation files are optional for externally prepared inputs. Their
+      # intentional absence is neither an error nor an omission warning.
       next
     }
     .snapshot_relative(name)

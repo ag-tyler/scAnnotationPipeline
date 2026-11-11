@@ -1,8 +1,9 @@
 # Prepared-data import and workflow entry overhaul
 
 **Date:** 2026-11-04  
-**Status:** In progress; P01-P04 implemented and verified on Windows
-(2026-11-04). P05-P07 remain pending.  
+**Status:** In progress; P01-P05 implemented and verified on Windows
+(latest: 2026-11-11). P06-P07 remain pending.
+
 **Scope:** Replace mandatory app-directed standardization with import of an
 externally prepared dataset. This document records the agreed direction and
 implementation defaults. It does not close any existing release acceptance work.
@@ -152,7 +153,7 @@ unchecked. Step completion is separate from the final acceptance in section 6.
 - [x] **P02:** Runtime sample metadata supplied exclusively by `Samples.csv`.
 - [x] **P03:** Directory selection, independent import copy, and immediate opening.
 - [x] **P04:** Standardization/prompt UI and mandatory preparation resources removed.
-- [ ] **P05:** Workflow state, existing workspaces, storage, and snapshots integrated.
+- [x] **P05:** Workflow state, existing workspaces, storage, and snapshots integrated.
 - [ ] **P06:** User guidance and optional metadata extraction prompt aligned.
 - [ ] **P07:** Full regression suite, browser review, and Windows/Linux acceptance.
 
@@ -497,6 +498,78 @@ Likely touchpoints: `util_scripts/07_utils_state.R`,
 `util_scripts/09_utils_pipeline_overview.R`, `util_scripts/11_utils_storage.R`,
 `app/server/dashboard_server.R`, `app/server/snapshot_server.R`, and
 `util_scripts/14_utils_snapshots.R`.
+
+**Implementation record (2026-11-11):**
+
+- [x] Verify the P03 import lifecycle already retains the dataset-scoped
+  `standardization` key, records `prepared_data_import` and `structure_only` in
+  its completion details and creation event, initializes every sample as
+  `not_started`, and creates selected/storage state through existing helpers.
+  Keep this behavior and the existing state schema; no additional migration or
+  content validation was introduced.
+- [x] Remove sample YAML from mandatory snapshot provenance in
+  [14_utils_snapshots.R](../../util_scripts/14_utils_snapshots.R). Include existing
+  sample YAML, `standardize.R`, and checklist notes unchanged when present;
+  skip absent optional preparation files without warnings. Dataset/selected
+  configuration and historical workflow state remain required. Snapshot
+  manifests, checksums, complete processed inputs, summaries, and optional CNA
+  rules remain intact.
+- [x] Let [snapshot server arguments](../../app/server/snapshot_server.R) work
+  without the optional general-config sample-YAML setting, while preserving
+  configured legacy provenance paths when supplied. Replace the storage
+  completion guard's obsolete standardization wording with prepared-input wording.
+- [x] Extend [dataset transition coverage](../../tests/testthat/test-c01-dataset-transitions.R)
+  to repeatedly switch/reload active and archived existing workspaces with
+  legacy filenames and saved completed scientific decisions. Verify workflow
+  steps/history, selected decisions, storage state, raw inputs, scripts, YAML,
+  notes, configuration, and processed inputs remain unchanged. Retain existing
+  CSV-authority, missing-CSV, failed-load, cache, and archive-damage safeguards.
+- [x] Extend [snapshot coverage](../../tests/testthat/test-f17-review-snapshots.R)
+  with real CSV-only import followed by deterministic completed-analysis
+  fixtures. Verify immediate clustering readiness, limited-scope creation events,
+  warning-free folder and ZIP snapshots before/after real cache cleanup, complete
+  processed data and authoritative CSV (including leading zeros/extra metadata),
+  manifest checksums, summaries, and unchanged source/state. This fixture installs
+  finished synthetic results; actual clustering remains covered by the P03
+  browser journey. Also test optional-provenance byte preservation and continued
+  rejection of missing mandatory configuration/state.
+- [x] Correct the README and User Guide's P05 transition notices and snapshot
+  provenance description. Broader guidance/template/prompt alignment remains P06.
+
+- [x] The final focused selection passed **1,300 assertions**, with zero
+  failures, errors, test warnings, or skips, as a subset of the full run. It
+  covers import, dataset transitions, persistent state, overview, storage, and
+  snapshots. The standalone reload regression also passed after correcting its
+  fixture to preserve the existing state revision rather than overwrite it.
+- [x] Verify **4,251 assertions** across the full run and an isolated **39-assertion
+  browser-case rerun**, with **zero remaining failures, errors, test warnings, or
+  skips**. The original full run had one Start Menu screenshot mismatch confined
+  to the dash in the next-attention line: changing the inherited worker locale
+  changed its rendering. The rerun preserved the original Shiny worker locale
+  while starting Chrome under a valid Windows locale, and all six existing
+  references matched. No screenshot baseline was modified. This is reconciled
+  full-run-plus-rerun evidence, rather than a claim that the original full run
+  passed unchanged.
+
+Authoritative local, gitignored evidence under `artifacts/local-checks/`:
+`p05_full_check.R`, `p05_full_checks.log`, `p05_full_results.rds`,
+`p05_browser_check.R`, `p05_browser_checks.log`, `p05_browser_results.rds`,
+`p05_verify_results.R`, `p05_verified_checks.log`, `p05_verified_results.rds`, and
+`p05_final_focused_results.rds`. The verification script replaces only the same
+named browser case after asserting equal assertion counts and that no other
+full-run case failed. The initial focused runner/log/results are retained too.
+Windows, R 4.5.3, a UTF-8 parent session, and Edge were exercised. ZIP/browser
+workers required permissions outside the sandbox for Windows process pipes;
+automatic screenshot updates stayed disabled.
+
+Reproduce the focused selection with `testthat::test_dir("tests/testthat",
+filter = "^(f17-review-snapshots|f16-dataset-storage|07_utils_state|f10-pipeline-status-overview|p03-dataset-import|c01-dataset-transitions)$",
+reporter = "summary")`; use `testthat::test_dir("tests/testthat", reporter =
+"summary")` for the full gate in the configured R/browser environment. Keep the
+browser worker locale consistent with the reviewed reference environment.
+Windows-only verification does not close P07 Linux/platform acceptance or the
+section 6 end-to-end acceptance checklist. Consistent worker-locale handling
+remains relevant to P07's cross-platform screenshot review.
 
 ### P06: Documentation and optional preparation materials
 

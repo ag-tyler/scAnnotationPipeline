@@ -445,7 +445,7 @@ dataset_completion_readiness <- function(
 
   standardization <- get_pipeline_step(pipeline_state, "standardization")
   if (!identical(standardization$status, "completed")) {
-    add_reason(paste0("Standardization is ", standardization$status, "."))
+    add_reason(paste0("Prepared inputs are ", standardization$status, "."))
   }
   add_output(.storage_required_file(selected_config_path, "Selected configuration"))
 

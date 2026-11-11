@@ -81,6 +81,58 @@ make_c01_fixture <- function(root) {
   env
 }
 
+test_that("P05 repeated structure checks preserve existing progress and optional preparation files", {
+  fixture <- make_c01_fixture(withr::local_tempdir())
+  root <- fixture$context$paths$datasets_dir
+  config <- fixture$context$config
+  active <- file.path(root, "B")
+  state <- load_pipeline_state(active)
+  state <- transition_pipeline_step(state, "standardization", "completed", force = TRUE,
+    details = list(provenance = "existing_preparation", note = "Keep this history"))
+  save_pipeline_state_atomic(state, active)
+  # Existing configured filenames remain supported, without renaming on load.
+  config_path <- file.path(active, config$config_files$dataset)
+  dataset_config <- yaml::read_yaml(config_path)
+  old_names <- dataset_config$std_names[c("expmat", "genes", "cells")]
+  legacy_names <- list(expmat = "legacy_counts.mtx", genes = "gene_symbols.tsv", cells = "cell_metadata.csv")
+  sample_dir <- file.path(active, config$dataset_paths$processed_dir, "shared")
+  expect_true(all(file.rename(file.path(sample_dir, unlist(old_names)), file.path(sample_dir, unlist(legacy_names)))))
+  dataset_config$std_names[names(legacy_names)] <- legacy_names
+  yaml::write_yaml(dataset_config, config_path)
+  for (dataset in c("B", "Archived")) {
+    directory <- file.path(root, dataset)
+    dir.create(file.path(directory, "data"))
+    writeLines("original raw inputs", file.path(directory, "data", "original.txt"))
+    writeLines("# Original preparation", file.path(directory, "standardize.R"))
+    writeLines("Original user notes", file.path(directory, "STANDARDIZATION_CHECKLIST.md"))
+  }
+  protected <- unlist(lapply(c("B", "Archived"), function(dataset) {
+    list.files(file.path(root, dataset), recursive = TRUE, full.names = TRUE)
+  }))
+  # Session/event logs can grow; scientific inputs, decisions and state cannot.
+  protected <- protected[!grepl("[/\\\\](logs|cache)[/\\\\]", protected)]
+  before <- tools::md5sum(protected)
+  persisted <- lapply(c("B", "Archived"), function(dataset) {
+    yaml::read_yaml(file.path(root, dataset, config$config_files$state))
+  })
+  shiny::testServer(fixture$server, {
+    for (i in seq_along(c("B", "Archived", "B", "Archived"))) {
+      dataset <- c("B", "Archived", "B", "Archived")[[i]]
+      session$setInputs(dataset_choice = dataset, btn_load_dataset = i, main_nav = "menu_tab")
+      expect_identical(basename(fixture$state$dataset_dir_path), dataset)
+      expected <- persisted[[if (dataset == "B") 1L else 2L]]
+      expect_identical(fixture$state$pipeline_state$dataset_steps, expected$dataset_steps)
+      expect_identical(fixture$state$pipeline_state$samples, expected$samples)
+      expect_identical(fixture$state$storage_state$status, if (dataset == "B") "active" else "archived")
+      if (dataset == "B") {
+        expect_identical(basename(fixture$state$paths_list$expmat_file_paths), "legacy_counts.mtx")
+        expect_true(pipeline_step_readiness(fixture$state$pipeline_state, "clustering", "shared")$ready)
+      }
+    }
+  })
+  expect_identical(tools::md5sum(protected), before)
+})
+
 test_that("P02 CSV alone controls metadata, sample order, annotation, and reloads", {
   fixture <- make_c01_fixture(withr::local_tempdir())
   state <- fixture$state
