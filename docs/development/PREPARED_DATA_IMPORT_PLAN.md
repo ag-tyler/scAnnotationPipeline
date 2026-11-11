@@ -1,0 +1,602 @@
+# Prepared-data import and workflow entry overhaul
+
+**Date:** 2026-11-04  
+**Status:** In progress; P01-P04 implemented and verified on Windows
+(2026-11-04). P05-P07 remain pending.  
+**Scope:** Replace mandatory app-directed standardization with import of an
+externally prepared dataset. This document records the agreed direction and
+implementation defaults. It does not close any existing release acceptance work.
+
+## 1. Agreed behavior
+
+Users prepare datasets with their own scripts and tools. The app begins with
+prepared inputs and handles clustering, resolution selection, differential
+expression, annotation, CNA, storage, and review snapshots.
+
+- The sole user-supplied input is a prepared-data directory containing
+  `Samples.csv` and one subdirectory per sample with matrix, genes, and cells.
+- `Samples.csv` is the authority for sample membership and sample metadata.
+  Users do not need to supply `samples_config.yaml`.
+- Dataset creation selects the prepared directory, checks its structure, copies
+  it into a new workspace, initializes app configuration/state, and opens it.
+  No app shutdown or external processing step follows successful creation.
+- Folder selection uses a platform-independent in-app browser plus a path field.
+  Windows and Linux are supported. Paths refer to the machine running R.
+- The README contains the complete prepared-input specification. The optional
+  checklist remains in `docs/`; the app has no standardization guide tab,
+  checklist viewer, or checklist-copy requirement.
+- `resources/metadata_extract_prompt.txt` remains an optional helper file. Its
+  contents are not displayed in the app, and its existence or usage is never a
+  startup, import, processing, or validation requirement.
+- New workspaces do not require or automatically receive a raw `data/`
+  directory, `standardize.R`, `samples_config.yaml`, or a checklist copy.
+- Structural checks run at import and on every load. They do not read expression
+  matrix contents or certify scientific standardization correctness.
+- Users are responsible for preparing aligned, scientifically appropriate data
+  and for not replacing underlying inputs during an analysis. Replacement inputs
+  belong in a new workspace. This overhaul adds no external-change monitoring,
+  validation cache, or generalized data-replacement reconciliation system.
+- Preparation scripts, notes, and source links are optional provenance. Snapshots
+  remain available without a preparation script, checklist, or sample YAML.
+
+## 2. Target creation journey
+
+1. The user prepares a directory outside the app with `Samples.csv` and sample
+   subdirectories. The source directory itself need not be named `processed_data`.
+2. In **Create New Dataset**, the user enters a dataset name, selects that
+   directory, and chooses the destination parent (default: configured datasets
+   directory). No standardization-template or metadata-prompt step is shown.
+3. The app checks the input structure and reports all detected issues together,
+   with sample names, expected paths, and concrete corrections.
+4. If valid, the app copies the source tree into the new workspace's
+   `processed_data/`. It creates its analysis configuration, selections,
+   persistent workflow/storage state, and runtime directories.
+5. The app opens the new dataset through the same loading path used for existing
+   workspaces. The user can immediately choose samples for clustering.
+
+Copy inputs rather than move them or analyze the source directory in place:
+annotation saves currently rewrite the workspace's `Cells.csv`. The original
+prepared files must remain unchanged. Show the resolved source/destination and
+real copy progress for large imports. Do not add an extra approval step.
+
+The directory browser should use `shinyFiles` or an equivalent cross-platform
+implementation; declare any added dependency in `DESCRIPTION` and installation
+instructions. Keep direct path entry available for mounted/shared directories.
+When running remotely, selection browses server-accessible paths. Browser-local
+directory uploads and transferring data to a remote server are outside scope.
+
+## 3. Prepared-input contract
+
+### Directory and filename rules
+
+For new imports, document this structure in the README:
+
+```text
+<prepared-directory>/
+  Samples.csv
+  <sample>/
+    Exp_data_<matrix_state>.mtx
+    Genes.txt
+    Cells.csv
+```
+
+- Every `sample` in `Samples.csv` has exactly one same-named immediate directory.
+  Unexpected sample directories are reported rather than silently analyzed.
+- Match spelling and capitalization exactly on both operating systems. Reject
+  sample names that escape a directory segment or collide under case-insensitive
+  matching, so an accepted dataset remains portable to Windows and Linux.
+- Use the existing supported matrix filename conventions for UMI counts, TPM,
+  and CPM. For the initial implementation, require one unambiguous expression
+  format across the dataset, matching the current dataset-wide `std_names` model.
+  Determine the format from filenames and generate `dataset_config.yaml`
+  accordingly; do not inspect matrix values to infer it. Report ambiguous or
+  mixed formats with an actionable error rather than guessing.
+- Existing workspaces retain their configured `std_names` filenames. This
+  overhaul does not rename their scientific input files.
+
+### Sample metadata
+
+- `Samples.csv` is readable CSV with a header and at least one sample row.
+- Read sample/patient identifiers and descriptive metadata as text, preserving
+  leading zeros. Use explicit conversion only where numeric values are needed.
+- `sample` is a non-empty, unique canonical identifier, never an inferred row
+  number. Sample selection/order and metadata lookup use this table consistently.
+- As an implementation default, retain the current documented metadata headers
+  from `build_samples()` plus `n_cells`. Unknown metadata values can be blank;
+  header presence does not require a clinical value to be known. Preserve extra
+  user columns. List the actual headers and blank-value rules in the README.
+- The user supplies `Samples.csv`, including final standardized cell counts in
+  `n_cells`. The lightweight checker does not verify those counts against cells
+  or matrix dimensions. The app does not regenerate or overwrite this table.
+- If old sample YAML disagrees with `Samples.csv`, the CSV wins. Do not merge
+  fields from YAML or silently switch metadata sources.
+
+### Scientific requirements documented, but not audited at import
+
+Document matrix orientation (genes by cells), positional alignment with gene and
+cell files, supported expression scales, gene identifiers, dataset-wide cell ID
+uniqueness, and required cell columns:
+`cell_name`, `sample`, `cell_type`, `complexity`, `cell_subtype`, `patient`,
+`subclone`, and `source`.
+
+Explain optional/unknown annotation values and that `complexity` is the number
+of detected genes per cell, currently calculated as the number of nonzero
+matrix entries in that column. State expectations for duplicate genes,
+normalization, and cell/sample metadata consistency without requiring any
+particular preparation helper or script.
+
+These are user preparation obligations. The structural checker does not read
+cell/gene contents, load matrices, compare dimensions, calculate complexity,
+validate biological labels, or reconstruct upstream provenance. Existing
+analysis-time errors and cache safeguards remain in place.
+
+## 4. Implementation steps
+
+| Step | Work | Completion boundary |
+| --- | --- | --- |
+| P01 | Define the README input contract and shared structural checker. | One explicit contract; structured errors; no matrix/content scan. |
+| P02 | Move runtime sample metadata to `Samples.csv`. | Loading, annotation, and marker selection share the CSV authority without sample YAML. |
+| P03 | Implement directory selection and prepared-data creation. | A valid selected directory becomes an immediately usable, independent workspace. |
+| P04 | Remove standardization and prompt UI/dependencies. | No app screen or startup dependency requires the optional preparation materials. |
+| P05 | Integrate workflow state, existing workspaces, storage, and snapshots. | Imported and existing workspaces use the analysis/storage lifecycle without a preparation script or YAML requirement. |
+| P06 | Update guidance and the optional metadata prompt. | Documentation and helper outputs match the actual CSV import contract. |
+| P07 | Complete focused regressions, full checks, and platform acceptance. | Evidence satisfies the completion requirements in section 6. |
+
+### Implementation progress checklist
+
+Update this checklist when each step is implemented and its focused checks
+pass. Add dated evidence below the relevant step, and leave incomplete work
+unchecked. Step completion is separate from the final acceptance in section 6.
+
+- [x] **P01:** README contract, reusable structural checker, and focused tests.
+- [x] **P02:** Runtime sample metadata supplied exclusively by `Samples.csv`.
+- [x] **P03:** Directory selection, independent import copy, and immediate opening.
+- [x] **P04:** Standardization/prompt UI and mandatory preparation resources removed.
+- [ ] **P05:** Workflow state, existing workspaces, storage, and snapshots integrated.
+- [ ] **P06:** User guidance and optional metadata extraction prompt aligned.
+- [ ] **P07:** Full regression suite, browser review, and Windows/Linux acceptance.
+
+### P01: Contract and structural checking
+
+- Introduce a reusable checker for import and ordinary dataset loading; connect
+  those application flows in P02/P03 once their metadata/import changes exist.
+- Read `Samples.csv` and check the required headers, non-empty/unique safe
+  sample IDs, exact folder correspondence, and required filenames.
+- Required paths must resolve to readable files, not directories, and files
+  must be non-empty. Do not interpret non-empty as scientifically valid.
+- Collect issues into one report rather than forcing one repair per attempt.
+  Use wording such as **Input structure check passed**; do not claim strict
+  standardization validation.
+- Run on every load. Do not introduce checksums, fingerprints, deep validation,
+  or persisted validation-result caching for this feature. Existing snapshot
+  checksums and scientific cache validation are separate and remain unchanged.
+
+Likely touchpoints: `util_scripts/01_utils_io.R`,
+`util_scripts/03_utils_misc.R`, and `app/server/dataset_server.R`.
+
+**Implementation record (2026-11-04):**
+
+- [x] Added the complete [README input contract](../../README.md#preparing-input-data),
+  including metadata headers, filename conventions, sample/cell/gene alignment,
+  scientific responsibilities, and the lightweight check's limits. A transition
+  notice explains that the app still uses its old setup until P02-P04 land.
+- [x] Added `read_prepared_samples()` in
+  [01_utils_io.R](../../util_scripts/01_utils_io.R), preserving all columns as
+  text, leading zeros, extra metadata, CSV quoting/newlines, UTF-8, and optional
+  BOMs. Malformed record widths are rejected rather than silently shifting
+  fields into implicit row names. Parse failures close their file connections.
+- [x] Added `prepared_sample_columns()` and `check_prepared_data()` in
+  [17_utils_prepared_data.R](../../util_scripts/17_utils_prepared_data.R).
+  The result contains `valid`, structured errors with sample/path context,
+  aggregate display text, parsed metadata, resolved filenames/expression type,
+  and CSV-ordered paths only on success. Automatic filenames and configured
+  legacy names are supported. File contents other than the sample CSV remain
+  unread; inputs are unchanged and no validation cache/state is written.
+- [x] Added [P01 regression tests](../../tests/testthat/test-p01-prepared-data.R)
+  for valid formats, metadata preservation, malformed CSV, missing headers/rows,
+  unsafe/duplicate IDs, exact capitalization, missing/extra folders, missing,
+  empty, unreadable or directory-instead-of-file inputs, matrix ambiguity/mixed
+  formats, legacy names, aggregate errors, and the bounded read-only scope.
+- [x] Ran P01 plus existing I/O, misc/standardization, general-template,
+  application bootstrap, and component tests: **485 assertions passed; zero
+  failures, errors, test warnings, or skips** on Windows, R 4.5.3, with the
+  `English_United States.utf8` locale. The P01 test file accounts for 104 of
+  those assertions. Local runner/log/results are under
+  `artifacts/local-checks/p01_check.R`, `p01_checks.log`, and
+  `p01_test_results.rds` (gitignored).
+
+Reproduce the focused selection from the repository root in R:
+
+```r
+testthat::test_dir(
+  "tests/testthat",
+  filter = "^(p01-prepared-data|01_utils_io|03_utils_misc|standardize-general-template|app-bootstrap|app-components)$",
+  reporter = "summary"
+)
+```
+
+At the P01 boundary, the checker was available when utilities were sourced but
+not yet called by the dataset loader or creation handler. P02 connects loading;
+creation remains P03. No Linux execution, browser import journey, full-suite
+acceptance, or representative-data timing is claimed by this P01 record.
+
+### P02: One runtime sample metadata source
+
+- Load the authoritative table once per dataset load and keep it in session
+  state with a clear name such as `samples` or `sample_metadata`.
+- Remove the load-time dependency on `samples_config.yaml`, including the
+  `rv$samples_config` prerequisite in annotation/CNA reference selection.
+- Make marker selection, cancer-type display, sample lists, and sample lookups
+  use that same table. Preserve the existing single-unambiguous-cancer-type
+  marker behavior; changing marker selection policy is outside scope.
+- Establish sample paths from CSV identifiers rather than independently
+  enumerating directories with a potentially different order.
+- Update clearing/switching behavior so metadata from the previous dataset
+  cannot survive a failed load or contaminate the next workspace.
+
+Likely touchpoints: `app/state.R`, `app/server/dataset_server.R`,
+`app/server/annotation_server.R`, and component/server fixtures.
+
+**Implementation record (2026-11-04):**
+
+- [x] Connected the P01 structural checker to every dataset load using that
+  workspace's configured filenames. Blocking failures produce a scrollable
+  aggregate report and a failed-load event before dataset state is published.
+  No fallback to YAML or directory-derived membership is permitted.
+- [x] Store the checker-returned table as `sample_metadata` in session state.
+  Reuse its CSV-ordered paths for sample selectors and analysis; remove the
+  second metadata read previously used for malignant-marker selection.
+- [x] Read annotation's cancer-type display from the same CSV table, with
+  `Unknown` for blank metadata. Preserve the existing single-unambiguous-cancer
+  marker policy, including ignoring unknown blank values.
+- [x] Clear sample metadata with all dataset-owned state on dataset changes and
+  before replacement loads, including unsuccessful loads. Existing unsaved-edit,
+  active-action, archived-state, annotation, and CNA navigation guards remain.
+- [x] Preserve review-only loading of archived workspaces with missing or damaged
+  retained sample files, using valid CSV membership/metadata and recorded retired
+  storage state. CSV/schema/membership errors remain blocking. Existing archive
+  audits still prevent editing or unsafe exports; load events record whether
+  structure passed or damaged-input archive review was allowed.
+- [x] Update server/browser fixtures to supply complete authoritative CSVs and
+  extend the existing dataset-transition tests with P02 behavioral coverage:
+  absent/conflicting/corrupt YAML, CSV order and text preservation, one metadata
+  read per load, per-sample annotation labels, missing/changed input rechecks,
+  failed-load cleanup, and single/mixed/blank/unrecognized cancer-type markers.
+- [x] Final focused regression selection passed **622 assertions**, with zero failures,
+  errors, test warnings, or skips on Windows, R 4.5.3, UTF-8 locale. The selection
+  includes P01, dataset transitions, annotation save/recovery and previews,
+  bootstrap/components, and the still-supported onboarding screens. Local
+  evidence: `artifacts/local-checks/p02_check.R`, `p02_focused_final_checks.log`, and
+  `p02_focused_results.rds` (gitignored).
+- [x] Final full regression suite passed **4,036 assertions**, with **zero
+  failures, errors, test warnings, or skips**, including browser journeys and
+  existing screenshot comparisons. Covered dataset switching, archived damage,
+  annotation/CNA, cleanup/reopen, exports, and review snapshots. Screenshot
+  baseline updates were disabled. The run used Windows, R 4.5.3, UTF-8 locale,
+  and the configured Edge browser. Browser execution required running outside
+  the sandbox so Windows process pipes could be created. Authoritative local
+  evidence: `artifacts/local-checks/p02_full_check.R`,
+  `p02_full_final_checks.log`, and `p02_full_results.rds` (gitignored).
+
+Reproduce the final regression gate from the repository root with
+`testthat::test_dir("tests/testthat", reporter = "summary")` in the configured
+R/browser environment. No Linux execution or new import UI journey is claimed;
+those remain later acceptance work.
+
+Dataset creation still uses the old preparation template until P03, preparation
+UI removal remains P04, and snapshot provenance requirements remain P05. This
+step removes YAML from runtime loading/annotation; it does not yet remove the
+snapshot YAML requirement or claim end-to-end CSV-only import acceptance. The
+README transition note now reflects this implementation boundary.
+
+### P03: Creation and copy lifecycle
+
+- Replace the current template-selection dialog with name, source directory,
+  and destination parent fields plus browse controls/path fallbacks.
+- Preserve dataset-name/path validation, no-overwrite behavior, and existing
+  protection against duplicate submissions or conflicting active actions.
+- Validate before copying; keep an incomplete copy out of the available-dataset
+  list. Handle failed/interrupted copies without opening a partial workspace or
+  modifying the source. A small staging-and-publish flow is sufficient; do not
+  add a resumable import subsystem or an exhaustive filesystem failure model.
+- Prevent source/destination overlap that would recursively copy the import
+  into itself. Cleanup must target only temporary/new paths owned by this import.
+- Create the usual app-owned `cache/`, `results/`, and `logs/` directories and
+  generated configuration/state. Do not copy a standardization template or
+  create sample YAML, raw-data directories, or checklist copies.
+- Update available choices immediately and use the common loader to open the
+  created workspace without a restart. A destination outside the configured
+  datasets parent must still open in the current session; document that later
+  automatic discovery scans the configured datasets parent, as today.
+
+Likely touchpoints: dataset UI/server, common loading helpers,
+`templates/dataset_config_template.yaml`, `general_config.yaml`, and dependencies.
+
+**Implementation record (2026-11-04):**
+
+- [x] Replace template-based creation with a prepared-directory import dialog.
+  Source and parent paths are editable and have an in-app directory browser
+  with Go, Up, Home, Datasets, Open subdirectory, and Use this directory actions.
+  The form preserves its draft while browsing, shows resolved source/workspace
+  paths, downloads the README specification, and keeps validation errors visible
+  for correction/retry. Full-width fields and a scrolling body keep long paths
+  readable; browser controls appear near the top while browsing.
+- [x] Implement binary copying and staged initialization in
+  [18_utils_dataset_import.R](../../util_scripts/18_utils_dataset_import.R).
+  Validate before copying, reject source/destination overlap and existing
+  destinations, and reject child symbolic links that would compromise an
+  independent copy. Copy in bounded chunks with actual byte/MiB and elapsed-time
+  progress, check the copied structure, and publish by sibling-directory rename.
+  Normal failures remove only the staging directory owned by this import.
+- [x] Exclude `.prepared-import-*` staging directories from app discovery in
+  `app/context.R` and session choice refreshes. A terminated process can leave
+  hidden staging, which remains unavailable as a dataset; no resumable import
+  or automatic cleanup of another process's staging was added. Portable dataset
+  names also reject Windows device-name extensions and trailing-period aliases.
+- [x] Generate analysis configuration from the existing analysis template with
+  detected matrix filenames, selected state for every CSV sample, active storage
+  state, and completed input readiness with `validation_scope: structure_only`.
+  All analysis steps start as not started. Create no raw-data folder, sample
+  YAML, preparation script, or checklist copy. Source files remain unchanged.
+- [x] Extract the ordinary dataset-load handler into the shared guarded loader.
+  Creation releases its action guard and opens the published workspace through
+  that loader immediately. Default-parent imports remain discoverable after a
+  restart; external-parent imports are registered for selection/reload only in
+  the current session. Prevent session name collisions and duplicate publication;
+  preserve active-action/unsaved-annotation guards and cancellation semantics.
+- [x] Add [P03 tests](../../tests/testthat/test-p03-dataset-import.R) covering
+  counts/TPM/CPM imports, byte-identical copying, source independence, byte
+  progress, ready analysis state, rollback, overlap/no-overwrite/name guards,
+  hidden staging, cancellation, retry, directory navigation, external import,
+  and session reload. Update legacy creation tests to the new behavior while
+  retaining older-document tests until P04.
+- [x] Add a real browser journey in
+  [test-app-ui-baseline.R](../../tests/testthat/test-app-ui-baseline.R): cancel
+  creation, browse both paths, import without optional preparation files, open
+  immediately, run real synthetic clustering, switch datasets, and reload the
+  external workspace without restarting. Source hashes remain unchanged.
+- [x] Update the README creation instructions and visually inspect the final
+  desktop dialog/browser screenshots. Review the Dataset Selection screenshot
+  change and update only `01-dataset-selection.png` to replace the obsolete
+  mandatory-standardization message. Other reviewed baselines remain unchanged.
+
+**Verification:** Final focused selection passed **653 assertions** and the
+final two-browser-case rerun passed **53 assertions**, all without failures,
+errors, test warnings, or skips. The complete suite first ran **4,179 assertions**
+with one expected Dataset Selection baseline mismatch. After the visual baseline
+review and final layout/name-validation refinements, focused and affected-browser
+reruns were reconciled against the complete suite by file/test identity:
+**4,181 assertions verified, zero remaining failures/errors/warnings/skips**.
+This verification combines the full run and targeted follow-up; the original
+full-run result is preserved alongside the final reconciled evidence.
+
+Local, gitignored evidence lives under `artifacts/local-checks/`:
+`p03_full_check.R`, `p03_full_checks.log`, `p03_full_results.rds`,
+`p03_check.R`, `p03_focused_final_checks.log`, `p03_focused_results.rds`,
+`p03_browser_final_check.R`, `p03_browser_final_checks.log`,
+`p03_browser_final_results.rds`, `p03_verify_results.R`, and
+`p03_verified_results.rds`. The browser runner derives the two selected cases
+from the permanent test file and explicitly uses the reviewed fixture directory.
+Final screenshots use the `p03-folder-browser-*` and `p03-import-dialog-*` names.
+Browser execution required Windows pipe permissions outside the sandbox; runs
+kept automatic screenshot baseline updates disabled. Windows, R 4.5.3, UTF-8
+locale, and Edge were exercised. Linux execution and representative large-data
+timings remain P07 acceptance work.
+
+No dependency was added: the directory browser uses Shiny and existing R/filesystem
+utilities. The analysis template remains packaged and is adapted during import;
+existing dataset configuration and optional preparation templates are preserved.
+Preparation guide/prompt cleanup remains P04, and snapshot YAML provenance
+requirements remain P05. P03 does not close those later steps or final acceptance.
+
+### P04: Remove preparation screens and mandatory resources
+
+- Remove the Dataset Selection **Standardization Guide** tab and its document
+  modals, download/copy actions, clipboard handlers, and creation-success
+  instructions to run `standardize.R`.
+- Remove the separate **Reference Data** prompt screen, Start Menu button, and
+  associated navigation/show/hide/select-all handlers. It currently also displays
+  the metadata extraction prompt and must not remain as a second entry point.
+- Stop reading/validating the prompt file in `create_app_context()` and remove
+  prompt-text plumbing through UI constructors/resources. Missing prompt,
+  checklist, or template files must not prevent ordinary app startup/import.
+- Remove only obsolete onboarding-specific helpers, dependencies, and resource
+  registrations. Keep anything still used by other app features or retained
+  optional preparation tools; do not delete dataset scripts or user notes.
+- Replace obsolete user messages with prepared-input/structure-check guidance.
+  The workflow overview should describe input readiness rather than instruct
+  users to carry out standardization inside the app.
+
+Likely touchpoints: `app/context.R`, `app/ui/app_ui.R`,
+`app/ui/dataset_ui.R`, `app/ui/dashboard_ui.R`, `app/server/app_server.R`,
+`app/server/dataset_server.R`, `app/server/dashboard_server.R`,
+`util_scripts/13_utils_onboarding.R`, and `app.R`.
+
+**Implementation record (2026-11-04):**
+
+- [x] Simplify Dataset Selection to the prepared-data workspace card. Remove
+  the Standardization Guide, checklist/Markdown modals and downloads, copy/select
+  prompt controls, obsolete creation-success instructions, and their handlers.
+  Keep the prepared-input README download and current import/directory browser.
+- [x] Remove the Reference Data prompt screen, Start Menu Utilities card, and
+  every associated show/hide/navigation/select-all handler. The analysis gene-
+  clipboard feature is retained; this change removes metadata-prompt features.
+- [x] Stop reading or validating the prompt in `create_app_context()`. Remove
+  its resource/label/clipboard-text fields and UI constructor arguments. The
+  optional `metadata_prompt` location remains documented in general configuration
+  as an external aid; the key and file can both be absent at runtime.
+- [x] Delete the unused onboarding utility module, its obsolete tests, the
+  unused `pipeline-docs` resource registration, the `commonmark` app dependency,
+  and the unused standardization-template selector setting. No dataset scripts,
+  checklist notes, optional preparation templates, or prompt files were deleted.
+- [x] Rename the visible readiness badge to **Prepared inputs** and align
+  clustering guard messages. Keep the stored `standardization` state key and
+  existing scientific statuses/dependency behavior unchanged.
+- [x] Update README setup/requirements and the User Guide's setup/resource/test
+  references. Optional guidance is accessed directly in the repository; broader
+  preparation-document/prompt-format work remains P06.
+- [x] Add [P04 regressions](../../tests/testthat/test-p04-preparation-ui.R) for
+  startup without preparation files or prompt configuration, retained biological
+  resource validation, complete-UI absence of old controls/content, prepared-input
+  wording, import/loading, README download without a docs directory, and inert
+  obsolete input IDs. Extend the browser import journey to start with neither
+  prompt file nor key and check absence of both removed screen entry points.
+- [x] Final focused selection passed **637 assertions**, with zero failures,
+  errors, test warnings, or skips. The run covers P01/P03/P04, dataset transitions,
+  app bootstrap/components, and workflow overview. Tests isolate compiler caches
+  in temporary directories. Evidence: `artifacts/local-checks/p04_check.R`,
+  `p04_focused_checks.log`, and `p04_focused_results.rds` (gitignored).
+- [x] Visually inspect all six candidate UI references and refresh the Windows
+  baselines for the simpler selection card, removed navbar/menu entry, and
+  prepared-input badge. Analysis plots and controls retain their existing content.
+  Candidate captures are in `artifacts/local-checks/p04-ui-review/`; review used
+  `p04_browser_check.R` / `p04_browser_review_checks.log` with automatic baseline
+  updates disabled. The subsequent full run verifies the reviewed references.
+
+- [x] Final full regression suite passed **4,116 assertions**, with **zero
+  failures, errors, test warnings, or skips**, including all reviewed screenshot
+  comparisons and the browser import/clustering/reload journey with no prompt
+  file or configuration key. Automatic baseline updates remained disabled.
+  Windows, R 4.5.3, UTF-8 locale, and Edge were exercised. Browser execution used
+  permissions outside the sandbox for Windows process pipes. Authoritative local
+  evidence: `artifacts/local-checks/p04_full_check.R`, `p04_full_checks.log`, and
+  `p04_full_results.rds` (gitignored).
+
+Reproduce the full gate with `testthat::test_dir("tests/testthat", reporter =
+"summary")` in the configured R/browser environment. Linux execution remains P07
+acceptance work. Snapshot provenance still has its legacy YAML requirement until
+P05; P04 does not close that step or the overall implementation acceptance.
+
+### P05: State, existing workspaces, and review snapshots
+
+- Retain the internal dataset-scoped `standardization` state key for this
+  overhaul to avoid an unrelated state-schema migration. For new imports,
+  completion means prepared inputs passed the structural check and were
+  successfully installed; record that limited meaning in event/state details.
+  Do not emit a misleading claim of strict scientific validation.
+- Initialize every imported sample with analysis not started, and initialize
+  selected/storage state through existing helpers. Clustering readiness must
+  succeed immediately after successful creation.
+- Load existing completed/active/archived workspaces using their `Samples.csv`
+  and configured filenames, preserving saved scientific decisions, state, and
+  existing cache/storage behavior. Do not reset progress on each successful
+  structural check or weaken existing corrupted-state/archived-damage guards.
+- Existing scripts, raw folders, YAML, and checklist notes remain untouched.
+  If `Samples.csv` is missing, report that required file; do not silently fall
+  back to YAML or infer metadata from directory names.
+- Remove `samples_config.yaml` from the mandatory snapshot provenance list.
+  Keep it, preparation scripts, and checklist notes optional when present;
+  intentional absence in new workspaces should not create omission warnings.
+- Preserve the authoritative `Samples.csv` in the complete `processed_data`
+  snapshot tree. Preserve snapshot manifests/checksums, annotation/filtering
+  summaries, cache-cleanup independence, and optional CNA export behavior.
+- Record a minimal creation/import event and the structural-check scope using
+  existing logging. No new provenance-input requirement or content hashing.
+
+Likely touchpoints: `util_scripts/07_utils_state.R`,
+`util_scripts/09_utils_pipeline_overview.R`, `util_scripts/11_utils_storage.R`,
+`app/server/dashboard_server.R`, `app/server/snapshot_server.R`, and
+`util_scripts/14_utils_snapshots.R`.
+
+### P06: Documentation and optional preparation materials
+
+- Rewrite README creation/setup instructions around prepared input, including
+  the full contract, optional metadata fields, expression filenames, examples,
+  copy semantics, platform behavior, and user responsibility for data alignment
+  and replacement. Link the contract from the creation dialog without adding a
+  new preparation tab.
+- Align `docs/USER_GUIDE.md`, `docs/STANDARDIZATION_CHECKLIST.md`, pipeline
+  state/logging references, directory diagrams, and snapshot documentation.
+- Keep the checklist accessible as a file in `docs/`. Make it useful for users
+  with their own scripts and clearly identify optional template/helper advice.
+- Update `resources/metadata_extract_prompt.txt` to request CSV sample metadata
+  with the documented headers, quoting, blank values, and one row per biological
+  sample. Require no AI usage, credentials, invocation evidence, or completion
+  marker. Keep conservative extraction guidance. Explain that publication cell
+  counts must not substitute for standardized counts: users fill `n_cells`
+  during preparation even if the optional prompt leaves that value blank.
+- Existing templates/helpers may remain as optional tools. Identify their YAML
+  dependency if retained; they must not be part of the required import path.
+  Do not expand this work into a rewrite of every historical template.
+- Add this plan to the development index. Preserve dated historical findings
+  and acceptance evidence; identify superseded onboarding requirements rather
+  than rewriting history as if this design were already implemented.
+
+## 5. Verification plan
+
+Use deterministic synthetic fixtures and temporary workspaces. Tests should
+exercise the agreed behavior, not attempt to prove that every scientifically
+incorrect dataset or every external modification can be detected.
+
+| Area | Necessary or proposed checks |
+| --- | --- |
+| Structural checker | Valid one/multiple-sample imports; unreadable/missing/empty CSV; missing headers; no rows; blank/duplicate/unsafe IDs; exact case/folder matching; missing/extra sample directory; missing/empty required file; ambiguity in matrix naming. Errors report all relevant paths/samples. |
+| Bounded validation scope | Checker succeeds without reading matrix/gene/cell contents; instrument or replace matrix readers to fail if called. Scientifically malformed non-empty contents remain outside its promise and fail later if encountered by analysis. |
+| CSV authority | A dataset without sample YAML loads; conflicting old YAML cannot influence metadata; leading-zero IDs, quoted commas, blank fields, and extra columns survive. CSV sample ordering agrees with paths and annotation metadata. |
+| Creation | Import creates independent copied inputs and generated app files; source is unchanged; no raw folder/script/YAML/checklist is created; cancellation makes no workspace; existing destinations are not overwritten; duplicate submissions do not create duplicate workspaces; a simulated copy failure cannot open/discover a partial dataset. |
+| Immediate analysis | Create then open through the normal loader, choose clustering samples, and begin analysis without restarting R or manually repairing state/configuration. |
+| UI and optional files | Standardization/prompt panels and menu actions are absent; browser/path inputs are usable; no obsolete clipboard/navigation observer remains; startup/import work with the prompt/checklist/preparation template files absent. |
+| Dataset transitions | Switch between imported and existing workspaces, reload, and fail a load without carrying metadata or selections across datasets. Preserve unsaved-annotation guards and archived-state behavior. |
+| Analysis regression | On a valid small fixture, run clustering, resolution, DE, annotation save/reload, and CNA finalize or explicit omission. Saving annotations does not incorrectly invalidate clustering. |
+| Snapshots/storage | An imported finished workspace without preparation files or YAML can create folder/ZIP snapshots containing unchanged prepared matrices/genes, current cells, and authoritative CSV; manifests verify. Existing optional preparation provenance can be retained; cleanup/reopen and required-damage guards remain correct. |
+| Windows and Linux | Exercise browsing/path selection, spaces/Unicode paths, readable shared/mounted locations, import/reload, exact case matching, and destination discovery behavior. Record each platform actually exercised; a Windows-only run cannot close Linux acceptance. |
+| Performance | Measure structural checking separately from copying and existing cache/state reconciliation on representative data. Confirm the checker does not scale with matrix bytes; avoid a hardware-specific hard time limit or a new performance subsystem. |
+
+Update or replace tests that deliberately enforce the old workflow, especially
+`test-f06-standardization-onboarding.R` and
+`test-f15-r05-onboarding-documents.R`. Update component/bootstrap, annotation,
+dataset-transition, state, storage, snapshot, and integration fixtures that
+currently require sample YAML or prompt UI. Retain optional-helper tests where
+the supported helper behavior remains. Review UI baseline changes visually;
+do not accept every changed screenshot automatically.
+
+Run focused tests while implementing, then the full repository suite using the
+documented test command (`devtools::test()`). Run browser coverage for changed
+creation/navigation paths and record manual folder-picker evidence on both
+operating systems where browser automation cannot exercise the picker reliably.
+Use disposable copies for any existing scientific dataset acceptance checks.
+Keep local runners/logs in `artifacts/local-checks/`, not in `datasets/`.
+
+## 6. Requirements for completed implementation
+
+All items below must have implementation and verification evidence before this
+plan is marked complete. Automated results and manual/platform acceptance must
+be recorded separately, with unresolved items explicitly left open.
+
+- [ ] A user can create and immediately analyze a dataset from only the prepared
+  directory; no app restart, custom template adaptation, user-supplied sample
+  YAML, prompt, or checklist usage is needed.
+- [ ] Windows and Linux directory browsing/path entry and import/reload have
+  been exercised successfully, including paths with spaces.
+- [ ] Creation copies inputs, leaves the source unchanged, never overwrites an
+  existing workspace, and does not publish a failed partial import.
+- [ ] `Samples.csv` supplies all runtime sample membership/metadata consistently,
+  including annotation and marker selection. Sample YAML is neither required
+  nor a fallback authority.
+- [ ] Shared lightweight structural checks run at creation and every load, give
+  actionable aggregate errors, and do not load matrices or claim scientific
+  correctness. No validation caching/change-monitoring subsystem was added.
+- [ ] Matrix filename/scale handling is unambiguous and generated configuration
+  points to the imported files; existing configured names remain supported.
+- [ ] The app contains no standardization guide/checklist workflow or metadata
+  extraction prompt screen. Missing optional preparation files cannot prevent
+  startup, creation, loading, analysis, or snapshots.
+- [ ] Workflow state allows clustering immediately after import and preserves
+  existing scientific progress on reload. Routine annotation saves, cache
+  safeguards, cleanup/reopen, and interrupted-run recovery retain their behavior.
+- [ ] Existing usable workspaces load without destructive migration or changes
+  to their scripts, notes, raw files, or saved scientific results.
+- [ ] Review snapshots work without sample YAML, scripts, or checklists and
+  retain complete processed data, authoritative CSV, results, summaries, and
+  integrity verification before and after cache cleanup.
+- [ ] README input specification, User Guide, optional checklist/prompt, and
+  state/logging/snapshot documentation agree with the implementation. Users can
+  prepare data without reading application internals.
+- [ ] Focused regressions and the full suite pass; changed browser flows and
+  screenshots are reviewed. Counts, platform coverage, timings, and remaining
+  limitations are recorded without claiming unperformed tests.
+
+The implementation record should list affected files, test commands/results,
+Windows/Linux manual outcomes, representative structural-check and copy
+durations, and links to evidence. The implementation records above close only
+their individual progress items; end-to-end acceptance requirements remain open.

@@ -90,5 +90,11 @@ test_that("C05 actual review modal contains selectable paths on desktop and narr
       expect_lte(path$right, path$bodyRight + 1)
       if (i %in% c(2L, 4L) || (width == 375 && i == 3L)) expect_gt(path$height, path$lineHeight)
     }
+    artifact_dir <- Sys.getenv("C10_ARTIFACT_DIR")
+    if (nzchar(artifact_dir)) {
+      app$get_js("document.querySelector('.modal-body details').scrollIntoView({block: 'start'})")
+      app$get_screenshot(file = tempfile(pattern = paste0("c10-review-", width, "-"),
+        tmpdir = artifact_dir, fileext = ".png"), selector = "viewport")
+    }
   }
 })

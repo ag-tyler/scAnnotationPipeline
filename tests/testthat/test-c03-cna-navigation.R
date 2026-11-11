@@ -77,6 +77,30 @@ make_c03_fixture <- function(root) {
   env
 }
 
+test_that("C10 archived CNA status does not evaluate cache preflight and resumes after reopening", {
+  fx <- make_c03_fixture(withr::local_tempdir())
+  rv <- fx$state
+  original <- fx$cna_sample_preflight
+  calls <- 0L
+  fx$cna_sample_preflight <- function(...) {
+    calls <<- calls + 1L
+    original(...)
+  }
+  rv$storage_state <- transition_dataset_storage_state(
+    new_dataset_storage_state(basename(shiny::isolate(rv$dataset_dir_path))), "archived")
+  shiny::testServer(fx$server, {
+    session$setInputs(main_nav = "menu_tab", cna_sample_idx = "1", cna_main_views = "cna_view_default")
+    expect_error(output$cna_eligibility_ui, class = "shiny.silent.error")
+    expect_identical(calls, 0L)
+    expect_length(fx$reads, 0L)
+    rv$storage_state <- transition_dataset_storage_state(rv$storage_state, "active")
+    session$flushReact()
+    expect_match(output$cna_eligibility_ui$html, "Eligible for CNA", fixed = TRUE)
+    expect_identical(calls, 1L)
+    expect_length(fx$reads, 0L)
+  })
+})
+
 test_that("C03 status, omitted and reset navigation never reads a main heatmap", {
   fx <- make_c03_fixture(withr::local_tempdir()); rv <- fx$state
   shiny::testServer(fx$server, {

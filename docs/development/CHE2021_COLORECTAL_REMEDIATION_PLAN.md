@@ -3,7 +3,11 @@
 **Date:** 2026-11-03
 
 **Status:** C01–C09 implemented with synthetic regression/browser coverage;
-C10 release acceptance remains open.
+C10 final automated verification and agent visual inspection pass; human
+acceptance remains open.
+See the [C10 evidence record](CHE2021_COLORECTAL_C10_VERIFICATION.md) for the
+new archived-status fix, focused GUI results, measured reload/restart comparison
+and the remaining reviewer checklist.
 
 **Evidence:** [Completed manual review](CHE2021_COLORECTAL_MANUAL_REVIEW.md),
 especially stage notes and section 10. This plan extends the
@@ -623,6 +627,25 @@ dataset changed. C01–C09 implementation is complete; C10 remains open.
 ## C10 — Verification and acceptance gate
 
 - [ ] Complete after C01–C06; record outcomes individually.
+- [x] Add missing archived-GUI damage coverage and a measured synthetic
+  first-load/reload/restart comparison (2026-11-04).
+- [x] Reproduce and fix hidden CNA preflight recreating archived cache
+  directories; verify zero preflight calls until explicit reopening.
+- [x] Finish the complete final portable/browser suite and agent visual inspection.
+- [ ] Obtain the focused human acceptance sign-off; preserve original failures.
+
+**Execution record (2026-11-04):** The
+[C10 verification record](CHE2021_COLORECTAL_C10_VERIFICATION.md) separates the
+new synthetic evidence, exact sample/k/name/control cases and timing observations
+from the remaining human journey. Initial full baseline: 3,814 assertions pass.
+After the archived preflight fix, focused C10 browser checks pass 51 assertions
+and C03 checks pass 55, with no failures/errors/test warnings/skips. These counts
+overlap the final suite and are not added to it. Final full verification passed
+**3,871 assertions**, zero failures/errors/test warnings/skips, including all
+browser and archive-worker checks. Long-path review screenshots at 1280px/375px
+were visually inspected; baselines remain unchanged. C07–C09 are delivered;
+no P2 implementation is deferred. Neither real Che workspace nor other real
+datasets are modified.
 
 1. Add reproductions/regressions with each fix. Build on the existing F03/F09,
    F10/F14, F16/F17, state and CNA-preflight tests. Existing ERR-04's 26

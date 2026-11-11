@@ -20,7 +20,6 @@ Imports:
     yaml,
     jsonlite,
     shiny,
-    commonmark,
     zip (>= 2.3.0),
     processx,
     R6,

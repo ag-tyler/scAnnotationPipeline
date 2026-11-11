@@ -1,5 +1,16 @@
 # Release Acceptance
 
+**Current verification (2026-11-04):** C01–C09 are implemented. C10 adds a guard
+against hidden CNA preflight recreating archived cache directories, archived
+required/optional-damage browser journeys and measured synthetic reload/restart
+timings. The complete final suite passed **3,871 assertions**, with **zero
+failures/errors/test warnings/skips**; agent visual inspection confirmed
+desktop/narrow long-path containment without changing baselines. Human post-fix
+acceptance remains open. See the
+[C10 evidence and reviewer checklist](CHE2021_COLORECTAL_C10_VERIFICATION.md).
+The dated manual failures and earlier implementation records below are retained
+as historical evidence.
+
 **Latest full manual run (completed 2026-11-03; acceptance has open failures):**
 [Che2021 Colorectal manual review](CHE2021_COLORECTAL_MANUAL_REVIEW.md).
 All 15 samples reached a finished scientific decision before cleanup: ten final
@@ -250,12 +261,19 @@ font and antialiasing differences do not cause pixel-perfect failures. All
 functional browser assertions run on every supported platform. Screenshot
 comparison is additionally enforced when a reviewed baseline exists for that
 platform; the repository currently includes the Windows/R 4.5 baseline. The
-test does not invoke expensive scientific compute, reset, cleanup, or batch
-mutations. Its app, dataset, logs, state, caches, and results are deleted with
-the temporary test directory.
+baseline navigation/save test does not invoke expensive scientific compute,
+reset, cleanup, or batch mutations. Additional journeys in the same test file
+exercise dataset transitions, actual interrupted-clustering retries, CNA
+navigation/reset/omission, archive/reopen, and control save/reload behavior.
+C10 adds four independent archived required/optional-damage GUI cases and
+measured first-load/reload/process-restart comparisons. The C04 archive/reopen
+journey republishes deterministic numerical fixtures between real decisions and
+saves. Separate F17 browser tests verify production snapshot modal layouts.
+All apps, datasets, logs, state, caches and results remain disposable.
 
-If the browser or browser-test dependency is unavailable, only this browser
-test is skipped; all non-browser release tests remain runnable.
+If the browser or browser-test dependency is unavailable, browser-dependent
+tests are skipped; non-browser release tests remain runnable. A C10 run must
+record those skips rather than claim a complete browser acceptance pass.
 
 ## Acceptance scenario map
 
@@ -267,6 +285,8 @@ test is skipped; all non-browser release tests remain runnable.
 | First-sample parameters and marker schemas | `test-05_utils_workflow.R`, component tests |
 | Unsaved annotation edits, navigation, CNA omission, and notes | `test-app-components.R`, `test-03_utils_misc.R` |
 | Browser-driven annotation save and restart continuity | `test-app-ui-baseline.R` |
+| Archived status without cache-directory recreation; explicit reopen resumes CNA preflight | `test-c03-cna-navigation.R`, C10 journey in `test-app-ui-baseline.R` |
+| Required archived damage blocks snapshot publication; optional export damage warns/excludes with acknowledgement; measured load/reload/restart | C10 journeys in `test-app-ui-baseline.R`, `test-f17-review-snapshots.R` |
 | Safe unannotated preview, partial Unassigned legends, preview no-write behavior, and saved-PNG consistency | `test-f15-r03-annotation-preview.R` |
 | Same-sample resolution grid/detail refresh after bulk/targeted clustering, stable tabs, and no unrelated PNG reads | `test-f15-r04-resolution-refresh.R` |
 | In-app setup documents, Markdown downloads, independent workspace checklists, preserved notes, and safe creation paths | `test-f15-r05-onboarding-documents.R`, `test-f06-standardization-onboarding.R` |

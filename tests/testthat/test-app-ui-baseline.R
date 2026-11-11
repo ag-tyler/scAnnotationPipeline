@@ -25,7 +25,7 @@ make_portable_ui_fixture <- function(app_dir, dataset_name = "Synthetic_Demo") {
   results_dir <- file.path(dataset_dir, config$dataset_paths$results_dir)
   cluster_plots_dir <- file.path(results_dir, sample_name, "1_cluster_plots")
   de_plots_dir <- file.path(results_dir, sample_name, "2_de_plots")
-  dir.create(resources_dir, recursive = TRUE)
+  dir.create(resources_dir, recursive = TRUE, showWarnings = FALSE)
   dir.create(sample_dir, recursive = TRUE)
   dir.create(cluster_plots_dir, recursive = TRUE)
   dir.create(de_plots_dir, recursive = TRUE)
@@ -161,14 +161,9 @@ make_portable_ui_fixture <- function(app_dir, dataset_name = "Synthetic_Demo") {
   Matrix::writeMM(counts, file.path(sample_dir, dataset_config$std_names$expmat))
   writeLines(genes, file.path(sample_dir, dataset_config$std_names$genes))
   data.table::fwrite(cells, file.path(sample_dir, dataset_config$std_names$cells))
-  data.table::fwrite(
-    data.table::data.table(
-      sample = sample_name,
-      n_cells = length(cell_names),
-      cancer_type = "Synthetic Cancer"
-    ),
-    file.path(processed_dir, dataset_config$std_names$samples)
-  )
+  sample_metadata <- data.table::as.data.table(sample_entry)
+  sample_metadata$n_cells <- length(cell_names)
+  data.table::fwrite(sample_metadata, file.path(processed_dir, dataset_config$std_names$samples))
 
   selected_config <- setup_selected_config(sample_name)
   selected_config$resolutions[[sample_name]] <- 0.5
@@ -290,6 +285,7 @@ make_ui_baseline_app <- function(source_app_dir, .local_envir = parent.frame()) 
     file.path(source_app_dir, "app.R"),
     file.path(test_app_dir, "app.R")
   )
+  file.copy(file.path(source_app_dir, "README.md"), file.path(test_app_dir, "README.md"))
   file.copy(
     list.files(
       file.path(source_app_dir, "util_scripts"),
@@ -341,6 +337,8 @@ make_ui_baseline_app <- function(source_app_dir, .local_envir = parent.frame()) 
 expect_ui_baseline_screenshot <- function(app, baseline_dir, filename) {
   actual_path <- tempfile(fileext = ".png")
   app$get_screenshot(file = actual_path, selector = "viewport")
+  review_dir <- Sys.getenv("UI_BASELINE_REVIEW_DIR")
+  if (nzchar(review_dir)) file.copy(actual_path, file.path(review_dir, filename), overwrite = TRUE)
 
   baseline_path <- file.path(baseline_dir, filename)
   update_files <- Sys.getenv("UPDATE_UI_BASELINE_FILES")
@@ -384,7 +382,7 @@ make_cna_navigation_ui_fixture <- function(test_app) {
   samples <- c(original, "Z_omitted", "Z_reset")
   config <- yaml::read_yaml(file.path(dataset, "dataset_config.yaml"))
   selected <- yaml::read_yaml(file.path(dataset, "selected_config.yaml"))
-  sample_config <- yaml::read_yaml(file.path(dataset, "samples_config.yaml"))
+  sample_metadata <- read_prepared_samples(file.path(processed, config$std_names$samples))
   pipeline <- load_pipeline_state(dataset)
   counts <- cache_load_data(paste0("expmat_filt_", original, ".qs2"), dataset)
   cells <- cache_load_data(paste0("cells_filt_clust_res_0.5_", original, ".qs2"), dataset)
@@ -393,11 +391,11 @@ make_cna_navigation_ui_fixture <- function(test_app) {
     file.copy(list.files(file.path(processed, original), full.names = TRUE), file.path(processed, sample))
     sample_cells <- data.table::copy(cells); sample_cells[, sample := ..sample]
     data.table::fwrite(sample_cells, file.path(processed, sample, "Cells.csv"))
-    entry <- sample_config$samples[[1]]; entry$sample <- sample
-    sample_config$samples <- c(sample_config$samples, list(entry))
+    entry <- data.table::copy(sample_metadata[1]); entry$sample <- sample
+    sample_metadata <- rbind(sample_metadata, entry)
     pipeline$samples[[sample]] <- new_pipeline_state("Synthetic_Demo", sample)$samples[[sample]]
   }
-  yaml::write_yaml(sample_config, file.path(dataset, "samples_config.yaml"))
+  data.table::fwrite(sample_metadata, file.path(processed, config$std_names$samples))
   for (sample in samples) {
     selected$resolutions[[sample]] <- 0.5
     selected$cna_ref_cells[[sample]] <- "B_cell"
@@ -911,10 +909,11 @@ test_that("C01 browser switches dataset contexts with old indices, unsaved edits
   for (sample in c("Z_extra1", "Z_extra2")) {
     write_mini_sample(file.path(large, "processed_data"), sample)
   }
-  samples_path <- file.path(large, config$config_files$samples)
-  samples <- yaml::read_yaml(samples_path)
-  samples$samples <- c(samples$samples, lapply(c("Z_extra1", "Z_extra2"), make_valid_sample_entry))
-  yaml::write_yaml(samples, samples_path)
+  samples_path <- file.path(large, "processed_data", "Samples.csv")
+  samples <- read_prepared_samples(samples_path)
+  extra_samples <- build_samples(c("Z_extra1", "Z_extra2"))
+  extra_samples$n_cells <- 20L
+  data.table::fwrite(data.table::rbindlist(list(samples, extra_samples), use.names = TRUE, fill = TRUE), samples_path)
   # Persist the reconciled records up front; subsequent loads are read-only
   # apart from permitted operation logs.
   selected_path <- file.path(large, config$config_files$selected)
@@ -1251,6 +1250,230 @@ test_that("C03 browser keeps status and unavailable samples free of main heatmap
   expect_equal(sum(trace() == "heatmap"), 1)
   expect_identical(tools::md5sum(scientific), before)
   message(sprintf("C03 browser synthetic main-heatmap first entry %.2fs; warm re-entry %.2fs; heatmap builds=1", cold, warm))
+  logs <- app$get_logs()
+  errors <- logs[logs$level == "error" | grepl("Error|Execution halted", logs$message, ignore.case = TRUE), , drop = FALSE]
+  expect_equal(nrow(errors), 0L, info = paste(errors$message, collapse = "\n"))
+})
+
+test_that("C10 browser distinguishes required archive damage from optional export damage", {
+  skip_if_not_installed("shinytest2")
+  browser <- tryCatch(chromote::find_chrome(), error = function(e) NULL)
+  skip_if(is.null(browser) || !nzchar(browser), "no Chromium browser is configured")
+  withr::local_envvar(NOT_CRAN = "true")
+  test_app <- make_ui_baseline_app(normalizePath(testthat::test_path("..", ".."), winslash = "/"))
+  kinds <- c("required_missing", "required_changed", "optional_missing", "optional_changed")
+  records <- list()
+  for (kind in kinds) {
+    make_portable_ui_fixture(test_app, kind)
+    dataset <- file.path(test_app, "datasets", kind)
+    sample <- "Synthetic_sample"
+    pipeline <- load_pipeline_state(dataset)
+    for (step in c("cna_compute", "cna_cluster_selection", "cna_signal_correlation", "cna_thresholds", "cna_assignment")) {
+      pipeline <- transition_pipeline_step(pipeline, step, "completed", sample, force = TRUE)
+    }
+    pipeline <- save_pipeline_state_at_path(pipeline, file.path(dataset, "pipeline_state.yaml"))
+    plots <- file.path(dataset, "results", sample, "3_cna_plots")
+    dir.create(plots, recursive = TRUE)
+    write_ui_fixture_plot(file.path(dataset, "results", sample, "2_de_plots", "cell_types.png"), "Saved annotation", sample)
+    for (prefix in c("cna_summary_heatmap_", "cna_umap_assigned_")) {
+      write_ui_fixture_plot(file.path(plots, paste0(prefix, sample, ".png")), "Synthetic final CNA", sample)
+    }
+    values <- data.table::data.table(gene = "GENE001", chr = "01", start_pos = 1L, synthetic_cell_001 = 0.2)
+    cache_save_data(values, paste0("cna_matrix_", sample, ".qs2"), dataset)
+    export_cna_values_table(sample, dataset, file.path(dataset, "results"))
+    paths <- list(sample_dir_paths = file.path(dataset, "processed_data", sample),
+      cell_file_paths = file.path(dataset, "processed_data", sample, "Cells.csv"))
+    selected_path <- file.path(dataset, "selected_config.yaml")
+    storage <- save_dataset_storage_state_atomic(new_dataset_storage_state(kind), dataset)
+    ready <- dataset_cleanup_readiness(pipeline, paths, yaml::read_yaml(selected_path), selected_path,
+      file.path(dataset, "results"), dataset)
+    expect_true(ready$ready, info = paste(ready$reasons, collapse = "; "))
+    archive_dataset_cache(dataset, pipeline, storage, ready)
+    # Four independent archives: never compound required and optional damage.
+    target <- if (startsWith(kind, "required")) paths$cell_file_paths else
+      cna_values_export_paths(file.path(dataset, "results"), sample)$csv
+    if (endsWith(kind, "missing")) expect_true(file.remove(target)) else
+      cat("controlled fixture damage", file = target, append = TRUE)
+    protected <- c(file.path(dataset, "pipeline_state.yaml"), selected_path,
+      file.path(dataset, "processed_data", sample, c("Genes.txt", "Exp_data_UMIcounts.mtx")))
+    records[[kind]] <- list(dataset = dataset, protected = protected, hashes = tools::md5sum(protected))
+  }
+  destination <- withr::local_tempdir(pattern = "c10-snapshot-")
+  app <- shinytest2::AppDriver$new(app_dir = test_app, name = "c10-archive-damage", seed = 3988,
+    load_timeout = 60000, timeout = 60000, width = 1280, height = 1000)
+  on.exit(app$stop(), add = TRUE)
+  for (kind in kinds) {
+    app$set_inputs(dataset_choice = kind, wait_ = FALSE)
+    app$click("btn_load_dataset", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+    expect_match(app$get_text("#dataset_storage_status"), "retained outputs are missing or changed", fixed = TRUE)
+    if (identical(kind, "required_missing")) {
+      expect_true(app$get_js("document.querySelector('#btn_create_review_snapshot').disabled"))
+      expect_match(app$get_text("#dataset_storage_status"), "not ready", fixed = TRUE)
+    } else if (identical(kind, "required_changed")) {
+      # Cheap readiness does not hash retained files. Inventory verification
+      # must reject damage even when the initial action remains available.
+      app$click("btn_create_review_snapshot", wait_ = FALSE); app$wait_for_idle()
+      app$set_inputs(snapshot_destination = destination, wait_ = FALSE)
+      app$click("btn_preview_review_snapshot", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+      expect_match(paste(app$get_text(".shiny-notification"), collapse = "\n"), "Required retained outputs changed", fixed = TRUE)
+      expect_true(app$get_js("document.querySelector('#btn_confirm_review_snapshot').disabled"))
+      app$click("btn_cancel_review_snapshot", wait_ = FALSE); app$wait_for_idle()
+    } else {
+      expect_false(app$get_js("document.querySelector('#btn_create_review_snapshot').disabled"))
+      app$click("btn_create_review_snapshot", wait_ = FALSE); app$wait_for_idle()
+      app$set_inputs(snapshot_destination = destination, snapshot_include_cna_values = TRUE, wait_ = FALSE)
+      app$click("btn_preview_review_snapshot", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+      expect_match(app$get_text("#review_snapshot_preview"), "CNA", fixed = TRUE)
+      expect_false(any(grepl("cna_values_", app$get_js(
+        "Array.from(document.querySelectorAll('.review-snapshot-included-path')).map(x => x.textContent)"), fixed = TRUE)))
+      expect_true(app$get_js("document.querySelector('#btn_confirm_review_snapshot').disabled"))
+      app$set_inputs(snapshot_acknowledge = TRUE, wait_ = FALSE); app$wait_for_idle()
+      expect_false(app$get_js("document.querySelector('#btn_confirm_review_snapshot').disabled"))
+      app$set_window_size(width = 375, height = 1000); app$wait_for_idle()
+      app$get_js("document.querySelector('.modal-body details').open = true")
+      expect_true(app$get_js("document.querySelector('.modal-body').scrollWidth <= document.querySelector('.modal-body').clientWidth + 1"))
+      artifact_dir <- Sys.getenv("C10_ARTIFACT_DIR")
+      if (nzchar(artifact_dir)) app$get_screenshot(
+        file = tempfile(pattern = paste0("c10-", kind, "-"), tmpdir = artifact_dir, fileext = ".png"), selector = "viewport")
+      app$click("btn_confirm_review_snapshot", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+      expect_match(app$get_text(".modal-title"), "Review snapshot verified", fixed = TRUE)
+      app$set_window_size(width = 1280, height = 1000)
+    }
+    record <- records[[kind]]
+    expect_identical(tools::md5sum(record$protected), record$hashes)
+    expect_false(dir.exists(file.path(record$dataset, "cache")), info = paste(list.files(file.path(record$dataset, "cache")), collapse = "; "))
+    app$click("btn_change_dataset", wait_ = FALSE); app$wait_for_idle()
+  }
+  outputs <- list.dirs(destination, recursive = FALSE)
+  expect_length(outputs, 2L)
+  for (output in outputs) {
+    expect_true(file.exists(file.path(output, "snapshot_manifest.yaml")))
+    expect_false(any(grepl("cna_values_", list.files(output, recursive = TRUE), fixed = TRUE)))
+  }
+  logs <- app$get_logs()
+  errors <- logs[logs$level == "error" | grepl("Error|Execution halted", logs$message, ignore.case = TRUE), , drop = FALSE]
+  expect_equal(nrow(errors), 0L, info = paste(errors$message, collapse = "\n"))
+})
+
+test_that("C10 browser measures first load, same-session reload and process restart", {
+  skip_if_not_installed("shinytest2")
+  browser <- tryCatch(chromote::find_chrome(), error = function(e) NULL)
+  skip_if(is.null(browser) || !nzchar(browser), "no Chromium browser is configured")
+  withr::local_envvar(NOT_CRAN = "true")
+  test_app <- make_ui_baseline_app(normalizePath(testthat::test_path("..", ".."), winslash = "/"))
+  dataset <- file.path(test_app, "datasets", "Synthetic_Demo")
+  protected <- list.files(file.path(dataset, "processed_data"), recursive = TRUE, full.names = TRUE)
+  before <- tools::md5sum(protected)
+  times <- numeric()
+  launch <- function(name) {
+    started <- proc.time()[["elapsed"]]
+    driver <- shinytest2::AppDriver$new(app_dir = test_app, name = name, seed = if (name == "first") 3988 else 3999,
+      load_timeout = 60000, timeout = 60000)
+    times[[paste0(name, "_startup")]] <<- proc.time()[["elapsed"]] - started
+    driver
+  }
+  load <- function(label) {
+    app$set_inputs(dataset_choice = "Synthetic_Demo", wait_ = FALSE)
+    started <- proc.time()[["elapsed"]]
+    app$click("btn_load_dataset", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+    times[[label]] <<- proc.time()[["elapsed"]] - started
+    expect_match(app$get_text("#dataset_storage_status"), "Reconstructible cache", fixed = TRUE)
+    expect_identical(tools::md5sum(protected), before)
+  }
+  app <- launch("first")
+  on.exit(app$stop(), add = TRUE)
+  load("first_load")
+  app$click("btn_change_dataset", wait_ = FALSE); app$wait_for_idle()
+  load("same_session_reload")
+  events <- read_pipeline_events(dataset)
+  session_ids <- unique(vapply(Filter(function(x) identical(x$event_type, "dataset_load") && identical(x$outcome, "completed"), events),
+    function(x) x$parameters$session_id, character(1)))
+  expect_length(session_ids, 1L)
+  app$stop()
+  app <- launch("restart")
+  load("restart_load")
+  events <- read_pipeline_events(dataset)
+  session_ids <- unique(vapply(Filter(function(x) identical(x$event_type, "dataset_load") && identical(x$outcome, "completed"), events),
+    function(x) x$parameters$session_id, character(1)))
+  expect_length(session_ids, 2L)
+  expect_true(all(is.finite(times) & times >= 0))
+  message("C10 synthetic 48-cell/66-gene seconds (browser idle included; no timing threshold): ",
+    paste(names(times), sprintf("%.3f", times), collapse = "; "))
+})
+
+test_that("P03 browser imports prepared files, browses paths, and starts clustering without restart", {
+  skip_if_not_installed("shinytest2")
+  browser <- tryCatch(chromote::find_chrome(), error = function(e) NULL)
+  skip_if(is.null(browser) || !nzchar(browser), "no Chromium browser is configured")
+  withr::local_envvar(NOT_CRAN = "true")
+  test_app <- make_ui_baseline_app(normalizePath(testthat::test_path("..", ".."), winslash = "/"))
+  source <- file.path(test_app, "prepared inputs")
+  external <- file.path(test_app, "external workspaces")
+  dir.create(external)
+  fs::dir_copy(file.path(test_app, "datasets", "Synthetic_Demo", "processed_data"), source)
+  # Use the tiny fixture's analysis defaults to exercise real clustering.
+  template <- yaml::read_yaml(file.path(test_app, "datasets", "Synthetic_Demo", "dataset_config.yaml"))
+  yaml::write_yaml(template, file.path(test_app, "templates", "dataset_config_template.yaml"))
+  # These optional preparation files must not be required for creation.
+  unlink(file.path(test_app, "templates", "standardize_general.R"))
+  unlink(file.path(test_app, "docs", "STANDARDIZATION_CHECKLIST.md"))
+  # P04: the complete app must also start when the optional prompt and its
+  # configuration key are absent, and no preparation screen may remain.
+  app_config_path <- file.path(test_app, "general_config.yaml")
+  app_config <- yaml::read_yaml(app_config_path)
+  unlink(file.path(test_app, "resources", app_config$resource_files$metadata_prompt))
+  app_config$resource_files$metadata_prompt <- NULL
+  yaml::write_yaml(app_config, app_config_path)
+  source_files <- list.files(source, recursive = TRUE, full.names = TRUE)
+  hashes <- tools::md5sum(source_files)
+  app <- shinytest2::AppDriver$new(app_dir = test_app, name = "p03-import", seed = 3988,
+    load_timeout = 60000, timeout = 60000, width = 1280, height = 1000)
+  on.exit(app$stop(), add = TRUE)
+  expect_false(app$get_js("!!document.querySelector('[data-value=\"standardization_guide\"], [data-value=\"clipboard_tab\"], #btn_copy_info, #standardization_prompt_text')"))
+  app$click("btn_create_dataset_ui", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  app$set_inputs(new_ds_name = "Cancelled", wait_ = FALSE)
+  app$click("btn_cancel_create_ds", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  expect_false(dir.exists(file.path(test_app, "datasets", "Cancelled")))
+  app$click("btn_create_dataset_ui", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  app$set_inputs(new_ds_name = "Imported_Study", wait_ = FALSE)
+  app$click("btn_browse_dataset_source", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  app$set_inputs(dataset_browser_path = test_app, wait_ = FALSE)
+  app$click("btn_dataset_browser_go", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  app$set_inputs(dataset_browser_child = normalizePath(source, winslash = "/"), wait_ = FALSE)
+  app$click("btn_dataset_browser_open", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  artifact_dir <- Sys.getenv("P03_ARTIFACT_DIR")
+  if (nzchar(artifact_dir)) app$get_screenshot(file = tempfile(pattern = "p03-folder-browser-", tmpdir = artifact_dir, fileext = ".png"), selector = "viewport")
+  app$click("btn_dataset_browser_select", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  expect_identical(app$get_value(input = "new_ds_source"), normalizePath(source, winslash = "/"))
+  expect_identical(app$get_value(input = "new_ds_name"), "Imported_Study")
+  app$click("btn_browse_dataset_parent", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  app$click("btn_dataset_browser_up", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  app$set_inputs(dataset_browser_child = normalizePath(external, winslash = "/"), wait_ = FALSE)
+  app$click("btn_dataset_browser_open", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  app$click("btn_dataset_browser_select", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  expect_identical(app$get_value(input = "new_ds_location"), normalizePath(external, winslash = "/"))
+  if (nzchar(artifact_dir)) app$get_screenshot(file = tempfile(pattern = "p03-import-dialog-", tmpdir = artifact_dir, fileext = ".png"), selector = "viewport")
+  app$click("btn_confirm_create_ds", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  expect_identical(app$get_value(input = "main_nav"), "menu_tab")
+  workspace <- file.path(external, "Imported_Study")
+  expect_match(app$get_text("#pipeline_status_overview"), "Prepared inputs:", fixed = TRUE)
+  expect_identical(get_pipeline_step(load_pipeline_state(workspace), "standardization")$details$validation_scope, "structure_only")
+  expect_false(any(file.exists(file.path(workspace, c("data", "standardize.R", "samples_config.yaml", "STANDARDIZATION_CHECKLIST.md")))))
+  expect_identical(tools::md5sum(source_files), hashes)
+  app$click("btn_run_clustering", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  expect_match(app$get_text(".modal-title"), "Select Samples for Clustering", fixed = TRUE)
+  app$click("confirm_run_clustering", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  expect_identical(get_pipeline_step(load_pipeline_state(workspace), "clustering", "Synthetic_sample")$status, "completed")
+  expect_identical(tools::md5sum(source_files), hashes)
+  app$set_inputs(main_nav = "menu_tab", wait_ = FALSE)
+  app$click("btn_change_dataset", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  app$set_inputs(dataset_choice = "Synthetic_Demo", wait_ = FALSE)
+  app$click("btn_load_dataset", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  app$click("btn_change_dataset", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  app$set_inputs(dataset_choice = "Imported_Study", wait_ = FALSE)
+  app$click("btn_load_dataset", wait_ = FALSE); app$wait_for_idle(timeout = 60000)
+  expect_identical(app$get_value(input = "main_nav"), "menu_tab")
+  expect_identical(app$get_value(input = "dataset_choice"), "Imported_Study")
   logs <- app$get_logs()
   errors <- logs[logs$level == "error" | grepl("Error|Execution halted", logs$message, ignore.case = TRUE), , drop = FALSE]
   expect_equal(nrow(errors), 0L, info = paste(errors$message, collapse = "\n"))

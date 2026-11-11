@@ -5,7 +5,6 @@ build_app_server <- function(context) {
 
   function(input, output, session) {
     nav_hide("main_nav", target = "menu_tab")
-    nav_hide("main_nav", target = "clipboard_tab")
     nav_hide("main_nav", target = "res_tab")
     nav_hide("main_nav", target = "anno_tab")
     nav_hide("main_nav", target = "cna_tab")

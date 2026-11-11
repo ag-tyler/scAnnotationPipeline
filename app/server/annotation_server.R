@@ -229,22 +229,18 @@ register_annotation_server <- function(input, output, session, state, context) {
   })
 
   output$ref_cell_selector <- renderUI({
-    req(rv$cells_filt, rv$sample_name, rv$samples_config)
+    req(rv$cells_filt, rv$sample_name, rv$sample_metadata)
 
     current_types <- unique(rv$cells_filt$cell_type)
     current_types <- current_types[!is.na(current_types) & current_types != "NA"]
     current_types <- gsub("\\s*\\(.*\\)", "", current_types)
     current_types <- unique(current_types)
 
-    samples_list <- rv$samples_config$samples
-    matching_sample <- Filter(
-      function(x) identical(x$sample, rv$sample_name),
-      samples_list
-    )
-
+    sample_index <- match(rv$sample_name, rv$sample_metadata$sample)
     cancer_type <- "Unknown"
-    if (length(matching_sample) > 0) {
-      cancer_type <- matching_sample[[1]]$cancer_type
+    if (!is.na(sample_index)) {
+      value <- rv$sample_metadata$cancer_type[[sample_index]]
+      if (!is.na(value) && nzchar(value)) cancer_type <- value
     }
 
     tagList(

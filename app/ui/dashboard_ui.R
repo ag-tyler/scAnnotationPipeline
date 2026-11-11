@@ -117,7 +117,7 @@ pipeline_status_overview_ui <- function(summary) {
         span(
           class = paste0("badge text-bg-", standardization$class),
           icon(standardization$icon, class = "me-1", `aria-hidden` = "true"),
-          paste0("Standardization: ", standardization$label)
+          paste0("Prepared inputs: ", standardization$label)
         )
       )
     ),
@@ -313,18 +313,6 @@ dashboard_panel <- function() {
       uiOutput("dataset_origin_reminder"),
       uiOutput("dataset_storage_status"),
       card(
-        card_header(h4("Utilities", class = "mb-0")),
-        card_body(
-          p("View and extract metadata prompt:"),
-          actionButton(
-            "btn_copy_info",
-            "Go to Reference Data",
-            icon = icon("file-alt"),
-            class = "btn-outline-secondary w-100"
-          )
-        )
-      ),
-      card(
         card_header(h4("Pre-Processing & Clustering", class = "mb-0")),
         card_body(
           p("Choose all samples or a subset to run PCA, UMAP, and Louvain clustering across every predefined resolution."),
@@ -393,41 +381,6 @@ dashboard_panel <- function() {
             class = "btn-danger btn-lg w-100"
           )
         )
-      )
-    )
-  )
-}
-
-reference_panel <- function(clipboard_text) {
-  nav_panel(
-    title = "Reference Data",
-    value = "clipboard_tab",
-    div(
-      class = "container mt-5",
-      style = "max-width: 800px;",
-      h3("Metadata Extraction Prompt", class = "mb-3"),
-      div(
-        class = "alert alert-info",
-        icon("info-circle"),
-        " Click 'Select All Text' below, then manually copy (Ctrl+C / Cmd+C)."
-      ),
-      actionButton(
-        "btn_select_all",
-        "Select All Text",
-        icon = icon("check-square"),
-        class = "btn-primary mb-3"
-      ),
-      tags$textarea(
-        id = "prompt_text_area",
-        class = "form-control mb-4",
-        style = "height: 50vh; font-family: monospace; resize: vertical;",
-        readonly = TRUE,
-        clipboard_text
-      ),
-      actionButton(
-        "btn_back_menu_3",
-        "Back to Menu",
-        class = "btn-secondary w-100"
       )
     )
   )

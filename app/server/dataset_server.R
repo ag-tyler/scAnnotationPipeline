@@ -12,44 +12,53 @@ register_dataset_server <- function(input, output, session, state, context) {
   templates_dir <- context$paths$templates_dir
   available_datasets <- context$available_datasets
   docs_dir <- if (is.null(context$paths$docs_dir)) "docs" else context$paths$docs_dir
-  active_standardization_document <- reactiveVal(NULL)
-  created_workspace_path <- reactiveVal(NULL)
-
-  show_standardization_document <- function(type, dataset_dir = NULL) {
-    result <- tryCatch({
-      document <- read_standardization_document(type, docs_dir, dataset_dir)
-      modal <- standardization_document_modal(document)
-      active_standardization_document(document)
-      showModal(modal)
-      TRUE
-    }, error = function(e) {
-      showNotification(
-        paste("Could not open documentation:", conditionMessage(e)),
-        type = "error", duration = 15
-      )
-      FALSE
-    })
-    invisible(result)
+  session_workspace_paths <- reactiveVal(list())
+  directory_browser <- reactiveVal(NULL)
+  import_error <- reactiveVal(NULL)
+  workspace_path <- function(name) {
+    registered <- session_workspace_paths()
+    if (name %in% names(registered)) registered[[name]] else file.path(dataset_base_dir, name)
+  }
+  workspace_choices <- function() {
+    unique(c(basename(dataset_workspace_directories(dataset_base_dir)), names(session_workspace_paths())))
   }
 
-  selected_standardization_workspace <- function() {
+  output$download_input_specification <- downloadHandler(
+    filename = function() "README.md",
+    content = function(file) {
+      path <- file.path(dirname(docs_dir), "README.md")
+      if (!file.copy(path, file)) stop("README.md could not be downloaded; open it in the repository.")
+    }
+  )
+  output$dataset_import_report <- renderUI({
+    message <- import_error()
+    if (is.null(message)) return(NULL)
+    div(class = "alert alert-danger mt-3",
+      tags$strong("Dataset could not be created"),
+      tags$pre(message, style = "white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow-y: auto;"))
+  })
+  output$dataset_import_paths <- renderUI({
+    req(input$new_ds_name, input$new_ds_source, input$new_ds_location)
+    source <- normalizePath(input$new_ds_source, winslash = "/", mustWork = FALSE)
+    parent <- normalizePath(input$new_ds_location, winslash = "/", mustWork = FALSE)
+    div(class = "small mt-3",
+      p(tags$strong("Resolved source: "), tags$code(source,
+        style = "white-space: normal; overflow-wrap: anywhere;")),
+      p(tags$strong("Workspace: "), tags$code(file.path(parent, input$new_ds_name),
+        style = "white-space: normal; overflow-wrap: anywhere;")))
+  })
+
+  selected_workspace <- function() {
     name <- input$dataset_choice
     if (is.null(name) || identical(name, "")) return(NULL)
     if (length(name) != 1L || is.na(name)) stop("Select one dataset workspace.", call. = FALSE)
     name <- sanitize_dataset_name(name)
-    path <- file.path(dataset_base_dir, name)
-    # The creation dialog can target another parent directory. Its checklist
-    # still belongs to that exact workspace, not a same-named default folder.
-    created_path <- created_workspace_path()
-    if (!is.null(created_path) && identical(basename(created_path), name)) path <- created_path
-    if (!dir.exists(path)) {
-      stop("Selected workspace not found. Check its location in your editor: ", path, call. = FALSE)
-    }
+    path <- workspace_path(name)
+    if (!dir.exists(path)) stop("Selected workspace not found: ", path, call. = FALSE)
     normalizePath(path, winslash = "/", mustWork = TRUE)
   }
-
   output$workspace_origin_reminder <- renderUI({
-    workspace <- tryCatch(selected_standardization_workspace(), error = function(e) NULL)
+    workspace <- tryCatch(selected_workspace(), error = function(e) NULL)
     if (is.null(workspace)) return(NULL)
     path <- file.path(workspace, config$config_files$dataset)
     if (!file.exists(path)) return(NULL)
@@ -59,78 +68,7 @@ register_dataset_server <- function(input, output, session, state, context) {
     if (!is.null(reminder)) tags$p(reminder, class = "small text-body-secondary mb-2")
   })
 
-  observeEvent(input$btn_view_standardization_checklist, {
-    workspace <- tryCatch(selected_standardization_workspace(), error = identity)
-    if (inherits(workspace, "error")) {
-      showNotification(conditionMessage(workspace), type = "error", duration = 15)
-      return()
-    }
-    show_standardization_document("checklist", workspace)
-  })
-
-  observeEvent(input$btn_view_setup_guide, {
-    show_standardization_document("user_guide")
-  })
-
-  observeEvent(input$btn_open_created_checklist, {
-    req(created_workspace_path())
-    show_standardization_document("checklist", created_workspace_path())
-  })
-
-  observeEvent(input$btn_create_dataset_checklist, {
-    document <- active_standardization_document()
-    req(document, identical(document$type, "checklist"), document$dataset_dir)
-    result <- tryCatch(
-      ensure_dataset_standardization_checklist(
-        document$dataset_dir, file.path(docs_dir, "STANDARDIZATION_CHECKLIST.md")
-      ),
-      error = identity
-    )
-    if (inherits(result, "error")) {
-      showNotification(conditionMessage(result), type = "error", duration = 15)
-      return()
-    }
-    show_standardization_document("checklist", document$dataset_dir)
-  })
-
-  output$download_standardization_document <- downloadHandler(
-    filename = function() {
-      req(active_standardization_document())
-      basename(active_standardization_document()$path)
-    },
-    content = function(file) {
-      req(active_standardization_document())
-      writeLines(active_standardization_document()$lines, file, useBytes = TRUE)
-    },
-    contentType = "text/markdown; charset=utf-8"
-  )
-
-  observeEvent(input$btn_select_standardization_prompt, {
-    runjs(paste0(
-      "const prompt = document.getElementById('standardization_prompt_text');",
-      "if (prompt) { prompt.focus(); prompt.select(); }"
-    ))
-  })
-
-  observeEvent(input$btn_copy_standardization_prompt, {
-    runjs(paste0(
-      "const prompt = document.getElementById('standardization_prompt_text');",
-      "if (prompt) { prompt.focus(); prompt.select(); ",
-      "if (navigator.clipboard && window.isSecureContext) {",
-      "navigator.clipboard.writeText(prompt.value);",
-      "} else { document.execCommand('copy'); } }"
-    ))
-    showNotification("Metadata prompt copied to the clipboard.", type = "message")
-  })
-
-  observeEvent(input$btn_open_standardization_guide, {
-    removeModal()
-    nav_select("dataset_setup_view", "standardization_guide")
-  })
-
-
-  observeEvent(input$btn_load_dataset, {
-    req(input$dataset_choice)
+  load_dataset <- function(dataset_name, dataset_dir_path = workspace_path(dataset_name)) {
     if (isTRUE(rv$annotation_dirty) || length(rv$active_actions) > 0L) {
       showNotification("Save or discard annotation changes and finish the current action before loading a dataset.", type = "warning")
       return()
@@ -143,16 +81,13 @@ register_dataset_server <- function(input, output, session, state, context) {
       updateSelectInput(session, input_id, choices = character())
     }
     removeModal()
-    dataset_name <- input$dataset_choice
 
     id <- showNotification(paste("Loading workspace:", dataset_name), duration = NULL, type = "message")
     on.exit(removeNotification(id), add = TRUE)
 
-    dataset_dir_path <- file.path(config$paths$datasets_dir, dataset_name)
 
     # 1. Verify Dataset Files
     dataset_config_path <- file.path(dataset_dir_path, config$config_files$dataset)
-    samples_config_path <- file.path(dataset_dir_path, config$config_files$samples)
     selected_config_path <- file.path(dataset_dir_path, config$config_files$selected)
 
     if (!file.exists(dataset_config_path)) {
@@ -170,26 +105,6 @@ register_dataset_server <- function(input, output, session, state, context) {
 
     # 2. Parse Configs
     dataset_config <- yaml::read_yaml(dataset_config_path)
-    samples_config <- tryCatch(
-      validate_samples_config(yaml::read_yaml(samples_config_path)),
-      error = identity
-    )
-    if (inherits(samples_config, "error")) {
-      record_pipeline_event(
-        dataset_dir_path = dataset_dir_path,
-        dataset = dataset_name,
-        stage = "dataset",
-        event_type = "dataset_load",
-        outcome = "failed",
-        reason = conditionMessage(samples_config)
-      )
-      showNotification(
-        paste("Sample configuration could not be loaded:", conditionMessage(samples_config)),
-        type = "error",
-        duration = 10
-      )
-      return()
-    }
 
     if (file.exists(selected_config_path)) {
       selected_config <- yaml::read_yaml(selected_config_path)
@@ -198,60 +113,70 @@ register_dataset_server <- function(input, output, session, state, context) {
       selected_config <- list(resolutions = list(), cna_ref_cells = list(), cna_pot_mal_cells = list())
     }
 
-    # 3. Setup Paths specific to dataset
+    # 3. Read the authoritative sample CSV once per load. Metadata and all
+    # sample paths share its exact row order; only input structure is checked.
     processed_dir_path <- file.path(dataset_dir_path, config$dataset_paths$processed_dir)
-
-    if (!dir.exists(processed_dir_path)) {
+    input_check <- tryCatch(
+      check_prepared_data(
+        processed_dir_path,
+        std_names = if (is.null(dataset_config$std_names)) list() else dataset_config$std_names
+      ),
+      error = identity
+    )
+    # Archived workspaces remain reviewable when retained sample files are
+    # damaged. Their existing archive audit blocks editing/export as needed.
+    # CSV/schema/membership failures still block loading; never infer metadata.
+    archived_input_review <- FALSE
+    if (!inherits(input_check, "error") && !isTRUE(input_check$valid) &&
+        all(!is.na(input_check$errors$sample)) &&
+        all(input_check$errors$code %in% c(
+          "missing_file", "empty_file", "unreadable_file", "not_a_file",
+          "missing_sample_directory", "unreadable_directory"
+        ))) {
+      stored <- tryCatch(
+        load_dataset_storage_state(dataset_dir_path, dataset_name, recover = FALSE),
+        error = function(e) NULL
+      )
+      archived_input_review <- dataset_storage_cache_is_retired(stored)
+    }
+    if (inherits(input_check, "error") ||
+        (!isTRUE(input_check$valid) && !archived_input_review)) {
+      report <- if (inherits(input_check, "error")) {
+        paste("Input structure check failed:", conditionMessage(input_check))
+      } else input_check$message
       record_pipeline_event(
         dataset_dir_path = dataset_dir_path,
         dataset = dataset_name,
         stage = "dataset",
         event_type = "dataset_load",
         outcome = "failed",
-        reason = "The processed_data directory is missing; run standardization first."
+        reason = report
       )
-      showNotification(
-        paste0("Processed data folder not found: ", processed_dir_path,
-               ". Run the standardization pipeline (standardize.R) for this dataset first."),
-        type = "error", duration = 10
-      )
+      showNotification("Input structure check failed. Review the input report.", type = "error", duration = 10)
+      showModal(modalDialog(
+        title = "Input structure check failed",
+        tags$pre(report, style = "white-space: pre-wrap; overflow-wrap: anywhere; max-height: 60vh; overflow-y: auto;"),
+        easyClose = TRUE, footer = modalButton("Close")
+      ))
       return()
     }
-
-    sample_dir_paths <- list.dirs(processed_dir_path, recursive = FALSE)
-
-    if (length(sample_dir_paths) == 0) {
-      record_pipeline_event(
-        dataset_dir_path = dataset_dir_path,
-        dataset = dataset_name,
-        stage = "dataset",
-        event_type = "dataset_load",
-        outcome = "failed",
-        reason = "No sample directories exist under processed_data; run standardization first."
+    samples <- input_check$samples
+    paths_list <- input_check$paths_list
+    if (archived_input_review) {
+      dirs <- file.path(processed_dir_path, samples$sample)
+      paths_list <- list(
+        sample_dir_paths = dirs,
+        cell_file_paths = file.path(dirs, dataset_config$std_names$cells),
+        expmat_file_paths = file.path(dirs, dataset_config$std_names$expmat),
+        genes_file_paths = file.path(dirs, dataset_config$std_names$genes)
       )
-      showNotification(
-        "No sample folders found in processed_data/. Run standardize.R before loading this dataset.",
-        type = "error", duration = 10
-      )
-      return()
     }
+    sample_dir_paths <- paths_list$sample_dir_paths
 
     results_dir_path <- file.path(dataset_dir_path, config$dataset_paths$results_dir)
 
     dir.create(results_dir_path, showWarnings = FALSE)
 
-    # Gather sample paths
-    sample_dir_paths <- list.dirs(processed_dir_path, recursive = FALSE)
-    cell_file_paths <- file.path(sample_dir_paths, dataset_config$std_names$cells)
-    expmat_file_paths <- file.path(sample_dir_paths, dataset_config$std_names$expmat)
-    genes_file_paths <- file.path(sample_dir_paths, dataset_config$std_names$genes)
-
-    paths_list <- list(
-      sample_dir_paths = sample_dir_paths,
-      cell_file_paths = cell_file_paths,
-      expmat_file_paths = expmat_file_paths,
-      genes_file_paths = genes_file_paths
-    )
 
     # Load or conservatively initialize persistent workflow state. Existing
     # datasets without a state file are migrated once from decisions/artifacts.
@@ -381,10 +306,6 @@ register_dataset_server <- function(input, output, session, state, context) {
     mt_genes_dt <- data.table(cell_type = 'Mito_artifact', symbol = mt_genes)
     complete_markers <- rbindlist(list(complete_markers, housekeeping_genes_dt, mt_genes_dt))
 
-    # Attempt to load samples for utilities if present
-    samples_path <- file.path(processed_dir_path, dataset_config$std_names$samples)
-    samples <- tryCatch(load_samples(samples_path), error = function(e) NULL)
-
     # Select malignant markers depending on dataset cancer type, skip if markers not available
     if (!is.null(samples) && "cancer_type" %in% names(samples)) {
 
@@ -433,7 +354,7 @@ register_dataset_server <- function(input, output, session, state, context) {
     # 5. Populate Reactive State
     rv$paths_list <- paths_list
     rv$dataset_config <- dataset_config
-    rv$samples_config <- samples_config
+    rv$sample_metadata <- samples
     rv$live_selected_config <- selected_config
     rv$results_dir_path <- results_dir_path
     rv$selected_config_path <- selected_config_path
@@ -487,6 +408,8 @@ register_dataset_server <- function(input, output, session, state, context) {
       outcome = "completed",
       parameters = list(
         sample_count = length(sample_dir_paths),
+        input_structure_valid = isTRUE(input_check$valid),
+        archived_input_review = archived_input_review,
         session_id = rv$session_id
       )
     )
@@ -526,7 +449,6 @@ register_dataset_server <- function(input, output, session, state, context) {
 
     # 7. Reveal App Tabs & Jump to Dashboard
     nav_show("main_nav", target = "menu_tab")
-    nav_show("main_nav", target = "clipboard_tab")
     if (dataset_storage_cache_is_retired(storage_state)) {
       nav_hide("main_nav", target = "res_tab")
       nav_hide("main_nav", target = "anno_tab")
@@ -546,6 +468,12 @@ register_dataset_server <- function(input, output, session, state, context) {
       showNotification(paste("Interrupted clustering is ready to retry:", paste(clustering_recovered, collapse = ", ")),
         type = "warning", duration = 15)
     }
+    invisible(TRUE)
+  }
+
+  observeEvent(input$btn_load_dataset, {
+    req(input$dataset_choice)
+    load_dataset(input$dataset_choice)
   })
 
   observeEvent(input$btn_change_dataset, {
@@ -573,106 +501,87 @@ register_dataset_server <- function(input, output, session, state, context) {
     }
     nav_show("main_nav", target = "dataset_tab")
     nav_hide("main_nav", target = "menu_tab")
-    nav_hide("main_nav", target = "clipboard_tab")
     nav_hide("main_nav", target = "res_tab")
     nav_hide("main_nav", target = "anno_tab")
     nav_hide("main_nav", target = "cna_tab")
     updateNavbarPage(session, "main_nav", selected = "dataset_tab")
   })
 
+  set_browser_path <- function(path, target) {
+    if (!dir.exists(path) || file.access(path, 4L) != 0L) {
+      showNotification("Select a readable existing directory.", type = "error")
+      return()
+    }
+    directory_browser(list(path = normalizePath(path, winslash = "/", mustWork = TRUE), target = target))
+  }
+  browse_target <- function(target, path) {
+    if (is.null(path) || !nzchar(path) || !dir.exists(path)) path <- dataset_base_dir
+    set_browser_path(path, target)
+  }
+  output$dataset_directory_browser <- renderUI({
+    browser <- directory_browser()
+    if (is.null(browser)) return(NULL)
+    dataset_directory_browser_ui(browser$path, browser$target)
+  })
+  observeEvent(input$btn_browse_dataset_source, {
+    browse_target("new_ds_source", input$new_ds_source)
+  })
+  observeEvent(input$btn_browse_dataset_parent, {
+    browse_target("new_ds_location", input$new_ds_location)
+  })
+  observeEvent(input$btn_dataset_browser_go, {
+    req(directory_browser(), input$dataset_browser_path)
+    set_browser_path(input$dataset_browser_path, directory_browser()$target)
+  })
+  observeEvent(input$btn_dataset_browser_up, {
+    req(directory_browser())
+    set_browser_path(dirname(directory_browser()$path), directory_browser()$target)
+  })
+  observeEvent(input$btn_dataset_browser_home, {
+    req(directory_browser())
+    set_browser_path(path.expand("~"), directory_browser()$target)
+  })
+  observeEvent(input$btn_dataset_browser_datasets, {
+    req(directory_browser())
+    set_browser_path(dataset_base_dir, directory_browser()$target)
+  })
+  observeEvent(input$btn_dataset_browser_open, {
+    req(directory_browser(), input$dataset_browser_child)
+    # Only descend into an immediate directory actually listed by this browser.
+    children <- list.dirs(directory_browser()$path, recursive = FALSE, full.names = TRUE)
+    if (input$dataset_browser_child %in% children) {
+      set_browser_path(input$dataset_browser_child, directory_browser()$target)
+    }
+  })
+  observeEvent(input$btn_dataset_browser_select, {
+    req(directory_browser())
+    browser <- directory_browser()
+    updateTextInput(session, browser$target, value = browser$path)
+    directory_browser(NULL)
+  })
+  observeEvent(input$btn_dataset_browser_cancel, { directory_browser(NULL) })
+
   observeEvent(input$btn_create_dataset_ui, {
+    if (isTRUE(rv$annotation_dirty) || length(rv$active_actions) > 0L) {
+      showNotification("Save or discard annotation changes and finish the current action before creating a dataset.", type = "warning")
+      return()
+    }
+    directory_browser(NULL)
+    import_error(NULL)
     arm_app_confirmation(rv, "create_dataset")
-    showModal(modalDialog(
-      title = "Create New Dataset Workspace",
-      textInput("new_ds_name", "Dataset Name (Folder Name):", placeholder = "e.g., Pancreas_Dataset_02"),
-      textInput("new_ds_location", "Location (Parent Directory):", value = dataset_base_dir),
-      selectInput(
-        "new_ds_tech",
-        "Standardization Template:",
-        choices = config$standardization_pipelines,
-        selected = "general"
-      ),
-      footer = tagList(
-        modalButton("Cancel"),
-        actionButton("btn_confirm_create_ds", "Create Dataset", class = "btn-primary")
-      )
-    ))
+    showModal(dataset_import_dialog(dataset_base_dir))
+  })
+
+  observeEvent(input$btn_cancel_create_ds, {
+    if (length(rv$active_actions) > 0L) return()
+    claim_app_confirmation(rv, "create_dataset")
+    directory_browser(NULL)
+    import_error(NULL)
+    removeModal()
   })
 
   observeEvent(input$btn_confirm_create_ds, {
-    req(input$new_ds_name, input$new_ds_location, input$new_ds_tech)
-
-    parent_dir <- trimws(input$new_ds_location)
-
-    if (!identical(input$new_ds_tech, "general")) {
-      showNotification(
-        "Only the general standardization template is supported.",
-        type = "error",
-        duration = 8
-      )
-      return()
-    }
-
-    # Validate the name — stop with a clear notification instead of a raw error
-    ds_name <- tryCatch(
-      sanitize_dataset_name(input$new_ds_name),
-      error = function(e) {
-        showNotification(e$message, type = "error", duration = 8)
-        NULL
-      }
-    )
-    req(ds_name)  # halts here if sanitize_dataset_name() failed above
-
-    if (!dir.exists(parent_dir)) {
-      showNotification("The parent directory does not exist. Create or select an existing parent directory first.",
-                       type = "error", duration = 10)
-      return()
-    }
-    # Resolve the existing parent first. On Windows, normalizePath() for a
-    # not-yet-created child can retain relative/mixed separators and falsely
-    # report that a valid new workspace escapes its parent.
-    resolved_parent <- normalizePath(parent_dir, winslash = "/", mustWork = TRUE)
-    new_ds_path <- file.path(resolved_parent, ds_name)
-    resolved_new_path <- new_ds_path
-    parent_prefix <- paste0(sub("/+$", "", resolved_parent), "/")
-    if (!startsWith(resolved_new_path, parent_prefix)) {
-      showNotification("Invalid dataset location — path escapes the parent directory.",
-                       type = "error", duration = 8)
-      return()
-    }
-
-    # 1. Validation (existing check, now after the safety checks above)
-    if (file.exists(new_ds_path)) {
-      showNotification("A dataset with this name already exists at this location.", type = "error")
-      return()
-    }
-
-    template_path <- file.path(templates_dir, "dataset_config_template.yaml")
-    if (!file.exists(template_path)) {
-      showNotification("dataset_config_template.yaml not found in the template folder!", type = "error")
-      return()
-    }
-    standardization_template_path <- file.path(
-      templates_dir,
-      "standardize_general.R"
-    )
-    if (!file.exists(standardization_template_path)) {
-      showNotification(
-        "standardize_general.R not found in the template folder!",
-        type = "error",
-        duration = 8
-      )
-      return()
-    }
-    checklist_template_path <- file.path(docs_dir, "STANDARDIZATION_CHECKLIST.md")
-    if (!file.exists(checklist_template_path)) {
-      showNotification(
-        paste("Checklist template is missing. Restore this file before creating a workspace:", checklist_template_path),
-        type = "error", duration = 15
-      )
-      return()
-    }
-
+    if (isTRUE(rv$annotation_dirty) || length(rv$active_actions) > 0L) return()
     if (!claim_app_confirmation(rv, "create_dataset")) return()
     if (!begin_app_action(rv, "create_dataset")) return()
     shinyjs::disable("btn_create_dataset_ui")
@@ -683,135 +592,48 @@ register_dataset_server <- function(input, output, session, state, context) {
       shinyjs::enable("btn_confirm_create_ds")
     }, add = TRUE)
 
-    # 2. Create Directory Structure
-    dir.create(new_ds_path, recursive = TRUE, showWarnings = FALSE)
-    subfolders <- c("cache", "data", "processed_data", "results", "logs")
-    lapply(subfolders, function(f) dir.create(file.path(new_ds_path, f), showWarnings = FALSE))
-
-    # 3. Handle dataset_config.yaml
-    ds_config <- yaml::read_yaml(template_path)
-
-    # The general template is independent of sequencing technology. Users fill
-    # in the actual technology while completing the dataset/sample metadata.
-    ds_config$project_info$dataset_id <- ds_name
-    ds_config$project_info$technology <- ""
-    ds_config$raw_files$type <- "general"
-    yaml::write_yaml(ds_config, file.path(new_ds_path, config$config_files$dataset))
-
-    # 4. Handle samples_config.yaml
-    samples_config <- list(
-      samples = list(
-        list(
-          sample = "", technology = "", cancer_type = "", patient = "", histology = "",
-          site = "", sample_type = "", sample_primary_met = "", disease_extent = "", diagnosis_recurrence = "",
-          instance_at_site = "", treated_naive = "", age = "", sex = "", grade = "", AJCC_stage = "",
-          AJCC_T = "", AJCC_N = "", AJCC_M = "", size = "", smoking_status = "", PY = "", KI67 = "",
-          genetic_hormonal_features = "", chemotherapy_exposed = "", chemotherapy_response = "",
-          targeted_rx_exposed = "", targeted_rx_response = "", post_sampling_rx_exposed = "",
-          post_sampling_rx_response = "", time_end_of_rx_to_sampling = "", ET_exposed = "",
-          ET_response = "", ICB_exposed = "", ICB_response = "", PFS_DFS = "", OS = ""
+    imported <- tryCatch({
+      name <- sanitize_dataset_name(.pipeline_value_or(input$new_ds_name, ""))
+      if (name %in% workspace_choices()) {
+        stop("A dataset with this name is already available in this session; choose another name.", call. = FALSE)
+      }
+      started <- Sys.time()
+      shiny::withProgress(message = "Creating dataset from prepared data", value = 0, {
+        import_prepared_dataset(
+          trimws(.pipeline_value_or(input$new_ds_source, "")),
+          trimws(.pipeline_value_or(input$new_ds_location, "")), name,
+          config, file.path(templates_dir, "dataset_config_template.yaml"),
+          progress = function(copied, total, path) {
+            elapsed <- as.numeric(difftime(Sys.time(), started, units = "secs"))
+            shiny::setProgress(value = if (total > 0) copied / total else 0,
+              detail = sprintf("%s | %.1f / %.1f MiB copied | %.0fs elapsed",
+                basename(path), copied / 1024^2, total / 1024^2, elapsed))
+          }
         )
-      )
-    )
-    yaml::write_yaml(samples_config, file.path(new_ds_path, config$config_files$samples))
-
-    # 5. Handle selected_config.yaml
-    selected_config <- setup_selected_config(character())
-    yaml::write_yaml(selected_config, file.path(new_ds_path, config$config_files$selected))
-
-    # Initialize current workflow state separately from user selections and
-    # append-only event history. Samples are added after samples_config is filled.
-    state_filename <- .pipeline_value_or(
-      config$config_files$state,
-      "pipeline_state.yaml"
-    )
-    initial_state <- tryCatch(
-      save_pipeline_state_atomic(
-        new_pipeline_state(ds_name, character()),
-        dataset_dir_path = new_ds_path,
-        state_filename = state_filename
-      ),
-      error = identity
-    )
-    if (inherits(initial_state, "error")) {
-      record_pipeline_event(
-        dataset_dir_path = new_ds_path,
-        dataset = ds_name,
-        stage = "state",
-        event_type = "pipeline_state_initialized",
-        outcome = "failed",
-        reason = conditionMessage(initial_state)
-      )
-      showNotification(
-        paste("The pipeline state could not be initialized:", conditionMessage(initial_state)),
-        type = "error",
-        duration = 10
-      )
+      })
+    }, error = identity)
+    if (inherits(imported, "error")) {
+      import_error(conditionMessage(imported))
+      showNotification(conditionMessage(imported), type = "error", duration = 15)
+      # Keep the draft and browser available for correction/retry. The consumed
+      # confirmation prevents duplicate delivery after a successful publication.
+      arm_app_confirmation(rv, "create_dataset")
       return()
     }
-
-    # 6. Copy the sole supported standardization template.
-    template_copied <- file.copy(
-      from = standardization_template_path,
-      to = file.path(new_ds_path, "standardize.R")
-    )
-    if (!isTRUE(template_copied)) {
-      record_pipeline_event(
-        dataset_dir_path = new_ds_path,
-        dataset = ds_name,
-        stage = "dataset",
-        event_type = "workspace_created",
-        outcome = "failed",
-        reason = "The general standardization template could not be copied."
-      )
-      showNotification(
-        "The general standardization template could not be copied.",
-        type = "error",
-        duration = 8
-      )
-      return()
-    }
-
-    checklist_result <- tryCatch(
-      ensure_dataset_standardization_checklist(new_ds_path, checklist_template_path),
-      error = identity
-    )
-    if (inherits(checklist_result, "error")) {
-      record_pipeline_event(
-        dataset_dir_path = new_ds_path, dataset = ds_name, stage = "dataset",
-        event_type = "workspace_created", outcome = "failed",
-        reason = conditionMessage(checklist_result)
-      )
-      showNotification(conditionMessage(checklist_result), type = "error", duration = 15)
-      return()
-    }
-
-    record_pipeline_event(
-      dataset_dir_path = new_ds_path,
-      dataset = ds_name,
-      stage = "dataset",
-      event_type = "workspace_created",
-      outcome = "completed",
-      parameters = list(template = "general")
-    )
-    record_pipeline_event(
-      dataset_dir_path = new_ds_path,
-      dataset = ds_name,
-      stage = "state",
-      event_type = "pipeline_state_initialized",
-      outcome = "completed",
-      parameters = list(schema_version = PIPELINE_STATE_SCHEMA_VERSION)
-    )
-
-    # 7. Update UI and Close
-    all_dataset_dirs <- list.dirs(parent_dir, recursive = FALSE)
-    updated_datasets <- basename(all_dataset_dirs[all_dataset_dirs != dataset_base_dir])
-
-    available_datasets <<- updated_datasets
-    updateSelectInput(session, "dataset_choice", choices = updated_datasets, selected = ds_name)
-
+    registered <- session_workspace_paths()
+    registered[[basename(imported$path)]] <- imported$path
+    session_workspace_paths(registered)
+    available_datasets <<- workspace_choices()
+    updateSelectInput(session, "dataset_choice", choices = available_datasets, selected = basename(imported$path))
+    directory_browser(NULL)
     removeModal()
-    created_workspace_path(normalizePath(new_ds_path, winslash = "/", mustWork = TRUE))
-    showModal(dataset_created_modal(ds_name, resolved_new_path))
+    # Loading is the same guarded path used by the Load Dataset button. Release
+    # the creation action first so it does not conflict with the load action.
+    finish_app_action(rv, "create_dataset")
+    if (isTRUE(load_dataset(basename(imported$path), imported$path))) {
+      showNotification(paste("Workspace created:", imported$path), type = "message", duration = 10)
+    } else {
+      showNotification("Workspace was created but could not be opened. Correct the reported issue and load it again.", type = "error", duration = 15)
+    }
   })
 }

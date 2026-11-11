@@ -187,7 +187,6 @@ The remaining configuration sections define expected filenames, standard dataset
 | `resource_files.*` | Expected filenames inside `resources/` |
 | `dataset_paths.*` | Standard subdirectories inside each dataset (`data`, `processed_data`, `results`, `logs`) |
 | `config_files.*` | Standard configuration filenames |
-| `standardization_pipelines` | Templates offered for new datasets; currently only `general` |
 
 The intended standard values for the two top-level directories are `resources` and `datasets`.
 
@@ -205,11 +204,13 @@ Expected filenames are configured under `resource_files` in `general_config.yaml
 
 Only `metadata_extract_prompt.txt` is currently intended to be tracked with the repository. The remaining resource files must be obtained/generated separately and placed into `resources/`.
 
-All required files are validated at app startup. Missing resources cause startup to stop with an explicit list of missing paths.
+Biological resource files are validated at app startup. Missing required resources
+stop startup with an explicit list of paths. The metadata extraction prompt is
+an optional external aid; its file and configuration key are not read by the app.
 
 | Config key | Default filename | Tracked? | Purpose / expected format |
 |---|---|---:|---|
-| `metadata_prompt` | `metadata_extract_prompt.txt` | Yes | Plain-text prompt displayed in the Reference Data tab |
+| `metadata_prompt` | `metadata_extract_prompt.txt` | Yes | Optional external metadata-extraction aid; not displayed or required by the app |
 | `hgnc_complete_set` | `hgnc_complete_set.txt` | No | HGNC reference used for Ensembl→symbol and genomic-location mapping; requires fields including `ensembl_gene_id`, `symbol`, and location information |
 | `gene_positions` | `gene_positions_biomaRt_0626.csv` | No | Genomic positions for CNA ordering; requires `ensembl_gene_id`, `chromosome_name`, `start_position`, `hgnc_symbol` |
 | `marker_sets` | `global_cell_type_markers.csv` | No | Marker sets used for DE matching/signature scoring; columns include `cell_type`, gene symbol, `combined` |
@@ -249,64 +250,35 @@ resources/cancer_cell_map.json
 
 ## Setting Up a New Dataset
 
-Use **Create New Dataset** from the app's Dataset Selection screen.
+Prepare the sample directories and authoritative `Samples.csv` using your own
+scripts. The complete format is documented in the
+[README input specification](../README.md#preparing-input-data).
 
-The adjacent **Standardization Guide** is available before any dataset is
-loaded. It summarizes the preparation workflow, includes the reusable sample-
-metadata gathering prompt with select/copy controls, and buttons that display
-the detailed checklist and this section inside the app. No external browser
-tab, Markdown file association, or internet connection is needed. The viewer
-shows the exact source path for opening in your editor and offers **Download
-Markdown** as a fallback. If Markdown rendering is unavailable, the viewer
-shows readable source text instead.
+Use **Create New Dataset**, enter a dataset name, and select the prepared-data
+directory and an existing workspace parent. Browse folders using the in-app
+directory browser or enter paths directly. Paths refer to the machine running R,
+including when the app is hosted remotely. Review the resolved paths and select
+**Create Dataset**. Structural errors remain visible for correction and retry.
 
-Each new workspace also receives `STANDARDIZATION_CHECKLIST.md`. Use that copy
-for the dataset's checkmarks and notes; the shared file under `docs/` remains
-an unchecked reference template. Select the workspace on Dataset Selection's
-**Workspace** tab, then choose **Open Standardization Checklist** in the guide.
-If an older workspace has no checklist, the viewer offers **Create Dataset
-Checklist**; it never overwrites an existing copy. Edit the workspace file in
-your editor and reopen the viewer to refresh it. These manual checkmarks do
-not set scientific pipeline statuses.
+The app copies the prepared files, generates its configuration/state, and opens
+the workspace ready for clustering. Originals stay unchanged; existing
+workspaces are not overwritten. No app restart, raw-data folder, preparation
+script, sample YAML, or checklist is required for creation or analysis.
 
-After workspace creation, the app reports the exact workspace, `standardize.R`,
-and checklist paths, with actions to open its checklist immediately or return
-to the guide. The parent directory must already exist; create it first if
-needed. Existing workspace folders/files are not overwritten.
+The default parent is the configured `paths.datasets_dir` (normally `datasets/`),
+which supports discovery after a restart. Imports under another existing parent
+open immediately and remain selectable in the current session; those external
+locations are not saved to application configuration.
 
-For normal use, keep the creation dialog's parent directory set to the configured
-`paths.datasets_dir` (default `datasets/`). The resulting workspace is:
+Preparation references remain optional files in `docs/`, `templates/`, and
+`resources/`. Open the checklist directly from `docs/` when useful. The app has
+no standardization/checklist tab, Markdown viewer, metadata-prompt screen, or
+checklist-copy action. Existing dataset scripts and checklist notes are retained.
 
-```text
-datasets/<dataset_id>/
-```
-
-and initialized with the standard subdirectories, configuration files, and the
-general standardization template copied to:
-
-```text
-standardize.R
-```
-
-The dialog also accepts another existing parent directory, but dataset loading
-scans and resolves names under `paths.datasets_dir`. An outside workspace is
-not automatically available for later loading: the configured datasets root
-must match its parent before restarting the app and loading it.
-
-The standard workflow is:
-
-1. create the dataset in the app;
-2. add raw data to `data/`;
-3. fill in `samples_config.yaml`;
-4. adapt and run `standardize.R` using the standardization checklist;
-5. validate the standardized output;
-6. load the dataset in the app;
-7. run clustering → DE → annotation → CNA.
-
-**Load Dataset** intentionally rejects a new or incomplete workspace. It becomes
-available for downstream work only after `standardize.R` passes strict
-post-validation and has populated `processed_data/` with the configured sample
-directories and standardized files.
+After loading, use the Start Menu's prepared-input readiness and analysis
+progress overview. Structural checks do not audit expression values, dimensions,
+or gene/cell alignment; those remain preparation responsibilities. Review
+snapshot provenance is being updated separately in P05 of the import plan.
 
 ### `dataset_config.yaml`
 
@@ -342,7 +314,9 @@ prevent standardization, processing or review-snapshot creation.
 
 ### `samples_config.yaml`
 
-This file must be completed before standardization can run.
+This YAML is used only by optional legacy preparation scripts. Runtime loading
+and analysis use `Samples.csv`; prepared-data import does not require the YAML.
+Complete it only when choosing a preparation script that expects it.
 
 Every sample requires a non-empty `sample`. This is the canonical identifier
 used for its processed-data directory, cell metadata, dataset-wide sample table,
@@ -971,7 +945,7 @@ configuration, state, results, or cache files.
 | `test-regression_clustering.R` | Preprocessing → PCA → UMAP → Louvain integration/regression behavior |
 | `test-regression_cna_cache.R` | CNA compute/cache/load round trip and missing-cache behavior |
 | `test-standardize-general-template.R` | General-template safety, alignment, duplicate-gene preservation, and checklist contract |
-| `test-f15-r05-onboarding-documents.R` | Workspace checklist copies and in-app Markdown rendering, section selection, and download fallbacks |
+| `test-p04-preparation-ui.R` | No preparation UI or startup dependency; optional-file absence, required biological resources, import, loading, and README download |
 | `test-c01-*` through `test-c04-*` | Dataset transitions, interrupted-clustering recovery, CNA navigation, and post-reopen status |
 | `test-c07-*` through `test-c09-*` | CNA omission, cut/threshold controls, annotation feedback, and source reminders |
 | `test-f16-dataset-storage.R` | Dataset cleanup, archive audit, and reopening |

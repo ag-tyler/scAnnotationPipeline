@@ -10,12 +10,8 @@ build_app_ui <- function(context) {
       primary = "#2c3e50"
     ),
     header = tagList(useShinyjs()),
-    dataset_selection_panel(
-      context$available_datasets,
-      context$resources$clipboard_text
-    ),
+    dataset_selection_panel(context$available_datasets),
     dashboard_panel(),
-    reference_panel(context$resources$clipboard_text),
     resolution_panel(context$sample_choices),
     annotation_panel(context$sample_choices),
     cna_panel(context$sample_choices)

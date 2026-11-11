@@ -78,7 +78,7 @@ claim_app_confirmation <- function(state, key) {
 clear_app_dataset <- function(state) {
   state$dataset_generation <- shiny::isolate(state$dataset_generation) + 1L
   for (name in c(
-    "paths_list", "dataset_config", "samples_config", "live_selected_config",
+    "paths_list", "dataset_config", "sample_metadata", "live_selected_config",
     "complete_markers", "results_dir_path", "selected_config_path",
     "pipeline_state", "pipeline_state_path", "storage_state", "storage_state_path",
     "dataset_dir_path", "config", "cells_filt", "all_matches", "cells_raw",
@@ -106,7 +106,7 @@ create_app_state <- function(
     dataset_generation = 0L,
     paths_list = NULL,
     dataset_config = NULL,
-    samples_config = NULL,
+    sample_metadata = NULL,
     live_selected_config = NULL,
     complete_markers = NULL,
     results_dir_path = NULL,

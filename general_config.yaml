@@ -10,7 +10,7 @@ resource_files:
   mitochondrial_genes: "mt_genes.txt"
   malignant_markers: "malignant_markers.csv"
   gene_positions: "gene_positions_biomaRt_0626.csv"
-  metadata_prompt: "metadata_extract_prompt.txt"
+  metadata_prompt: "metadata_extract_prompt.txt" # Optional external preparation aid; not read by the app
 
 dataset_paths:
   raw_dir: "data"
@@ -23,6 +23,3 @@ config_files:
   samples: "samples_config.yaml"
   selected: "selected_config.yaml"
   state: "pipeline_state.yaml"
-
-standardization_pipelines:
-  - general

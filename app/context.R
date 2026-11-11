@@ -40,10 +40,6 @@ create_app_context <- function(config_path = "general_config.yaml") {
     hgnc_complete_set = file.path(
       resources_dir_path,
       config$resource_files$hgnc_complete_set
-    ),
-    metadata_prompt = file.path(
-      resources_dir_path,
-      config$resource_files$metadata_prompt
     )
   )
 
@@ -54,8 +50,7 @@ create_app_context <- function(config_path = "general_config.yaml") {
     malignant_markers = "malignant markers",
     cancer_cell_map = "cancer cell map",
     gene_positions = "gene positions",
-    hgnc_complete_set = "HGNC complete set",
-    metadata_prompt = "metadata extract prompt"
+    hgnc_complete_set = "HGNC complete set"
   )
   missing_names <- names(resource_paths)[
     !file.exists(unlist(resource_paths, use.names = FALSE))
@@ -98,10 +93,6 @@ create_app_context <- function(config_path = "general_config.yaml") {
     header = FALSE
   )$V1
   cancer_cell_map <- jsonlite::read_json(resource_paths$cancer_cell_map)
-  clipboard_text <- paste(
-    readLines(resource_paths$metadata_prompt),
-    collapse = "\n"
-  )
   hgnc_complete_set <- data.table::fread(resource_paths$hgnc_complete_set)
   gene_positions <- data.table::fread(resource_paths$gene_positions)
 
@@ -129,7 +120,7 @@ create_app_context <- function(config_path = "general_config.yaml") {
 
   dataset_base_dir <- config$paths$datasets_dir
   dir.create(dataset_base_dir, recursive = TRUE, showWarnings = FALSE)
-  all_dataset_dirs <- list.dirs(dataset_base_dir, recursive = FALSE)
+  all_dataset_dirs <- dataset_workspace_directories(dataset_base_dir)
   available_datasets <- basename(
     all_dataset_dirs[all_dataset_dirs != dataset_base_dir]
   )
@@ -149,7 +140,6 @@ create_app_context <- function(config_path = "general_config.yaml") {
       housekeeping_genes = housekeeping_genes,
       mt_genes = mt_genes,
       cancer_cell_map = cancer_cell_map,
-      clipboard_text = clipboard_text,
       hgnc_complete_set = hgnc_complete_set,
       gene_positions = gene_positions
     ),

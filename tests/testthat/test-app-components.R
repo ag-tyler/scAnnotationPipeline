@@ -52,7 +52,7 @@ test_that("shared state remains flat and contains only mutable session data", {
   expect_setequal(
     state_names,
     c(
-      "paths_list", "dataset_config", "samples_config",
+      "paths_list", "dataset_config", "sample_metadata",
       "session_id", "session_started_at", "session_logged_datasets",
       "active_actions", "open_confirmations", "dataset_generation",
       "live_selected_config", "complete_markers", "results_dir_path",
@@ -188,13 +188,13 @@ test_that("each server registration is composed exactly once", {
 })
 
 
-test_that("new dataset creation offers and copies only the general template", {
+test_that("new dataset creation imports prepared files and uses the shared loader", {
   app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
   config <- yaml::read_yaml(file.path(app_dir, "general_config.yaml"))
   server_lines <- readLines(file.path(app_dir, "app/server/dataset_server.R"))
   server_text <- paste(server_lines, collapse = "\n")
 
-  expect_identical(unlist(config$standardization_pipelines), "general")
+  expect_null(config$standardization_pipelines)
   expect_identical(config$dataset_paths$logs_dir, "logs")
   expect_identical(config$config_files$state, "pipeline_state.yaml")
   expect_true(file.exists(file.path(
@@ -202,21 +202,12 @@ test_that("new dataset creation offers and copies only the general template", {
     "templates",
     "standardize_general.R"
   )))
-  expect_match(server_text, '"Standardization Template:"', fixed = TRUE)
-  expect_match(server_text, '"standardize_general.R"', fixed = TRUE)
+  expect_match(server_text, 'dataset_import_dialog(dataset_base_dir)', fixed = TRUE)
+  expect_match(server_text, 'import_prepared_dataset(', fixed = TRUE)
+  expect_false(grepl('"standardize_general.R"', server_text, fixed = TRUE))
   expect_false(grepl('paste0("standardize_"', server_text, fixed = TRUE))
-  expect_match(
-    server_text,
-    'ds_config$project_info$technology <- ""',
-    fixed = TRUE
-  )
-  expect_match(
-    server_text,
-    'sample = "", technology = ""',
-    fixed = TRUE
-  )
-  expect_match(server_text, '"results", "logs"', fixed = TRUE)
-  expect_match(server_text, "new_pipeline_state", fixed = TRUE)
+  expect_match(server_text, 'load_dataset(basename(imported$path), imported$path)', fixed = TRUE)
+  expect_match(server_text, 'session_workspace_paths', fixed = TRUE)
   expect_match(server_text, "load_or_initialize_pipeline_state", fixed = TRUE)
 })
 
@@ -225,8 +216,9 @@ test_that("pipeline persistence boundaries emit structured events", {
   app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
   expected_events <- list(
     "app/server/dataset_server.R" = c(
-      "workspace_created", "app_session_started", "dataset_load", "change_dataset"
+      "app_session_started", "dataset_load", "change_dataset"
     ),
+    "util_scripts/18_utils_dataset_import.R" = c("workspace_created", "pipeline_state_initialized"),
     "app/server/dashboard_server.R" = c("clustering_run", "de_run"),
     "app/server/single_de_server.R" = "single_sample_de",
     "app/server/resolution_server.R" = "resolution_saved",

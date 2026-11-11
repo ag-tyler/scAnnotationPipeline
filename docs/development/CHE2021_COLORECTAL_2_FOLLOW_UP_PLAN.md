@@ -7,21 +7,28 @@
 **Latest manual acceptance:** The [completed Che2021 review](CHE2021_COLORECTAL_MANUAL_REVIEW.md)
 records successful scientific completion of all 15 samples (10 final CNA,
 5 explicit omissions), checked R03–R06/R08/subset-clustering manual evidence,
-full-size snapshots and storage lifecycle testing. Overall acceptance remains
-open: interrupted clustering blocks retry after restart; dataset switching
-crashes annotation/CNA reactives; omitted/reset CNA navigation requests missing
-caches; post-reopen CNA status is misleading; snapshot review paths overflow.
+full-size snapshots and storage lifecycle testing. That manual run found blocked
+interrupted-clustering retry, dataset-switch crashes, missing-cache requests
+on omitted/reset CNA navigation, misleading post-reopen CNA status and
+overflowing snapshot review paths. These are historical pre-fix results.
 Section 10 contains the sample inventory, new isolated failure/guard results,
 coverage limitations and supplemental locale-specific snapshot rollback result.
 The preserved active copy is the finished scientific reference; the repository
 copy is the subsequent destructive-test workspace. Earlier progress entries
 below are historical and do not supersede these November findings.
 **Current phase (2026-11-04):** The fresh-dataset manual review is complete;
-the next implementation work is defined in the
+implementation and acceptance are tracked in the
 [November remediation plan](CHE2021_COLORECTAL_REMEDIATION_PLAN.md).
 C01–C06 address the remaining required fixes, C07–C09 cover optional usability
 follow-up, and C10 defines the final acceptance gate. C01–C09 are implemented
-with synthetic server/browser regression coverage; C10 remains open.
+with synthetic server/browser regression coverage. C10's focused checks now add
+archived-damage GUI cases, measured reload/restart timings and an archived
+preflight fix. Its complete final suite passed **3,871 assertions**, zero
+failures/errors/test warnings/skips; desktop/narrow long-path screenshots were
+visually inspected without baseline changes. Automated results and human
+sign-off are tracked separately
+in the [C10 evidence record](CHE2021_COLORECTAL_C10_VERIFICATION.md); acceptance
+remains open until the reviewer journey is recorded.
 The original F01–F17 implementation history below remains valid;
 its completion does not close the newly reproduced failures.
 **Basis:** Manual test notes, follow-up console-launch testing, current source inspection, file-size inventory, `pipeline.log`, and `pipeline_state.yaml` from `Che2021_Colorectal_2`.

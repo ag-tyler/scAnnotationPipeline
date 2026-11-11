@@ -10,6 +10,10 @@ register_cna_status_server <- function(input, output, session, state, context) {
   }
 
   cna_status_preflight <- reactive({
+    # Hidden CNA observers still run while an archived dataset is loaded.
+    # Preflight inspects caches and can recreate their directory, so it must
+    # wait until the dataset has explicitly been reopened for editing.
+    req(!dataset_storage_cache_is_retired(rv$storage_state))
     req(
       rv$paths_list,
       input$cna_sample_idx,

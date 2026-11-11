@@ -62,6 +62,9 @@ make_c01_fixture <- function(root) {
         reason = "CNA intentionally omitted in this synthetic fixture.",
         details = list(omitted_by_user = TRUE), force = TRUE)
     }
+    metadata <- build_samples(samples)
+    metadata$n_cells <- 20L
+    data.table::fwrite(metadata, file.path(dataset_dir, config$dataset_paths$processed_dir, ds_config$std_names$samples))
     yaml::write_yaml(selected, file.path(dataset_dir, config$config_files$selected))
     save_pipeline_state_atomic(reconcile_pipeline_state_dependencies(state), dataset_dir)
     storage <- new_dataset_storage_state(dataset)
@@ -77,6 +80,146 @@ make_c01_fixture <- function(root) {
   }
   env
 }
+
+test_that("P02 CSV alone controls metadata, sample order, annotation, and reloads", {
+  fixture <- make_c01_fixture(withr::local_tempdir())
+  state <- fixture$state
+  dataset_root <- fixture$context$paths$datasets_dir
+  csv_path <- function(dataset) file.path(dataset_root, dataset, "processed_data", "Samples.csv")
+  metadata <- read_prepared_samples(csv_path("A"))[c(3L, 1L, 2L)]
+  metadata$cancer_type <- c("CSV third", "CSV first", "CSV shared")
+  metadata$patient <- "0007"
+  metadata$extra_note <- 'Colon, "ascending"'
+  data.table::fwrite(metadata, csv_path("A"))
+  unlink(file.path(dataset_root, "A", "samples_config.yaml"))
+  # A conflicting YAML and even a corrupt YAML must have no runtime effect.
+  b_yaml <- file.path(dataset_root, "B", "samples_config.yaml")
+  yaml::write_yaml(list(samples = list(list(sample = "wrong", cancer_type = "YAML cancer"))), b_yaml)
+  archived_yaml <- file.path(dataset_root, "Archived", "samples_config.yaml")
+  writeLines("not: [valid yaml", archived_yaml)
+  yaml_hashes <- tools::md5sum(c(b_yaml, archived_yaml))
+  fixture$csv_reads <- character()
+  checker <- check_prepared_data
+  checker_env <- new.env(parent = environment(checker))
+  checker_env$read_prepared_samples <- function(path) {
+    fixture$csv_reads <- c(fixture$csv_reads, path)
+    read_prepared_samples(path)
+  }
+  environment(checker) <- checker_env
+  fixture$check_prepared_data <- checker
+  fixture$load_samples <- function(...) stop("Runtime metadata must not be read twice")
+
+  shiny::testServer(fixture$server, {
+    session$setInputs(dataset_choice = "A", btn_load_dataset = 1, main_nav = "menu_tab")
+    expect_identical(state$sample_metadata$sample, c("third", "first", "shared"))
+    expect_identical(basename(state$paths_list$sample_dir_paths), state$sample_metadata$sample)
+    expect_identical(state$sample_metadata$patient, rep("0007", 3L))
+    expect_identical(state$sample_metadata$extra_note, rep('Colon, "ascending"', 3L))
+    expect_length(fixture$csv_reads, 1L)
+    session$setInputs(sample_idx = "1", main_nav = "anno_tab")
+    expect_identical(state$sample_name, "third")
+    expect_match(output$ref_cell_selector$html, "CSV third", fixed = TRUE)
+    session$setInputs(sample_idx = "2")
+    expect_identical(state$sample_name, "first")
+    expect_match(output$ref_cell_selector$html, "CSV first", fixed = TRUE)
+
+    session$setInputs(dataset_choice = "B", btn_load_dataset = 2, main_nav = "menu_tab")
+    expect_identical(state$sample_metadata$sample, "shared")
+    expect_identical(state$sample_metadata$patient, NA_character_)
+    session$setInputs(sample_idx = "1", main_nav = "anno_tab")
+    expect_match(output$ref_cell_selector$html, "Unknown", fixed = TRUE)
+    expect_false(grepl("YAML cancer", output$ref_cell_selector$html, fixed = TRUE))
+    session$setInputs(dataset_choice = "Archived", btn_load_dataset = 3, main_nav = "menu_tab")
+    expect_identical(state$storage_state$status, "archived")
+    expect_identical(state$sample_metadata$sample, c("first", "shared", "third"))
+    session$setInputs(dataset_choice = "A", btn_load_dataset = 4)
+    expect_identical(state$sample_metadata$sample, c("third", "first", "shared"))
+    expect_length(fixture$csv_reads, 4L)
+    expect_identical(tools::md5sum(c(b_yaml, archived_yaml)), yaml_hashes)
+  })
+})
+
+test_that("P02 failed structure checks clear prior metadata and never fall back to YAML", {
+  fixture <- make_c01_fixture(withr::local_tempdir())
+  state <- fixture$state
+  dataset_root <- fixture$context$paths$datasets_dir
+  unlink(file.path(dataset_root, "B", "processed_data", "Samples.csv"))
+  shiny::testServer(fixture$server, {
+    session$setInputs(dataset_choice = "A", btn_load_dataset = 1, main_nav = "menu_tab")
+    expect_equal(nrow(state$sample_metadata), 3L)
+    session$setInputs(dataset_choice = "B", btn_load_dataset = 2)
+    expect_null(state$sample_metadata)
+    expect_null(state$paths_list)
+    expect_null(state$live_selected_config)
+    expect_null(state$complete_markers)
+    expect_null(state$dataset_dir_path)
+    expect_null(state$pipeline_state)
+    expect_length(state$active_actions, 0L)
+    expect_match(tail(fixture$modals, 1)[[1]], "Samples.csv", fixed = TRUE)
+    session$setInputs(dataset_choice = "A", btn_load_dataset = 3)
+    expect_equal(nrow(state$sample_metadata), 3L)
+    # The same workspace is checked again on reload, with aggregate errors.
+    unlink(file.path(dataset_root, "A", "processed_data", "first", c("Cells.csv", "Genes.txt")))
+    session$setInputs(btn_load_dataset = 4)
+    expect_null(state$sample_metadata)
+    expect_null(state$paths_list)
+    report <- tail(fixture$modals, 1)[[1]]
+    expect_match(report, "Cells.csv", fixed = TRUE)
+    expect_match(report, "Genes.txt", fixed = TRUE)
+    session$setInputs(dataset_choice = "Archived", btn_load_dataset = 5)
+    expect_equal(nrow(state$sample_metadata), 3L)
+    session$setInputs(btn_change_dataset = 1)
+    expect_null(state$sample_metadata)
+  })
+})
+
+test_that("P02 damaged archived inputs remain reviewable with authoritative CSV metadata", {
+  fixture <- make_c01_fixture(withr::local_tempdir())
+  state <- fixture$state
+  archived <- file.path(fixture$context$paths$datasets_dir, "Archived")
+  unlink(file.path(archived, "processed_data", "first", "Cells.csv"))
+  shiny::testServer(fixture$server, {
+    session$setInputs(dataset_choice = "Archived", btn_load_dataset = 1, main_nav = "menu_tab")
+    expect_identical(state$storage_state$status, "archived")
+    expect_identical(state$sample_metadata$sample, c("first", "shared", "third"))
+    expect_identical(basename(state$paths_list$sample_dir_paths), state$sample_metadata$sample)
+    expect_true(dataset_storage_cache_is_retired(state$storage_state))
+    # An archive still needs its CSV; no directory or YAML fallback is allowed.
+    unlink(file.path(archived, "processed_data", "Samples.csv"))
+    session$setInputs(btn_load_dataset = 2)
+    expect_null(state$sample_metadata)
+    expect_null(state$paths_list)
+    expect_match(tail(fixture$modals, 1)[[1]], "Samples.csv", fixed = TRUE)
+  })
+})
+
+test_that("P02 preserves the single-unambiguous-cancer marker selection policy", {
+  fixture <- make_c01_fixture(withr::local_tempdir())
+  fixture$context$resources$cancer_cell_map <- list(
+    cancer_types = list("Cancer A" = "A", "Cancer B" = "B"),
+    cell_types = list(A = "Malignant A", B = "Malignant B")
+  )
+  fixture$context$resources$malignant_markers <- data.table::data.table(
+    cancer_type = c("A", "B"), symbol = c("MAL_A", "MAL_B"), combined = 2
+  )
+  csv <- file.path(fixture$context$paths$datasets_dir, "A", "processed_data", "Samples.csv")
+  metadata <- read_prepared_samples(csv)
+  state <- fixture$state
+  cases <- list(rep("Cancer A", 3L), c("Cancer A", "Cancer B", NA),
+                rep(NA_character_, 3L), rep("Unrecognized", 3L), c("Cancer A", NA, NA))
+  shiny::testServer(fixture$server, {
+    for (i in seq_along(cases)) {
+      metadata$cancer_type <- cases[[i]]
+      data.table::fwrite(metadata, csv)
+      session$setInputs(dataset_choice = "A", btn_load_dataset = i, main_nav = "menu_tab")
+      expect_identical(state$sample_metadata$cancer_type, cases[[i]])
+      symbols <- state$complete_markers$symbol
+      expect_identical("MAL_A" %in% symbols, i %in% c(1L, 5L))
+      expect_false("MAL_B" %in% symbols)
+      expect_true(all(c("GENE01", "GENE02", "GENE03") %in% symbols))
+    }
+  })
+})
 
 test_that("C01 stale indices across real dataset loads do not crash annotation or CNA", {
   root <- withr::local_tempdir()

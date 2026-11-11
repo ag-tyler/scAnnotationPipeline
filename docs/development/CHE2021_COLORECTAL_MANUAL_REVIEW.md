@@ -8,6 +8,16 @@
 release acceptance has outstanding failures. Additional isolated automated
 checks and the consolidated outcome are recorded in section 10 below.
 
+**Post-fix verification (2026-11-04):** C01–C09 are implemented. C10 adds
+archived required/optional-damage GUI coverage, measured synthetic reload/restart
+timings and a fix for hidden CNA preflight recreating an archived cache directory.
+See the [C10 evidence record](CHE2021_COLORECTAL_C10_VERIFICATION.md) for current
+verification: the final complete suite passed **3,871 assertions**, zero
+failures/errors/test warnings/skips; agent visual inspection confirmed desktop
+and narrow long-path wrapping. Human sign-off remains open. The original
+failed/unchecked manual checkpoints below remain unchanged; this is not a new
+manual Che run.
+
 The completed, unarchived workspace preserved in Windows Documents is the
 scientific reference for this review (pipeline revision 236, storage `active`).
 The repository's current dataset is the later destructive-test workspace

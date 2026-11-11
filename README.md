@@ -25,7 +25,7 @@ install.packages(c(
   "ggplot2", "cowplot", "viridis", "Matrix", "irlba", "uwot", "Seurat",
   "stringr", "caTools", "RColorBrewer", "scales", "dbscan", "ggdendro",
   "randomcoloR", "docstring", "qs2", "magrittr", "R.utils",
-  "commonmark", "zip", "processx", "R6", "ps", "fs"
+  "zip", "processx", "R6", "ps", "fs"
 ))
 ```
 
@@ -172,29 +172,175 @@ backup, an anonymized dataset or a resumable app workspace. See the
 [User Guide](docs/USER_GUIDE.md#creating-a-review-snapshot) for verification,
 space/path constraints and manual checks.
 
-## Creating a Dataset
+## Preparing input data
 
-Use **Create New Dataset** in the app. Use the configured datasets directory
-(default `datasets/`) as its parent so the app can discover it on later loads:
+This is the prepared-input contract for the new import workflow tracked in the
+[prepared-data import plan](docs/development/PREPARED_DATA_IMPORT_PLAN.md).
+P01 provides the contract and reusable structure checker; P02 connects it to
+dataset loading; P03 imports prepared data and opens the resulting workspace.
+Sample membership, order, and metadata come exclusively from the sample CSV.
+P04 removes preparation guide/prompt screens and their startup dependencies.
+Snapshot provenance requirements are still being updated in P05.
+
+Prepare data with your own scripts and tools. The input is a directory containing
+the authoritative `Samples.csv` and one immediate subdirectory per sample:
 
 ```text
-datasets/<dataset_id>/
+<prepared-directory>/
+  Samples.csv
+  sample_01/
+    Exp_data_UMIcounts.mtx
+    Genes.txt
+    Cells.csv
+  sample_02/
+    Exp_data_UMIcounts.mtx
+    Genes.txt
+    Cells.csv
 ```
 
-with configuration files, data/result/log directories, an initialized pipeline
-state, and a copy of the adaptable `templates/standardize_general.R` template
-named `standardize.R`. Each workspace also gets its own editable
-`STANDARDIZATION_CHECKLIST.md` for checkmarks and notes; the shared checklist
-in `docs/` remains a reference template.
+The selected directory need not itself be named `processed_data`. Its sample
+folders must match the `sample` column exactly, including capitalization, with
+no additional sample folders. Use unique sample identifiers that differ by more
+than capitalization. Identifiers cannot contain surrounding whitespace, a
+trailing period, path separators, control characters, or Windows-invalid
+characters (`< > : " | ? *`). Do not use `.`/`..` or Windows device names such as
+`CON`, `NUL`, `COM1`, or `LPT1`, including names such as `CON.txt`.
 
-The **Standardization Guide** on Dataset Selection opens the selected
-workspace's checklist and the User Guide's setup section inside the app,
-with an exact file path and Markdown download as fallbacks. Older workspaces
-can explicitly create a checklist copy without overwriting existing notes.
+Use exactly one of these matrix filenames in every sample folder, with the
+same filename/scale throughout the dataset:
 
-The standardization template must be run before the dataset can enter the downstream clustering/annotation workflow.
+| Filename | Expression values |
+| --- | --- |
+| `Exp_data_UMIcounts.mtx` | Untransformed, finite, non-negative integer counts |
+| `Exp_data_TPM.mtx` | Finite, non-negative TPM values, not log-transformed |
+| `Exp_data_CPM.mtx` | Finite, non-negative CPM values, not log-transformed |
 
-See [Setting Up a New Dataset](docs/USER_GUIDE.md#setting-up-a-new-dataset) and [Standardization Pipeline](docs/USER_GUIDE.md#standardization-pipeline) for details.
+Multiple supported matrices in one sample or mixed scales between samples are
+ambiguous and rejected by the structure checker. Existing workspaces can retain
+their configured `std_names` filenames; new inputs use the names above.
+Prepared input contents must be ordinary files and directories. Resolve child
+symbolic links into copied files/directories before importing, so the workspace
+does not depend on linked source data.
+
+### Sample metadata: Samples.csv
+
+Supply CSV with a header and at least one sample row, using UTF-8 for non-ASCII
+text. Every column below is required, but unknown metadata values may be blank.
+`sample` must always be non-empty and unique. Supply `n_cells` as the final
+standardized cell count for that sample, rather than a count from a publication.
+The structure checker checks header presence, not cell-count values.
+
+```text
+sample,technology,cancer_type,patient,histology,site,sample_type,
+sample_primary_met,disease_extent,diagnosis_recurrence,instance_at_site,
+treated_naive,age,sex,grade,AJCC_stage,AJCC_T,AJCC_N,AJCC_M,size,
+smoking_status,PY,KI67,genetic_hormonal_features,chemotherapy_exposed,
+chemotherapy_response,targeted_rx_exposed,targeted_rx_response,
+post_sampling_rx_exposed,post_sampling_rx_response,time_end_of_rx_to_sampling,
+ET_exposed,ET_response,ICB_exposed,ICB_response,PFS_DFS,OS,n_cells
+```
+
+The header list is wrapped here for readability; write it as one CSV record.
+Column order is unrestricted, headers must be unique and use the spelling shown,
+and additional user columns are preserved. Quote values containing commas,
+double quotes, or newlines using normal CSV quoting. For example, a site value
+can be `"Colon, ascending"`, and a quote within a quoted field is doubled.
+
+All columns are read as text, preserving identifiers such as `001` and `0007`.
+Empty fields represent unknown values; literal `NA` is text. CSV row order
+determines sample order. `Samples.csv` is the runtime metadata authority,
+including when an older `samples_config.yaml` disagrees. Users do not need to
+provide that YAML to load a standardized workspace. Cancer type names used for
+marker matching must match the resource vocabulary (for example,
+`Colorectal Cancer`); unknown values can be blank.
+
+### Matrix, gene, and cell alignment
+
+These preparation requirements are the user's responsibility:
+
+- Write each expression matrix in Matrix Market format with genes as rows and
+  cells as columns. Do not log-transform it; the app performs its downstream
+  normalization and transformation.
+- `Genes.txt` contains one non-empty, unique gene symbol per line, without a
+  header. Its line order matches matrix row order. Map identifiers to the gene
+  symbols used by the app's biological resources; combine duplicate mapped
+  symbols by summing their expression rows before exporting.
+- `Cells.csv` has one row per matrix column, in exactly that column order, and
+  includes `cell_name`, `sample`, `cell_type`, `complexity`, `cell_subtype`,
+  `patient`, `subclone`, and `source`. Extra columns are permitted.
+- `cell_name` is non-empty and unique across the entire dataset; prefix reused
+  barcodes with their sample ID. Every cell's `sample` matches its directory.
+- `complexity` is the number of detected genes (nonzero matrix values) for that
+  cell, not its total count. Supply a finite, non-negative value for every cell.
+- Unknown annotations (`cell_type`, `cell_subtype`, `subclone`) may be blank.
+  `patient` holds the patient identifier, and `source` the anatomical sample
+  site; keep these consistent with sample metadata when known.
+
+The lightweight **input structure check** reads only the sample CSV and checks
+headers, identifiers, exact folder membership, expected filenames, readability,
+and non-empty files. It does not read matrices, genes, or cells, compare their
+dimensions/order, verify counts/complexity, or establish scientific correctness.
+Correctly named non-empty files can therefore pass while containing invalid
+data. Existing analysis-time errors and scientific cache checks remain separate.
+Archived workspaces with damaged retained sample files remain available for
+read-only review when their sample CSV is valid. Existing archive audits still
+block editing and unsafe exports.
+
+Preparation scripts, raw data, the checklist in `docs/`, and the optional metadata
+extraction prompt in `resources/` are not part of the new required input. Users
+may use any preparation workflow. Keep original prepared files: the import flow
+will copy them into a workspace, where annotation saves can update `Cells.csv`.
+Create a new workspace for replacement inputs rather than replacing underlying
+data partway through analysis.
+
+The reusable checker can be called from an R session after sourcing the app
+utilities: `check_prepared_data(path)` returns `valid`, an aggregate `message`,
+structured `errors` (`code`, `sample`, `path`, `message`), text `samples`, detected
+`std_names`/`expression_type`, and `paths_list` in CSV order only on success.
+For an existing workspace, pass its filename list as `std_names`. The checker
+does not write files, update workflow state, or cache a validation result.
+
+## Creating a Dataset
+
+1. Prepare a directory following the [input specification](#preparing-input-data).
+2. Select **Create New Dataset**, enter a dataset name, and select the prepared
+   directory and an existing workspace parent directory.
+3. Use **Browse** to navigate directories, or enter paths directly. The in-app
+   browser supports going to a path, opening a subdirectory, moving up, and
+   returning to Home or Datasets. **Use this directory** updates the chosen
+   field without resetting the rest of the form.
+4. Review the resolved source and workspace paths, then select **Create Dataset**.
+   The app checks structure, shows any problems together in the creation dialog,
+   and copies the inputs with byte/elapsed-time progress. Correct errors and retry
+   without filling the whole form again. **Cancel** creates no workspace.
+5. The app opens the completed workspace immediately. Use **Select Samples for
+   Clustering** to begin analysis; no app shutdown or standardization script is
+   required.
+
+Paths refer to the machine running R, on both Windows and Linux. For a remotely
+hosted app, first make the prepared files accessible on the server (for example,
+through a mounted directory); this browser does not upload files from a separate
+client computer.
+
+The workspace is created at `<parent>/<dataset_name>/`, containing a copied
+`processed_data/`, generated analysis/selection/workflow/storage configuration,
+and `cache/`, `results/`, and `logs/`. Initial input readiness records a structural
+check, with analysis stages not started. The app does not create `data/`,
+`standardize.R`, `samples_config.yaml`, or a checklist copy. It never overwrites
+an existing workspace or moves the original inputs. A failed copy is not
+published; interrupted staging directories are excluded from dataset discovery.
+
+Use the configured datasets directory (default `datasets/`) as the parent for
+discovery after restarting the app. An import under another parent opens
+immediately and stays selectable for the current session; that external path is
+not saved to application configuration. Dataset names must be distinct among
+the workspaces available in that session.
+
+The checklist in `docs/`, preparation templates, and metadata extraction prompt
+in `resources/` are optional files for use outside the app. No prompt, checklist,
+or preparation-template usage is required for startup, import, or analysis.
+The app has no standardization guide or metadata-prompt screen. Review snapshots
+still have their legacy sample-YAML provenance requirement until P05.
 
 For an existing dataset, load it and follow the Start Menu's pipeline overview.
 Use **Select Samples for Clustering** to rerun only the required samples.

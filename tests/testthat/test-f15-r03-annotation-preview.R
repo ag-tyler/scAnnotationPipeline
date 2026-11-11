@@ -84,7 +84,7 @@ make_r03_preview_fixture <- function(dataset_dir) {
   state$live_selected_config <- selected
   state$selected_config_path <- selected_path
   state$config <- list(selected = selected)
-  state$samples_config <- list(samples = list(list(sample = "sample1", cancer_type = "Synthetic")))
+  state$sample_metadata <- data.table::data.table(sample = "sample1", cancer_type = "Synthetic")
   state$complete_markers <- data.table::data.table(cell_type = "T cell", gene = "G1")
   state$sample_name <- "sample1"
   state$res <- 0.5

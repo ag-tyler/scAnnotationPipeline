@@ -81,7 +81,7 @@ register_dashboard_server <- function(input, output, session, state, context) {
   clustering_block_reason <- function() {
     if (is.null(rv$pipeline_state) ||
         !identical(get_pipeline_step(rv$pipeline_state, "standardization")$status, "completed")) {
-      return("Cannot run clustering: standardization must be completed first.")
+      return("Cannot run clustering: prepared inputs must be ready first.")
     }
     if (dataset_storage_cache_is_retired(rv$storage_state)) {
       return("This dataset is archived/read-only. Reopen it for editing before clustering.")
@@ -304,8 +304,6 @@ register_dashboard_server <- function(input, output, session, state, context) {
   observeEvent(input$btn_go_res, { updateNavbarPage(session, "main_nav", selected = "res_tab") })
   observeEvent(input$btn_go_anno, { updateNavbarPage(session, "main_nav", selected = "anno_tab") })
   observeEvent(input$btn_back_menu_1, { updateNavbarPage(session, "main_nav", selected = "menu_tab") })
-  observeEvent(input$btn_copy_info, { updateNavbarPage(session, "main_nav", selected = "clipboard_tab") })
-  observeEvent(input$btn_back_menu_3, { updateNavbarPage(session, "main_nav", selected = "menu_tab") })
   observeEvent(input$btn_go_cna, { updateNavbarPage(session, "main_nav", selected = "cna_tab") })
   observeEvent(input$btn_after_clustering_res, {
     if (!claim_app_confirmation(rv, "after_clustering_navigation")) return()
@@ -402,10 +400,6 @@ register_dashboard_server <- function(input, output, session, state, context) {
     updateNavbarPage(session, "main_nav", selected = "anno_tab")
   })
 
-  observeEvent(input$btn_select_all, {
-    runjs("document.getElementById('prompt_text_area').select();")
-  })
-
   observeEvent(input$btn_run_clustering, {
     req(rv$paths_list, rv$pipeline_state)
     reason <- clustering_block_reason()
@@ -461,7 +455,7 @@ register_dashboard_server <- function(input, output, session, state, context) {
     if (!identical(standardization$status, "completed")) {
       showNotification(
         paste0(
-          "Cannot run clustering: standardization is ", standardization$status,
+          "Cannot run clustering: prepared inputs are ", standardization$status,
           if (!is.null(standardization$reason)) paste0(" (", standardization$reason, ")") else "."
         ),
         type = "error",

@@ -98,10 +98,10 @@ test_that("F05 retries the selected sample when DE becomes ready", {
     cell_type = "Marker type",
     gene = "GENE1"
   )
-  state$samples_config <- list(samples = list(list(
+  state$sample_metadata <- data.table::data.table(
     sample = "sample1",
     cancer_type = "Synthetic"
-  )))
+  )
   results_dir <- file.path(dataset_dir, "results")
   dir.create(file.path(results_dir, "sample1", "2_de_plots"), recursive = TRUE)
   state$results_dir_path <- results_dir

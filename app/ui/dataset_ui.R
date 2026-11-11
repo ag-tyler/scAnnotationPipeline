@@ -1,219 +1,61 @@
-# Dataset selection and standardization-onboarding UI.
+# Prepared-data selection, import, and directory browsing UI.
 
-standardization_guide <- function(clipboard_text) {
+dataset_import_dialog <- function(parent_dir) {
+  modalDialog(
+    title = "Create Dataset From Prepared Data",
+    div(style = "max-height: 70vh; overflow-y: auto; overflow-x: hidden;",
+      textInput("new_ds_name", "Dataset name:", placeholder = "e.g., Colorectal_Study", width = "100%"),
+      uiOutput("dataset_directory_browser"),
+      div(class = "mb-3",
+        textInput("new_ds_source", "Prepared-data directory:", width = "100%"),
+        actionButton("btn_browse_dataset_source", "Browse prepared data", icon = icon("folder-open"))),
+      div(class = "mb-3",
+        textInput("new_ds_location", "Workspace parent directory:", value = parent_dir, width = "100%"),
+        actionButton("btn_browse_dataset_parent", "Browse destination parent", icon = icon("folder-open"))),
+      p(class = "small text-muted", "Select a directory containing Samples.csv and the sample folders. Files are copied; originals stay in place."),
+      p(class = "small text-muted", "Paths refer to the computer running the app. The workspace is created under the selected parent using the dataset name."),
+      downloadLink("download_input_specification", "Prepared-input specification (README.md)"),
+      uiOutput("dataset_import_paths"),
+      uiOutput("dataset_import_report")
+    ),
+    footer = tagList(actionButton("btn_cancel_create_ds", "Cancel"), actionButton("btn_confirm_create_ds", "Create Dataset", class = "btn-primary")),
+    size = "l"
+  )
+}
+
+dataset_directory_browser_ui <- function(path, target) {
+  children <- list.dirs(path, recursive = FALSE, full.names = TRUE)
   div(
-    class = "p-3",
-    h3("Prepare a Dataset for the Pipeline"),
-    p(
-      "Creating a workspace prepares the folder structure and configuration files. ",
-      "Standardization is the next step and runs outside this app."
-    ),
-    tags$ol(
-      tags$li("Add the raw source files to the workspace's ", tags$code("data/"), " folder."),
-      tags$li("Complete ", tags$code("samples_config.yaml"), " using the metadata prompt below."),
-      tags$li(
-        "Open and adapt ", tags$code("datasets/<dataset>/standardize.R"),
-        " for the source data."
-      ),
-      tags$li(
-        "Run ", tags$code("source(\"standardize.R\")"),
-        " from an R console whose working directory is the dataset workspace."
-      ),
-      tags$li("Return to this page and use Load Dataset after the run succeeds.")
-    ),
-    div(
-      class = "alert alert-warning",
-      icon("triangle-exclamation"),
-      tags$strong(" Load Dataset stays guarded until standardization is complete. "),
-      "The script must pass strict post-validation and produce populated ",
-      tags$code("processed_data/"),
-      "; an incomplete workspace will not initialize the downstream pipeline."
-    ),
-    div(
-      class = "d-flex flex-wrap gap-2 mb-4",
-      actionButton(
-        "btn_view_standardization_checklist",
-        "Open Standardization Checklist",
-        class = "btn btn-outline-primary"
-      ),
-      actionButton(
-        "btn_view_setup_guide",
-        "Open User Guide: Dataset Setup",
-        class = "btn btn-outline-primary"
-      )
-    ),
-    p(
-      "The checklist uses the workspace selected on the Workspace tab. ",
-      "Each dataset has its own editable STANDARDIZATION_CHECKLIST.md; the shared template stays unchanged.",
-      class = "text-muted small"
-    ),
-    h4("Sample-metadata gathering prompt"),
-    p(
-      "Use this prompt with the dataset publication or supplementary material, ",
-      "then review the extracted values before adding them to samples_config.yaml.",
-      class = "text-muted"
-    ),
-    div(
-      class = "d-flex flex-wrap gap-2 mb-2",
-      actionButton(
-        "btn_select_standardization_prompt",
-        "Select Prompt Text",
-        icon = icon("i-cursor")
-      ),
-      actionButton(
-        "btn_copy_standardization_prompt",
-        "Copy Prompt",
-        icon = icon("copy"),
-        class = "btn-primary"
-      )
-    ),
-    tags$textarea(
-      id = "standardization_prompt_text",
-      class = "form-control",
-      style = paste(
-        "width: 100%; height: 260px;",
-        "font-family: monospace; resize: vertical;"
-      ),
-      readonly = TRUE,
-      clipboard_text
-    )
+    class = "border rounded p-3 mt-3",
+    h5(if (target == "new_ds_source") "Browse prepared data" else "Browse destination parent"),
+    textInput("dataset_browser_path", "Current directory:", value = path, width = "100%"),
+    div(class = "d-flex flex-wrap gap-2 mb-2",
+        actionButton("btn_dataset_browser_go", "Go to path"),
+        actionButton("btn_dataset_browser_up", "Up"),
+        actionButton("btn_dataset_browser_home", "Home"),
+        actionButton("btn_dataset_browser_datasets", "Datasets")),
+    selectInput("dataset_browser_child", "Subdirectories:",
+      choices = c("Choose a subdirectory" = "", stats::setNames(children, basename(children))), width = "100%"),
+    div(class = "d-flex flex-wrap gap-2",
+        actionButton("btn_dataset_browser_open", "Open subdirectory"),
+        actionButton("btn_dataset_browser_select", "Use this directory", class = "btn-primary"),
+        actionButton("btn_dataset_browser_cancel", "Close browser"))
   )
 }
 
-standardization_document_modal <- function(document) {
-  rendered <- tryCatch(
-    HTML(commonmark::markdown_html(document$display_lines, extensions = TRUE)),
-    error = function(e) tags$pre(paste(document$display_lines, collapse = "\n"))
-  )
-  modalDialog(
-    title = document$title,
-    size = "l",
-    easyClose = TRUE,
-    p("Source file (also available to open directly in your editor): ", tags$code(document$path)),
-    if (document$type == "checklist") tagList(
-      p("Edit the workspace Markdown file in your editor to record checkmarks and notes; reopen this view to see changes. This checklist does not set pipeline statuses."),
-      if (document$is_template) {
-        div(
-          class = "alert alert-info",
-          if (is.null(document$dataset_dir)) {
-            "This is the shared reference template. Select or create a workspace to keep a separate checklist."
-          } else tagList(
-            "This workspace has no checklist yet. Create a separate copy at ",
-            tags$code(file.path(document$dataset_dir, "STANDARDIZATION_CHECKLIST.md")),
-            ". Existing files and notes are never overwritten.",
-            actionButton(
-              "btn_create_dataset_checklist", "Create Dataset Checklist",
-              class = "btn-primary mt-2"
-            )
-          )
-        )
-      }
-    ),
-    div(
-      class = "standardization-document",
-      style = "max-height: 60vh; overflow-y: auto; overflow-wrap: anywhere;",
-      rendered
-    ),
-    footer = tagList(
-      downloadButton("download_standardization_document", "Download Markdown"),
-      modalButton("Close")
-    )
-  )
-}
-
-dataset_created_modal <- function(dataset_name, dataset_path) {
-  standardize_path <- file.path(dataset_path, "standardize.R")
-
-  modalDialog(
-    title = paste("Workspace created:", dataset_name),
-    div(
-      class = "alert alert-success",
-      icon("circle-check"),
-      " Workspace created at ",
-      tags$code(dataset_path)
-    ),
-    p(
-      "Your editable standardization checklist is ",
-      tags$code(file.path(dataset_path, "STANDARDIZATION_CHECKLIST.md")),
-      ". Keep this dataset's checkmarks and notes there."
-    ),
-    p(
-      tags$strong("Next action: "),
-      "open and adapt ",
-      tags$code(standardize_path),
-      ", then run it from the dataset workspace in an R console."
-    ),
-    p(
-      "Load Dataset will work after standardize.R passes strict post-validation ",
-      "and creates populated output under ",
-      tags$code(file.path(dataset_path, "processed_data")),
-      "."
-    ),
-    footer = tagList(
-      modalButton("Close"),
-      actionButton(
-        "btn_open_created_checklist", "Open Dataset Checklist",
-        class = "btn-outline-primary"
-      ),
-      actionButton(
-        "btn_open_standardization_guide",
-        "Open Standardization Guide",
-        icon = icon("book-open"),
-        class = "btn-primary"
-      )
-    )
-  )
-}
-
-dataset_selection_panel <- function(available_datasets, clipboard_text) {
+dataset_selection_panel <- function(available_datasets) {
   nav_panel(
-    title = "Dataset Selection",
-    value = "dataset_tab",
-    div(
-      class = "container mt-5",
-      style = "max-width: 800px;",
+    title = "Dataset Selection", value = "dataset_tab",
+    div(class = "container mt-5", style = "max-width: 800px;",
       h2("Initialize Pipeline", class = "mb-4 text-center"),
-      navset_card_underline(
-        id = "dataset_setup_view",
-        nav_panel(
-          title = "Workspace",
-          value = "dataset_workspace",
-          card_body(
-            p(
-              "Select a standardized dataset, or create a workspace for a new one.",
-              class = "text-muted"
-            ),
-            selectInput(
-              "dataset_choice",
-              "Available Datasets:",
-              choices = available_datasets,
-              width = "100%"
-            ),
-            uiOutput("workspace_origin_reminder"),
-            actionButton(
-              "btn_load_dataset",
-              "Load Dataset",
-              icon = icon("folder-open"),
-              class = "btn-primary btn-lg w-100 mt-3"
-            ),
-            actionButton(
-              "btn_create_dataset_ui",
-              "Create New Dataset",
-              icon = icon("folder-plus"),
-              class = "btn-success btn-lg w-100 mt-2"
-            ),
-            p(
-              "New workspaces must be standardized before they can be loaded.",
-              class = "small text-muted mt-3 mb-0"
-            )
-          )
-        ),
-        nav_panel(
-          title = "Standardization Guide",
-          value = "standardization_guide",
-          standardization_guide(clipboard_text)
-        )
-      )
+      card(card_body(
+        p("Select a prepared dataset, or create a workspace from prepared data.", class = "text-muted"),
+        selectInput("dataset_choice", "Available Datasets:", choices = available_datasets, width = "100%"),
+        uiOutput("workspace_origin_reminder"),
+        actionButton("btn_load_dataset", "Load Dataset", icon = icon("folder-open"), class = "btn-primary btn-lg w-100 mt-3"),
+        actionButton("btn_create_dataset_ui", "Create New Dataset", icon = icon("folder-plus"), class = "btn-success btn-lg w-100 mt-2"),
+        p("Create a workspace by copying an existing prepared-data directory.", class = "small text-muted mt-3 mb-0")
+      ))
     )
   )
 }
