@@ -1,8 +1,8 @@
 # Prepared-data import and workflow entry overhaul
 
 **Date:** 2026-11-04  
-**Status:** In progress; P01-P05 implemented and verified on Windows
-(latest: 2026-11-11). P06-P07 remain pending.
+**Status:** In progress; P01-P06 implemented and verified on Windows
+(latest: 2026-11-11). P07 remains pending.
 
 **Scope:** Replace mandatory app-directed standardization with import of an
 externally prepared dataset. This document records the agreed direction and
@@ -154,7 +154,7 @@ unchecked. Step completion is separate from the final acceptance in section 6.
 - [x] **P03:** Directory selection, independent import copy, and immediate opening.
 - [x] **P04:** Standardization/prompt UI and mandatory preparation resources removed.
 - [x] **P05:** Workflow state, existing workspaces, storage, and snapshots integrated.
-- [ ] **P06:** User guidance and optional metadata extraction prompt aligned.
+- [x] **P06:** User guidance and optional metadata extraction prompt aligned.
 - [ ] **P07:** Full regression suite, browser review, and Windows/Linux acceptance.
 
 ### P01: Contract and structural checking
@@ -594,6 +594,69 @@ remains relevant to P07's cross-platform screenshot review.
 - Add this plan to the development index. Preserve dated historical findings
   and acceptance evidence; identify superseded onboarding requirements rather
   than rewriting history as if this design were already implemented.
+
+**Implementation record (2026-11-11):**
+
+- [x] Align the [README](../../README.md) overview, preparation and creation
+  guidance with externally prepared inputs and immediate analysis. Keep its
+  complete input contract, expression filenames, CSV/blank-value rules, copy
+  semantics, server-side browsing, source independence, and replacement-input
+  responsibility. Add quoted-CSV/leading-zero examples and link the optional
+  metadata prompt. The creation dialog's existing README download continues to
+  provide the contract; no additional UI or preparation tab was needed.
+- [x] Update the [User Guide](../USER_GUIDE.md): imported-workspace directory
+  diagrams, CSV metadata authority, configured filenames, fresh analysis state,
+  structural-check limits, and complete CSV-preserving snapshots. Move legacy
+  sample-YAML and template instructions into a clearly optional helper section
+  with explicit manual prerequisites and a separate preparation workspace.
+- [x] Replace the [checklist](../STANDARDIZATION_CHECKLIST.md) with a general
+  preparation reference usable with any scripts. Cover sample membership,
+  counts, CSV quoting, scale, alignment, gene/cell IDs, scientific review,
+  import, optional notes, snapshots, and replacement inputs. No script sentinel,
+  YAML, strict report, checklist completion, or AI usage is an import requirement.
+- [x] Rewrite the [optional prompt](../../resources/metadata_extract_prompt.txt)
+  for a complete UTF-8 CSV with all 38 required headers and one row per
+  biological sample. Preserve conservative patient/sample evidence, anatomical
+  site, lesion size, treatment timing/modality, recurrence and site-occurrence
+  distinctions. Explain quoting, blank values, text identifiers, exact sample
+  mappings, and user review. Leave `n_cells` blank in extraction output and
+  explicitly require users to fill final prepared counts before import; neither
+  publication counts nor prompt usage validate standardization.
+- [x] Align [state](../PIPELINE_STATE.md) and [logging](../PIPELINE_LOGGING.md)
+  references with the retained `standardization` key, structure-only readiness,
+  import/load events, unchanged progress on reload, optional legacy helper
+  events, and existing archive safeguards.
+- [x] Label the retained general R template as optional without changing its
+  execution. Its YAML/helper dependencies and publication side effects remain
+  documented. Do not rewrite historical technology-specific templates or any
+  user dataset scripts/notes. Remove the obsolete documentation-only test that
+  required the general checklist to prescribe that template's linear workflow;
+  retain all executable template/helper safety and data-contract tests.
+- [x] Identify this plan as the current onboarding direction in the development
+  index and add dated supersession notices to earlier development/follow-up,
+  Che2021 manual-review, and Liu2022 replay documents. Preserve their original
+  findings, progress records, and outstanding release acceptance.
+- [x] Focused regressions passed **495 assertions**, with **zero failures,
+  errors, test warnings, or skips**, on Windows/R 4.5.3 with a UTF-8 locale.
+  Coverage includes prepared-input checking, import, optional-file absence,
+  bootstrap, logging/state, and executable legacy-template behavior. Local
+  example checks also confirmed exact agreement between README/prompt headers
+  and `prepared_sample_columns()`, then round-tripped quoted metadata, leading
+  zeros, blanks, extra columns, and user-filled final counts through the real
+  CSV reader and structural checker.
+- [x] Check local file links and heading anchors across all changed Markdown
+  documents, and review for obsolete mandatory preparation instructions outside
+  explicitly historical/optional sections. `git diff --check` passes.
+
+Reproduce focused coverage with `testthat::test_dir("tests/testthat", filter =
+"^(p01-prepared-data|p03-dataset-import|p04-preparation-ui|standardize-general-template|app-bootstrap|06_utils_logging|07_utils_state)$",
+reporter = "summary")`. Gitignored local evidence: `artifacts/local-checks/`
+`p06_check.R`, `p06_focused_checks.log`, `p06_focused_results.rds`,
+`p06_links.R`, and `p06_links.log`. This documentation/helper-comment change
+introduces no runtime UI or analysis behavior; no new browser captures or
+screenshot references were needed. The full suite was not rerun for P06.
+The final full regression, browser/platform acceptance, Linux execution, and
+representative-data timings remain P07; section 6 acceptance stays open.
 
 ## 5. Verification plan
 

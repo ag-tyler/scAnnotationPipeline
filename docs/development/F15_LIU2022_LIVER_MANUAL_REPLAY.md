@@ -1,5 +1,10 @@
 # F15 Manual Replay — Liu2022 Liver
 
+**Onboarding supersession (2026-11-11):** Historical Standardization Guide,
+prompt, and checklist viewer steps below are superseded by the
+[prepared-data import plan](PREPARED_DATA_IMPORT_PLAN.md). The recorded
+scientific replay and outstanding acceptance findings are preserved.
+
 Use this checklist for the final full-dataset replay on `Liu2022_Liver` (9
 configured samples). Record defects with the sample, stage, visible message,
 and relevant lines from `datasets/Liu2022_Liver/logs/`.

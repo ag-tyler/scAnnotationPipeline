@@ -5,7 +5,9 @@ records live here. Historical findings remain separate from implementation
 verification and final acceptance.
 
 - [Original development plan](scAnnotationPipeline_Development_Plan.md)
-- [Prepared-data import and workflow entry plan](PREPARED_DATA_IMPORT_PLAN.md)
+- [Prepared-data import and workflow entry plan](PREPARED_DATA_IMPORT_PLAN.md) —
+  current workflow direction; supersedes earlier mandatory template, sample-YAML,
+  checklist, and prompt-screen onboarding requirements in historical plans.
 - [Che2021 Colorectal follow-up plan](CHE2021_COLORECTAL_2_FOLLOW_UP_PLAN.md)
 - [Che2021 Colorectal remediation plan](CHE2021_COLORECTAL_REMEDIATION_PLAN.md)
 - [C10 verification and remaining human acceptance](CHE2021_COLORECTAL_C10_VERIFICATION.md)

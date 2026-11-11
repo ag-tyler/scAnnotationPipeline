@@ -5,6 +5,12 @@
 #
 # PURPOSE
 # -------
+# Optional legacy preparation tool, not an app creation/startup requirement.
+# Set up its dataset_config.yaml and samples_config.yaml manually in a separate
+# preparation workspace. See docs/USER_GUIDE.md, Optional Preparation Helpers.
+# Import only its finished processed_data/ directory into a new app workspace.
+# The app does not copy this script or create its raw-data/YAML prerequisites.
+#
 # Adapt one clearly marked USER CODE section to convert raw single-cell data
 # into the shared app-ready format. The complete workflow remains visible here;
 # reusable implementation details live in util_scripts/08_utils_standardization.R

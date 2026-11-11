@@ -273,31 +273,3 @@ test_that("standardization lifecycle validates staging before publishing", {
   state <- yaml::read_yaml(file.path(dataset_dir, "pipeline_state.yaml"))
   expect_equal(state$dataset_steps$standardization$status, "completed")
 })
-
-
-test_that("standardization checklist documents the linear user-code workflow", {
-  root_dir <- test_path("..", "..")
-  checklist_path <- file.path(root_dir, "docs", "STANDARDIZATION_CHECKLIST.md")
-  user_guide_path <- file.path(root_dir, "docs", "USER_GUIDE.md")
-
-  expect_true(file.exists(checklist_path))
-  checklist <- paste(readLines(checklist_path, warn = FALSE), collapse = "\n")
-  for (required_text in c(
-    "## Definition of done",
-    "BEGIN USER CODE",
-    "`prepare_standardized_sample()`",
-    "`register_standardized_sample()`",
-    "POST-VALIDATION PASSED",
-    "## 11. Repeat-run checklist",
-    "## 12. Reproducibility record"
-  )) {
-    expect_match(checklist, required_text, fixed = TRUE)
-  }
-
-  user_guide <- paste(readLines(user_guide_path, warn = FALSE), collapse = "\n")
-  expect_match(
-    user_guide,
-    "[Standardization Checklist](STANDARDIZATION_CHECKLIST.md)",
-    fixed = TRUE
-  )
-})

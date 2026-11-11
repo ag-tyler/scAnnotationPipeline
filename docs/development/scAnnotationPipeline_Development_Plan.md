@@ -1,5 +1,11 @@
 # scAnnotationPipeline — Development Plan
 
+**Onboarding supersession (2026-11-11):** Mandatory template/sample-YAML,
+checklist, and prompt-screen setup described here is historical. The
+[prepared-data import plan](PREPARED_DATA_IMPORT_PLAN.md) and
+[current input specification](../../README.md#preparing-input-data) define the
+replacement workflow. Dated findings and acceptance evidence below are retained.
+
 **Document purpose.** This is the working implementation plan for changes identified during a manual end-to-end test of the scAnnotationPipeline on the `Che2021_Colorectal` dataset. It groups issues into actionable tasks, records their priority, complexity, dependencies, and required tests, and defines a suggested order of implementation. **Section 10 (Progress Tracker)** and **Section 11 (Progress Notes & Additional Information)** are living sections to be updated as work proceeds. This document plans changes; it does not imply that the code changes have been implemented.
 
 **Initial plan date:** 2026-10-14  

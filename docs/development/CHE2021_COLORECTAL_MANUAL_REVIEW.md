@@ -1,5 +1,10 @@
 # Full Manual Review — Che2021 Colorectal
 
+**Onboarding supersession (2026-11-11):** Preparation-screen and mandatory
+template/YAML/checklist steps below describe the reviewed historical workflow.
+Use the [prepared-data import plan](PREPARED_DATA_IMPORT_PLAN.md) for current
+setup. This note does not change the dated scientific or release findings.
+
 **Prepared:** 2026-10-30
 
 **Dataset:** `datasets/Che2021_Colorectal/` (not `Che2021_Colorectal_2`)

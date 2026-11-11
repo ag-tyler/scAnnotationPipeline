@@ -1,5 +1,11 @@
 # Che2021 Colorectal 2 — Follow-up Development Plan
 
+**Onboarding supersession (2026-11-11):** The Standardization Guide, prompt
+screen, automatic checklist/template copies, and mandatory sample-YAML setup
+recorded below have been superseded by the
+[prepared-data import plan](PREPARED_DATA_IMPORT_PLAN.md). Dated scientific,
+regression, and manual acceptance records remain historical evidence.
+
 **Document purpose.** This is the working implementation plan for issues found during the 2026-10-21 manual end-to-end test on `Che2021_Colorectal_2`. It follows the structure of `scAnnotationPipeline_Development_Plan.md`, but is a separate follow-up plan because the original milestones are complete. It records priorities, dependencies, acceptance criteria, and implementation order. It does not claim that the planned changes have been implemented.
 
 **Initial plan date:** 2026-10-21  

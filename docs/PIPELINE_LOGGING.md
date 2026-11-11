@@ -50,7 +50,8 @@ The event catalog includes:
 | Stage | Event types |
 | --- | --- |
 | Dataset | `workspace_created`, `dataset_load`, `app_session_started`, `change_dataset`, `sample_note_saved` |
-| Standardization | `standardization_validated` |
+| State | `pipeline_state_initialized`, `pipeline_state_load`, `storage_state_load` |
+| Optional legacy preparation helpers | `standardization_validated` |
 | Clustering | `clustering_run`, `single_sample_clustering`, `interrupted_clustering_recovered` |
 | Resolution | `resolution_saved` |
 | Differential expression | `de_run`, `single_sample_de` |
@@ -70,6 +71,27 @@ Session-start and dataset-load/change events include session context in their
 parameters. A session identifier is not a required field of every event.
 Review-snapshot events record safe options, counts, and outcomes, without
 recording the destination path or maintaining a snapshot-location registry.
+
+### Prepared-data import and loading
+
+`workspace_created` records `method: prepared_data_import`,
+`validation_scope: structure_only`, the sample count, and copied bytes. Import
+also records `pipeline_state_initialized`; every sample begins with analysis
+not started and dataset-level prepared-input readiness completed.
+
+Successful `dataset_load` events record `input_structure_valid` and
+`archived_input_review`, alongside sample/session context. A damaged retained
+input in a retired archive may permit read-only review, rather than imply that
+all files passed structure checks. Required CSV/schema/membership errors still
+block loading. Failed structure checks record a failed load with an actionable
+reason; they do not replace saved scientific progress with a new success state.
+
+These events describe import/loading and bounded filesystem/CSV checks. They do
+not certify matrix contents, scientific correctness, upstream reproducibility,
+or checklist/prompt usage. A `standardization_validated` event belongs to the
+optional legacy helpers' deeper validation and is not required for import or
+analysis. Historical preparation events remain in existing logs. Preparation
+scripts, notes, source links, and AI usage are not mandatory provenance inputs.
 
 ## Reading events in R
 

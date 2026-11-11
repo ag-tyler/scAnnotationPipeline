@@ -1,17 +1,17 @@
 # scAnnotationPipeline
 
-A Shiny application for standardizing, clustering, differential-expression analysis, manual cell-type annotation, and copy-number alteration (CNA) analysis of single-cell RNA-seq cancer datasets.
+A Shiny application for clustering, differential-expression analysis, manual cell-type annotation, and copy-number alteration (CNA) analysis of prepared single-cell RNA-seq cancer datasets.
 
 The pipeline guides a dataset through:
 
-1. **Standardization** – convert raw input into a consistent per-sample format.
+1. **Import prepared data** – copy an externally prepared directory into an independent workspace and open it immediately.
 2. **Clustering** – PCA → UMAP → Louvain clustering across multiple resolutions.
 3. **Resolution selection** – choose the clustering resolution used downstream.
 4. **Differential expression** – rank genes per cluster and compare them with known marker sets.
 5. **Manual annotation** – assign cell types using DE marker matches and signature scores.
 6. **CNA analysis** – infer copy-number alterations and classify malignant cells/subclones.
 
-For detailed information about dataset setup, configuration, standardization, resource files, testing, cache behavior, and CNA analysis, see the [**User Guide**](docs/USER_GUIDE.md).
+Prepare data with your own tools using the [input specification](#preparing-input-data). The [optional checklist](docs/STANDARDIZATION_CHECKLIST.md) helps with preparation questions. For configuration, resources, analysis, testing, and optional preparation helpers, see the [**User Guide**](docs/USER_GUIDE.md).
 
 ## Requirements
 
@@ -174,14 +174,10 @@ space/path constraints and manual checks.
 
 ## Preparing input data
 
-This is the prepared-input contract for the new import workflow tracked in the
-[prepared-data import plan](docs/development/PREPARED_DATA_IMPORT_PLAN.md).
-P01 provides the contract and reusable structure checker; P02 connects it to
-dataset loading; P03 imports prepared data and opens the resulting workspace.
-Sample membership, order, and metadata come exclusively from the sample CSV.
-P04 removes preparation guide/prompt screens and their startup dependencies.
-P05 integrates workflow/storage state and makes preparation provenance optional
-in review snapshots. Documentation alignment and platform acceptance remain P06-P07.
+Prepare inputs before creating a dataset in the app. Use any scripts or tools
+that produce the files specified below. Sample membership, order, and metadata
+come exclusively from `Samples.csv`; preparation scripts and sample YAML are
+optional. Import checks structure and opens a copied workspace for analysis.
 
 Prepare data with your own scripts and tools. The input is a directory containing
 the authoritative `Samples.csv` and one immediate subdirectory per sample:
@@ -255,6 +251,22 @@ provide that YAML to load a standardized workspace. Cancer type names used for
 marker matching must match the resource vocabulary (for example,
 `Colorectal Cancer`); unknown values can be blank.
 
+For example, the following valid CSV records illustrate leading zeros, a quoted
+anatomical site, an unknown value, and an extra user column. Include the other
+required columns from the header list above in your actual file:
+
+```csv
+sample,patient,site,n_cells,extra_note
+sample_01,0007,"Colon, ascending",1200,"Source calls this ""primary"""
+sample_02,0007,,950,
+```
+
+The optional [metadata extraction prompt](resources/metadata_extract_prompt.txt)
+can help gather publication metadata. It returns a draft CSV with `n_cells`
+blank; fill that column from your final prepared cell tables before importing.
+Review the draft against the source and your actual sample membership. Neither
+AI use nor a prompt completion record is required.
+
 ### Matrix, gene, and cell alignment
 
 These preparation requirements are the user's responsibility:
@@ -322,6 +334,11 @@ Paths refer to the machine running R, on both Windows and Linux. For a remotely
 hosted app, first make the prepared files accessible on the server (for example,
 through a mounted directory); this browser does not upload files from a separate
 client computer.
+
+For example, a source path could be `C:/data/Study prepared` on Windows or
+`/home/user/data/Study prepared` on Linux. Spaces are supported. Use a path that
+exists on the R host; a Windows client path does not identify files on a remote
+Linux server.
 
 The workspace is created at `<parent>/<dataset_name>/`, containing a copied
 `processed_data/`, generated analysis/selection/workflow/storage configuration,
@@ -430,7 +447,7 @@ It covers:
 * configuration;
 * biological resource files;
 * dataset creation;
-* standardization;
+* prepared inputs and optional standardization helpers;
 * the analysis workflow;
 * testing and coverage;
 * cache invalidation;

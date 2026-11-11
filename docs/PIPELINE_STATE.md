@@ -29,7 +29,22 @@ reserved for an explicit decision or validated exclusion.
 
 ## Tracked steps
 
-`standardization` is dataset-scoped. These steps are tracked per sample:
+`standardization` is the retained dataset-scoped key, displayed as **Prepared
+inputs**. For imported data, `completed` means that the prepared directory
+passed the lightweight input structure check and was successfully installed in
+the workspace. Its details include `provenance: prepared_data_import` and
+`validation_scope: structure_only`. This does not certify expression values,
+matrix/metadata alignment, or biological correctness. The user prepares those
+inputs before import; no sample YAML, script, checklist, or prompt usage is
+required. See the [input specification](../README.md#preparing-input-data).
+
+New imports initialize each sample step to `not_started`, selected decisions
+through existing defaults, and storage as `active`; clustering is immediately
+ready. A successful structure check on reload does not reset existing workflow
+progress or turn stale scientific results into completed work. Older helper-run
+and inferred records retain their historical meaning and provenance.
+
+These steps are tracked per sample:
 
 1. `clustering`
 2. `resolution`
@@ -82,6 +97,14 @@ one-time inference from required configuration and artifacts. Inferred records
 contain `details.provenance: legacy_inference`; ambiguous partial outputs are
 marked `incomplete`.
 
+Loading uses the authoritative `processed_data/Samples.csv` and the workspace's
+configured filenames. Legacy sample YAML is neither a metadata fallback nor a
+requirement. Missing CSV blocks loading with a required-file error. Existing
+preparation scripts, raw folders, YAML, notes, and saved scientific decisions
+are preserved. Structural rechecks do not rewrite the sample CSV or create a
+validation cache. Prepare replacement inputs in a new imported workspace;
+external input replacement during analysis is not a supported workflow.
+
 ## Reset and repeated work
 
 - Repeating clustering, DE, or a CNA computation creates a new attempt and
@@ -133,3 +156,11 @@ skipped cache-dependent sample steps stale so recomputation is explicit.
 The overview derives the next actionable step from the remaining prerequisites;
 after those prerequisites are rebuilt, it directs you to unfinished CNA work.
 This guidance does not turn historical stale records into completed results.
+
+Archived workspaces with damaged retained sample files can still open for
+read-only review when their sample CSV and recorded retired-storage state are
+valid. The archive audits continue to block editing and unsafe exports. Review
+snapshots work before/after cleanup without preparation scripts, sample YAML,
+or checklist files; they include authoritative CSV and complete processed data,
+plus optional preparation provenance when present. See the
+[snapshot guide](USER_GUIDE.md#creating-a-review-snapshot).

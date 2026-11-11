@@ -11,9 +11,9 @@ For installation and a concise project overview, see the repository **[README](.
 - [Resource Files](#resource-files)
 - [Setting Up a New Dataset](#setting-up-a-new-dataset)
   - [`dataset_config.yaml`](#dataset_configyaml)
-  - [`samples_config.yaml`](#samples_configyaml)
+  - [`Samples.csv`](#samplescsv)
   - [`selected_config.yaml`](#selected_configyaml)
-- [Standardization Pipeline](#standardization-pipeline)
+- [Optional Preparation Helpers](#optional-preparation-helpers)
 - [Running the Analysis Pipeline](#running-the-analysis-pipeline)
 - [Pipeline Event Logs](#pipeline-event-logs)
 - [Pipeline State](#pipeline-state)
@@ -65,18 +65,17 @@ scAnnotationPipeline/
 ├── datasets/                          # local runtime data; gitignored
 │   └── <dataset_id>/
 │       ├── dataset_config.yaml
-│       ├── samples_config.yaml
 │       ├── selected_config.yaml
-│       ├── standardize.R
+│       ├── pipeline_state.yaml
+│       ├── storage_state.yaml
 │       ├── cache/
-│       ├── data/
 │       ├── processed_data/
 │       ├── results/
 │       └── logs/
 │
 ├── templates/
 │   ├── dataset_config_template.yaml
-│   ├── standardize_general.R            # copied for new datasets
+│   ├── standardize_general.R            # optional legacy preparation tool
 │   └── standardize_*.{R,qmd}             # historical/reference templates
 │
 ├── util_scripts/
@@ -122,25 +121,22 @@ Everything in `util_scripts/` is sourced automatically when the app starts.
 
 ### Dataset layout
 
-Each dataset lives under:
+The default workspace location is:
 
 ```text
 datasets/<dataset_id>/
 ```
 
-and is expected to contain:
+New imports can use another parent; those external paths remain registered only
+for the current session. A new imported workspace contains:
 
 ```text
 datasets/<dataset_id>/
 ├── dataset_config.yaml
-├── samples_config.yaml
 ├── selected_config.yaml
 ├── pipeline_state.yaml
 ├── storage_state.yaml
-├── STANDARDIZATION_CHECKLIST.md
-├── standardize.R
 ├── cache/
-├── data/
 ├── processed_data/
 │   ├── Samples.csv
 │   └── <sample_name>/
@@ -161,6 +157,10 @@ datasets/<dataset_id>/
 The matrix filename depends on `std_names.expmat` in `dataset_config.yaml`.
 The paths shown use the default configuration. `storage_state.yaml` is
 initialized when needed, and archived datasets intentionally have no `cache/`.
+New imports initialize workflow/storage state immediately. Existing workspaces
+may also contain raw `data/`, `samples_config.yaml`, `standardize.R`, and checklist
+notes. These are optional preparation provenance, left untouched on load; new
+imports do not generate them.
 
 ---
 
@@ -178,14 +178,17 @@ paths:
   datasets_dir: "datasets"
 ```
 
-The remaining configuration sections define expected filenames, standard dataset subdirectories, and available standardization templates.
+The remaining configuration sections define filenames and dataset subdirectories.
+Legacy raw-data and sample-YAML paths support optional preparation helpers; they
+are not required user inputs for app import or loading. The dataset analysis
+template remains required by import; preparation script templates are optional.
 
 | Key | Purpose |
 |---|---|
 | `paths.resources_dir` | Resource directory relative to the application root |
 | `paths.datasets_dir` | Dataset directory relative to the application root |
 | `resource_files.*` | Expected filenames inside `resources/` |
-| `dataset_paths.*` | Standard subdirectories inside each dataset (`data`, `processed_data`, `results`, `logs`) |
+| `dataset_paths.*` | Workspace subdirectories (`processed_data`, `results`, `logs`); raw `data` is optional helper input |
 | `config_files.*` | Standard configuration filenames |
 
 The intended standard values for the two top-level directories are `resources` and `datasets`.
@@ -306,39 +309,25 @@ Important fields include:
 Workspace selection and the dashboard show an optional reminder when neither
 `project_info.source_doi` nor `project_info.source_url` is recorded. Add either
 field to `dataset_config.yaml` and reload to clear it. Missing origin does not
-prevent standardization, processing or review-snapshot creation.
+prevent import, analysis or review-snapshot creation.
 
 `std_names.*` defines the standardized files expected by the downstream pipeline.
 
-`std_names.expmat` is updated during standardization according to the detected/selected matrix state.
+Import detects the matrix scale from the supported filenames and initializes
+`std_names` accordingly. Existing workspaces keep their configured filenames.
 
-### `samples_config.yaml`
+### `Samples.csv`
 
-This YAML is used only by optional legacy preparation scripts. Runtime loading
-and analysis use `Samples.csv`; prepared-data import does not require the YAML.
-Complete it only when choosing a preparation script that expects it.
+The user supplies this authoritative sample table inside the prepared directory.
+See the [README contract](../README.md#sample-metadata-samplescsv) for every
+required header, blank-value rules, and CSV quoting examples. Include `n_cells`
+from final prepared cell tables, even when using publication metadata gathered
+with the optional prompt. Other unknown metadata values can be blank.
 
-Every sample requires a non-empty `sample`. This is the canonical identifier
-used for its processed-data directory, cell metadata, dataset-wide sample table,
-and downstream configuration. The required metadata keys are:
-
-```text
-sample, technology, cancer_type, patient, histology, site, sample_type,
-sample_primary_met, disease_extent, diagnosis_recurrence, instance_at_site,
-treated_naive, age, sex, grade, AJCC_stage, AJCC_T, AJCC_N, AJCC_M, size,
-smoking_status, PY, KI67, genetic_hormonal_features, chemotherapy_exposed,
-chemotherapy_response, targeted_rx_exposed, targeted_rx_response,
-post_sampling_rx_exposed, post_sampling_rx_response,
-time_end_of_rx_to_sampling, ET_exposed, ET_response, ICB_exposed,
-ICB_response, PFS_DFS, OS
-```
-
-The keys must exist even when some values are unknown/blank. This is enforced by `prevalidate_setup()`.
-
-`sample` is the only supported sample identifier key. Configuration entries
-using the former `id` key fail validation with an instruction to rename it;
-there is no compatibility conversion. This keeps the identifier identical from
-metadata extraction through standardization and downstream analysis.
+Sample membership, order, annotation metadata, and marker selection all use this
+table. The app reads columns as text, preserving leading zeros and extra fields.
+It never regenerates the CSV from YAML or merges conflicting YAML metadata.
+Missing CSV is an actionable load error even if legacy sample YAML is present.
 
 For malignant-marker matching, `cancer_type` should exactly match a key under `cancer_types` in `cancer_cell_map.json`.
 
@@ -354,7 +343,10 @@ rather than:
 Breast
 ```
 
-The current annotation logic applies a cancer-type-specific malignant marker set only when the dataset has one unambiguous cancer type across its samples.
+The current annotation logic applies a cancer-type-specific malignant marker set
+only when the CSV has one unambiguous known cancer type across its samples.
+Blank values do not create an additional cancer type. A mixed or unrecognized
+type does not cause the app to guess a marker set.
 
 ### `selected_config.yaml`
 
@@ -373,108 +365,82 @@ It normally should not be edited manually.
 
 ---
 
-## Standardization Pipeline
+## Optional Preparation Helpers
 
-Before a dataset can enter the main Shiny analysis workflow, its raw data must be transformed into the standardized per-sample format.
+Prepare data using the [README contract](../README.md#preparing-input-data) and
+your own scripts. The [Standardization Checklist](STANDARDIZATION_CHECKLIST.md)
+is an optional reference for checking alignment and metadata; it is not an app
+workflow or required completion record.
 
-For an adaptation and run sequence, use the dedicated
-[Standardization Checklist](STANDARDIZATION_CHECKLIST.md).
+The optional [metadata prompt](../resources/metadata_extract_prompt.txt) drafts
+publication metadata as CSV, not YAML. Review its membership, IDs, and clinical
+assignments yourself; the prompt leaves `n_cells` blank. Fill that column from
+your final prepared cell tables before import. Neither prompt usage nor a
+publication count substitutes for data preparation.
 
-Per sample, the output includes:
+### samples_config.yaml
 
-```text
-Exp_data_<matrix_state>.mtx
-Genes.txt
-Cells.csv
-```
+The retained R preparation helpers use this legacy YAML as their source of
+sample metadata. The app's import, loading, analysis, and snapshots do not
+require it. For those helpers only, supply a `samples:` list with one entry per
+sample, a non-empty unique `sample` key (not `id`), and the metadata keys listed
+in the README header except `n_cells`. Include unknown keys with blank values.
+The helpers calculate `n_cells` from their final cell tables and write
+`Samples.csv`. These YAML requirements belong to helper prevalidation,
+`prevalidate_setup()`, rather than ordinary dataset loading.
 
-The dataset also receives a dataset-wide:
+### Using the retained general R template
 
-```text
-Samples.csv
-```
+`templates/standardize_general.R` remains available if you prefer its workflow.
+The app does not copy it, prepare its prerequisites, or ask users to run it.
+Older technology-specific R/Quarto templates remain historical/reference tools;
+their paths, dependencies, and helper assumptions may need manual adaptation.
 
-The standardized contract is strict:
-
-- Each configured `sample` has a same-named directory containing all three
-  per-sample files.
-- Matrix columns correspond by position to `Cells.csv` rows, and matrix rows
-  correspond by position to `Genes.txt` entries; their dimensions must match.
-- `Cells.csv` contains `cell_name`, `sample`, `cell_type`, `complexity`,
-  `cell_subtype`, `patient`, `subclone`, and `source`. Cell identifiers are
-  unique across the dataset and every row is assigned to its directory sample.
-- Gene identifiers are non-empty and unique. The general template removes
-  unmapped genes with their matrix rows and collapses duplicate mapped symbols
-  by summing sparse-matrix rows.
-- The matrix filename declares counts, TPM, or CPM. Values are finite and
-  non-negative, and count matrices contain integers.
-- `Samples.csv` contains exactly the configured samples and its `n_cells`
-  values match the per-sample cell tables.
-
-The app uses one adaptable source template for every newly created dataset:
+The general template expects a preparation workspace under the configured
+datasets directory. With default configuration, set it up yourself as:
 
 ```text
-templates/standardize_general.R
+datasets/<preparation_name>/
+  dataset_config.yaml     # copy/adapt templates/dataset_config_template.yaml
+  samples_config.yaml     # helper-only sample metadata described above
+  standardize.R           # manually copy templates/standardize_general.R
+  data/                   # raw sources if your code uses the helper's default
 ```
 
-When a dataset is created, this template is copied into the dataset as:
+This is a preparation workspace, separate from the new analysis workspace you
+will import into. Keep original raw files unchanged. If general configuration
+uses non-default directories/filenames, follow those configured paths.
 
-```text
-standardize.R
-```
+1. Set `settings$dataset_name` to that preparation folder name, choose
+   `UMIcounts`, `TPM`, or `CPM`, and use `app_folder_path = NULL` for automatic
+   app-root discovery or supply the intended root explicitly.
+2. Keep `reset_selected_config = FALSE`. Complete the linear `BEGIN USER CODE`
+   region: load your raw data, map sample/gene IDs, split samples, and construct
+   `sample_input` with `expmat`, `genes`, `cells`, and optional keyed
+   `cell_metadata`. Call `prepare_standardized_sample()` and
+   `register_standardized_sample()` for each configured sample.
+3. Review the helper transformations: unmapped gene rows are removed, duplicate
+   mapped symbols are summed, optional cell metadata is aligned by `cell_name`,
+   sample/patient/source fields are set from YAML, and complexity is calculated
+   as nonzero genes per cell. Confirm these choices fit your dataset.
+4. Change the saved script's `RUN_STANDARDIZATION <- FALSE` to
+   `RUN_STANDARDIZATION <- TRUE`, then run the entire file from a clean R
+   session. Setting the flag only in the console is insufficient because the
+   script assigns it again when sourced.
+5. The helper builds `Samples.csv`, deeply validates its staged output with
+   `strict = TRUE`, and publishes `processed_data/` only after
+   `POST-VALIDATION PASSED`. Correct failures in your input/mapping code and
+   rerun. It also updates that preparation workspace's configuration, selected
+   state when absent/reset, workflow state, and logs.
+6. Select the finished preparation workspace's `processed_data/` as the source
+   for **Create New Dataset**, with a distinct analysis-workspace name/path.
+   Import copies only that prepared tree and initializes fresh analysis state;
+   it does not import the helper workspace's logs, scripts, or saved decisions.
 
-The older technology-specific templates remain available as historical/reference
-material, but they are not offered by the app or copied into new workspaces.
-
-### Template workflow
-
-The general template follows this structure:
-
-1. **User settings and application discovery**
-   - the application root is normally found automatically;
-   - the dataset name and supported matrix state remain explicit.
-2. **Initialization and prevalidation**
-   - load the dedicated standardization helpers;
-   - check `samples_config.yaml` and prepare an isolated staging directory.
-3. **One linear user-code region**
-   - use ordinary R statements to load and inspect raw data;
-   - map samples and genes, split matrices, and construct each `sample_input`;
-   - call `prepare_standardized_sample()` and
-     `register_standardized_sample()` for every configured sample.
-4. **Dataset-wide sample metadata**
-   - ensure every configured sample was registered;
-   - create `Samples.csv` with calculated cell counts.
-5. **Strict postvalidation**
-   - verify every configured sample directory and required file;
-   - require the standardized cell schema and matching sample assignments;
-   - verify matrix/metadata dimensions and dataset-wide sample counts;
-   - reject blank or duplicate gene/cell identifiers and cells reused between samples;
-   - reject non-finite/negative expression values and non-integer count matrices;
-   - hard-stop if any invariant fails.
-6. **Publish and record completion**
-   - replace `processed_data` only after staging passes validation;
-   - update dataset configuration while preserving selected choices by default;
-   - record the event and completed pipeline state.
-
-Examples of standardized expression matrix names are:
-
-```text
-Exp_data_UMIcounts.mtx
-Exp_data_CPM.mtx
-Exp_data_TPM.mtx
-```
-
-After adapting the settings and replacing the placeholder stop in the region
-marked `BEGIN USER CODE`, edit the script's own `RUN_STANDARDIZATION <- FALSE`
-line to `RUN_STANDARDIZATION <- TRUE`. Save it, then run the complete script
-from a clean R session:
-
-```r
-source("standardize.R")
-```
-
-from inside the dataset directory. Setting the flag only in the console before
-`source()` is insufficient because the script assigns it again.
+Do not rerun preparation helpers against an analysis workspace to replace
+inputs partway through analysis. Prepare replacement data separately and create
+a new imported workspace. Users with their own scripts need none of the
+template's YAML, helper calls, strict report, or script sentinel.
 
 ---
 
@@ -748,6 +714,11 @@ This current-state document is intentionally separate from
 [Pipeline State](PIPELINE_STATE.md) for status meanings, dependencies, legacy
 migration, and recovery behavior.
 
+The retained dataset key `standardization` appears as **Prepared inputs**. For
+imports it records successful structural checking and installation, with
+`validation_scope: structure_only`; it does not assert scientific validation.
+Sample analysis starts at `not_started`, and reloads preserve scientific progress.
+
 ### Archiving a finished dataset
 
 The Start Menu includes a **Dataset Storage** card. Once all samples are
@@ -808,6 +779,8 @@ The output contains:
 - `processed_data/`: the complete standardized input tree, byte-for-byte,
   including cells filtered out during app preprocessing. Cells removed before
   standardization cannot be recovered. Files are not reconstructed from caches.
+  The authoritative `Samples.csv` is included unchanged, alongside current
+  `Cells.csv` files and prepared matrices/genes.
 - `results/`: all ordinary results and plots, including alternatives/diagnostics.
   Only recognized optional CNA-values payloads and matching sidecars follow the
   CNA-values switch; no scientific computation is started.
@@ -945,7 +918,7 @@ configuration, state, results, or cache files.
 | `test-f09-single-sample-clustering.R` | Targeted clustering index/resolution coverage, sample-scoped state/cache invalidation, failure isolation, duplicate guards, completion navigation, and shared targeted-DE recovery from Manual Annotation |
 | `test-regression_clustering.R` | Preprocessing → PCA → UMAP → Louvain integration/regression behavior |
 | `test-regression_cna_cache.R` | CNA compute/cache/load round trip and missing-cache behavior |
-| `test-standardize-general-template.R` | General-template safety, alignment, duplicate-gene preservation, and checklist contract |
+| `test-standardize-general-template.R` | Optional general-template safety, alignment, duplicate-gene preservation, and staged publication |
 | `test-p04-preparation-ui.R` | No preparation UI or startup dependency; optional-file absence, required biological resources, import, loading, and README download |
 | `test-c01-*` through `test-c04-*` | Dataset transitions, interrupted-clustering recovery, CNA navigation, and post-reopen status |
 | `test-c07-*` through `test-c09-*` | CNA omission, cut/threshold controls, annotation feedback, and source reminders |
@@ -1031,14 +1004,19 @@ retain the committed golden fixture explicitly:
 
 The pipeline assumes:
 
-- **The raw expression matrix is not already log-normalized.** Downstream normalization occurs inside the analysis pipeline. Feeding already log-transformed values may result in unintended double transformation.
+- **Prepared expression values are not log-transformed.** Downstream normalization occurs inside the analysis pipeline. Feeding already log-transformed values may result in unintended double transformation.
 - **Cell names are unique across the entire dataset.** Prefix or suffix raw
   barcodes deterministically when samples reuse them.
 - **Standardized gene symbols are non-empty and unique per sample.** Map raw
-  identifiers before constructing `sample_input`; shared standardization removes
-  unmapped rows and sums duplicate gene-symbol rows with their expression values.
-- **Sample directory names under `processed_data/` are canonical sample identifiers** and should match `sample` values in `samples_config.yaml`.
-- **`samples_config.yaml` is structurally complete before standardization.**
+  identifiers and sum duplicate mapped gene rows during your preparation.
+- **Sample directory names under `processed_data/` are canonical sample identifiers**
+  and exactly match `sample` values in authoritative `Samples.csv`.
+- **Prepared cells and genes align positionally with matrix columns and rows.**
+  Users verify scientific alignment, counts, and metadata. The import/load check
+  reads only sample metadata and filesystem structure, not matrix/gene/cell contents.
+- **Underlying inputs are not replaced during analysis.** Import replacement
+  inputs into a new workspace. There is no input-replacement monitoring or
+  validation-result cache.
 - **The generic marker set excludes `Malignant`.** Malignant marker handling is performed separately through `malignant_markers.csv` and `cancer_cell_map.json`.
 - **Required resources exist under `resources/`.**
 - **The app is launched from the repository root.**
@@ -1108,7 +1086,7 @@ Saving a new malignant-subclone selection clears stale threshold configuration a
 ## Known Limitations
 
 - Most biological resource files are not distributed with the repository and must be obtained/generated separately.
-- The general standardization template requires dataset-specific import and
+- The optional general standardization template requires dataset-specific import and
   sample-splitting logic in one linear `BEGIN USER CODE` region plus user settings.
 - Browser coverage uses a temporary synthetic workspace to verify application
   startup, navigation, and workflow mutations. It does not replace manual review
