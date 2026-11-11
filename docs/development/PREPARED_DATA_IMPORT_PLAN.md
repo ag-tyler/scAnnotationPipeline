@@ -1,8 +1,8 @@
 # Prepared-data import and workflow entry overhaul
 
 **Date:** 2026-11-04  
-**Status:** In progress; P01-P06 and P06a implemented and verified on Windows
-(latest: 2026-11-11). P07 remains pending.
+**Status:** In progress; P01-P06 and P06a implemented. P07 Windows automated gate
+verified (2026-11-11); manual/Linux acceptance remains open.
 
 **Scope:** Replace mandatory app-directed standardization with import of an
 externally prepared dataset. This document records the agreed direction and
@@ -723,6 +723,71 @@ reporter = "summary")`. Gitignored local evidence:
 `artifacts/local-checks/p06a_check.R`, `p06a_focused_checks.log`, and
 `p06a_focused_results.rds`. The full suite and Linux execution were not rerun
 for this added step; P07 and section 6 final acceptance remain open.
+
+### P07: Automated and manual/platform acceptance
+
+P07 combines automated regression evidence with separate manual/platform
+acceptance. The user authorized the Windows automated suites on 2026-11-11.
+Passing that gate alone does not close Linux/WSL, real-data usability, or the
+remaining section 6 acceptance requirements.
+
+- [x] Windows full automated regression suite, including numerical/golden,
+  prepared-data import, console progress, state/cache/storage, and snapshot checks.
+- [x] Windows Edge browser journeys and existing screenshot comparisons, with
+  automatic baseline updates disabled.
+- [x] Windows server-level directory browsing, import, and reload with spaces
+  and Unicode paths: **11 assertions passed**, zero failures/errors/test
+  warnings/skips. A synthetic source beneath an umlaut-containing path was
+  imported into an external Greek-letter/space-containing parent, then reloaded
+  without restart. CSV order/leading-zero IDs, immediate clustering readiness,
+  absence of required sample YAML, and unchanged source checksums were verified.
+  This is automated server/path evidence, not a human GUI/platform review.
+- [ ] Linux/WSL browsing/path selection and import/reload acceptance, with the
+  actual OS/filesystem and exercised cases recorded.
+- [ ] Human real-data usability review, including preparation/import errors,
+  immediate analysis, and existing-workspace continuity.
+- [ ] Representative-data structural-check/copy timings and remaining platform
+  path/shared-directory checks recorded separately from synthetic test timings.
+
+**Windows automated verification (2026-11-11):**
+
+- The complete standard suite passed **4,276 assertions** across **375 test
+  cases / 56 test files**, with **zero failures, errors, test warnings, or skips**.
+  All assertions passed in one full run; no baseline updates or result
+  reconciliation were needed. The run took **621.83 seconds** (about 10m 22s).
+- The browser/layout subset contributed **803 passing assertions**, included
+  in the full-suite total. It exercised prepared-data import/browsing with
+  optional preparation files absent, immediate real synthetic clustering,
+  external-workspace reload, annotation save/recovery, CNA navigation/omission,
+  archived damage/reopen, and snapshot review/completion layouts. Existing
+  reviewed screenshot references matched with automatic updates disabled.
+- Numerical/golden outputs, cache validity, dataset transitions, CSV authority,
+  import rollback/source independence, DE/CNA console timing, storage cleanup,
+  folder/ZIP snapshot integrity, and release integration all passed. The
+  separate Windows Unicode/space-path server check passed **11 assertions**;
+  these are additional to the standard full-suite total.
+- Environment: **Windows 11 x64 (build 26200), R 4.5.3, Edge**, tested source
+  commit **`acbb4ce17ee60e95cd28c3af3cf78659feee384c`**. The parent R session used
+  `English_United States.utf8`. Chrome was initialized under a valid Windows
+  startup locale before restoring the reviewed Shiny-worker `LC_ALL=C.UTF-8`
+  environment; the locale-sensitive references documented in P05 matched.
+- Tests used disposable synthetic workspaces. No production-code fixes were
+  required. The optional **>4 GiB ZIP64** regression was not enabled. No Linux,
+  shared/mounted-directory manual acceptance, human biological/usability
+  acceptance, or representative-data preparation/copy timing is claimed.
+
+Authoritative full-run evidence (gitignored): `artifacts/local-checks/`
+`p07_windows_check.R`, `p07_windows_checks.log`, `p07_windows_results.rds`,
+`p07_windows_browser_results.rds`, and `p07_windows_session.txt`.
+The runner calls `testthat::test_dir("tests/testthat", reporter = "summary")`
+and records the source commit, environment, per-case results, assertion counts,
+browser subset, and duration. Windows browser/ZIP worker process pipes required
+execution outside the sandbox. This closes the Windows automated sub-gate only;
+P07 and section 6 remain open for the unchecked manual/platform requirements.
+
+Focused path-check evidence (gitignored): `artifacts/local-checks/`
+`p07_windows_paths_check.R`, `p07_windows_paths_selected.R`,
+`p07_windows_paths_checks.log`, and `p07_windows_paths_results.rds`.
 
 ## 5. Verification plan
 
