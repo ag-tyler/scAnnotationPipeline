@@ -2,7 +2,8 @@
 
 **Date:** 2026-11-04  
 **Status:** In progress; P01-P06 and P06a implemented and verified on Windows
-(latest: 2026-11-11). P07 remains pending.
+(latest: 2026-11-11). P06b is implemented and verified on WSL Ubuntu; P07
+remains pending.
 
 **Scope:** Replace mandatory app-directed standardization with import of an
 externally prepared dataset. This document records the agreed direction and
@@ -142,6 +143,7 @@ analysis-time errors and cache safeguards remain in place.
 | P05 | Integrate workflow state, existing workspaces, storage, and snapshots. | Imported and existing workspaces use the analysis/storage lifecycle without a preparation script or YAML requirement. |
 | P06 | Update guidance and the optional metadata prompt. | Documentation and helper outputs match the actual CSV import contract. |
 | P06a | Align DE/CNA computation console progress and timing with clustering. | Batch and single-sample computation report stages, step/sample elapsed time, outcomes, and batch totals without changing scientific behavior. |
+| P06b | Fix cache portability when an existing workspace is copied or moved. | Valid relocated caches preserve scientific progress; changed or damaged contents still invalidate affected work. |
 | P07 | Complete focused regressions, full checks, and platform acceptance. | Evidence satisfies the completion requirements in section 6. |
 
 ### Implementation progress checklist
@@ -157,6 +159,7 @@ unchecked. Step completion is separate from the final acceptance in section 6.
 - [x] **P05:** Workflow state, existing workspaces, storage, and snapshots integrated.
 - [x] **P06:** User guidance and optional metadata extraction prompt aligned.
 - [x] **P06a:** DE/CNA console progress, step timing, and batch summaries aligned.
+- [x] **P06b:** Existing-workspace relocation preserves valid caches and progress.
 - [ ] **P07:** Full regression suite, browser review, and Windows/Linux acceptance.
 
 ### P01: Contract and structural checking
@@ -724,6 +727,174 @@ reporter = "summary")`. Gitignored local evidence:
 `p06a_focused_results.rds`. The full suite and Linux execution were not rerun
 for this added step; P07 and section 6 final acceptance remain open.
 
+### P06b: Necessary fix for copied-workspace cache portability (2026-11-11)
+
+**Status: Implemented and verified on WSL Ubuntu (2026-11-11). Final full-suite
+and platform acceptance remain P07.**
+
+WSL Ubuntu testing exposed false stale status after copying the nearly finished
+`Tang2026_Colorectal` workspace from Windows into the Linux datasets directory.
+Creating a fresh workspace from only its `processed_data/` and running the full
+pipeline for one sample succeeded, as reported by the user. These are distinct
+journeys: fresh import generates new caches, whereas copying an existing
+workspace must preserve reusable caches and saved scientific progress.
+
+**Diagnostic findings:**
+
+- All **93 registered cache artifacts** exist and match their manifest byte
+  sizes, but all 93 modification timestamps differ from the recorded values.
+  `cache_check_available()` in
+  [04_utils_caching.R](../../util_scripts/04_utils_caching.R) requires exact
+  cache timestamp equality and therefore rejects every artifact at startup.
+- Manifest source dependencies retain absolute Windows paths beginning with
+  `C:/Users/p.berger/.../datasets/Tang2026_Colorectal/processed_data/`.
+  The same availability check tests those original paths directly; they do not
+  exist under WSL, although the corresponding files exist in the copied workspace.
+  Either this path failure or the timestamp mismatch can reject a cache.
+- For `CRC_N1`, the filtered-expression cache, source expression matrix, and
+  gene list were checked against their recorded MD5 checksums; all three match.
+  This verifies a false rejection of unchanged contents for that sample. It is
+  not a full integrity or scientific validation of all 93 artifacts.
+- `reconcile_pipeline_state_cache()` in
+  [07_utils_state.R](../../util_scripts/07_utils_state.R) marks rejected
+  clustering work stale and propagates that status downstream. The dataset
+  loader persists the reconciled state. All **15 samples** now have stale
+  clustering, recorded on 2026-11-11; the existing state backup still contains
+  pre-load completed clustering records.
+- Scientific dependency fingerprints already exclude source paths and mtimes
+  to allow relocation. The startup metadata screen contradicts that intended
+  behavior. Fresh imports avoid the failure by recording current Linux paths
+  and timestamps when their caches are generated.
+
+**Required implementation and recovery:**
+
+- [x] Resolve dataset-owned source dependencies relative to the current
+  workspace. Support legacy manifests containing absolute Windows or Linux
+  paths without depending on the old location remaining accessible. Do not
+  guess a source by basename or bind the copied workspace to another dataset.
+- [x] Treat changed cache timestamps as a reason to verify integrity, rather
+  than sufficient evidence of invalid contents. Verify recorded checksums
+  before accepting relocated artifacts; preserve structural and scientific
+  dependency validation when artifacts are consumed. Missing, changed,
+  untracked, or damaged caches must still invalidate affected work.
+- [x] Preserve the ordinary fast load path; keep relocation/integrity handling
+  within the existing cache subsystem. This does not expand the prepared-input
+  structural checker into a matrix audit, external-change monitor, or new
+  validation-cache subsystem.
+- [x] Provide a validated recovery path for workspaces already saved as stale
+  solely because of relocation. Preserve state evidence and user decisions;
+  do not blindly restore the backup or promote every stale stage to completed.
+  Account for genuine upstream changes, failures, and intentional archive/reopen
+  invalidation. Perform recovery checks on a disposable dataset copy first.
+- [x] Add regressions for copied/moved workspaces, legacy Windows paths on
+  Linux, changed timestamps with unchanged bytes, unavailable original paths,
+  and genuinely missing/changed/corrupt dependencies or artifacts. Verify that
+  valid saved statuses survive load and reload while genuine invalidation and
+  archived-workspace behavior remain correct.
+- [x] Repeat the Tang2026 copied-workspace journey on a disposable copy and
+  record integrity coverage, state preservation, and any remaining limitations.
+  Keep the user's successful fresh-import/single-sample report separate from
+  automated regression evidence and final platform acceptance.
+
+Likely touchpoints: `util_scripts/04_utils_caching.R`,
+`util_scripts/07_utils_state.R`, `app/server/dataset_server.R`, cache/state and
+dataset-transition tests, and `docs/CACHE_VALIDITY.md`.
+The initial diagnostic investigation changed no code or dataset files.
+
+**Implementation and verification record (2026-11-11):**
+
+- [x] Resolve dataset-owned source dependencies against the current workspace,
+  including legacy Windows and Linux paths. New records retain the originating
+  dataset root for arbitrary internal source paths; legacy processed-data paths
+  use their complete sample/file suffix rather than basename guesses. An
+  accessible original cannot mask missing or changed files in the copy.
+- [x] Require matching checksums when cache timestamps change or source paths
+  relocate. Persist checksum-verified location metadata once during normal
+  state reconciliation, under the manifest lock. Invalid records remain
+  rejected; unchanged metadata retains the fast path. Scientific dependency
+  fingerprints and completed statuses are not changed by this refresh.
+- [x] Fix an additional portability defect discovered during recovery:
+  `saveRDS(version = 2)` fingerprints included R's writer-version stamp and
+  gzip's platform header. New fingerprints use uncompressed XDR with a fixed
+  stamp, UTF-8 text, and a consistent dataframe representation that excludes
+  data.table bookkeeping. Verify historical fingerprints using the original
+  serialization profile when the current inputs reproduce them; preserve the
+  existing precision-repair contract for historical fingerprints as well.
+- [x] Add [explicit location recovery](../../scripts/recover_cache_location.R),
+  with a read-only preview and `--apply`. Validate current scientific inputs,
+  original cache checksums/structures, saved annotations and configuration,
+  and the preserved state checkpoint before restoring stages through base CNA.
+  For legacy cell hashes that cannot be reproduced, independently replay
+  deterministic filtering and require an exact match to the saved matrix and
+  clustered input rows. For legacy gene-position hashes, verify every used CNA
+  coordinate and selected gene/cell against the saved matrix; reference-cell
+  and upstream fingerprints must still match. Persist these verified bindings
+  so subsequent dependency validation and annotation-only rewrites work.
+- [x] Preserve both state generations and manifests in a dedicated
+  `cache-location-recovery-*` directory before applying recovery. Normal loads
+  never promote stale work. Genuine invalidation reasons, edited checkpoint
+  details, changed parameters/decisions, missing/corrupt inputs, or retired
+  storage block recovery. Later CNA decisions remain stale for review rather
+  than being silently promoted. Completed workspaces can also be migrated
+  without changing their statuses.
+- [x] Add [P06b regressions](../../tests/testthat/test-p06b-cache-location.R)
+  covering copied paths with spaces, both Windows slash conventions, missing
+  copied inputs despite an accessible original, same-size source/cache changes,
+  path traversal, metadata-only fast loading, one-time metadata refresh, reload
+  preservation, historical Windows hashes, writer/attribute normalization,
+  explicit recovery, genuine stale states, modified checkpoints, archives,
+  annotation rewrites, deterministic replay mismatch, CNA coordinates, and
+  reference changes. Focused cache/workflow/state/storage coverage passed
+  **738 assertions**, with **zero failures, errors, warnings, or skips** on
+  WSL Ubuntu / R 4.6.1.
+- [x] Compare the finalized canonical fingerprint of the same 21,236-row cell
+  table using the installed Windows R 4.5.3 and Linux R 4.6.1. Both produced
+  `1041aaf8e9519e1e8f60bbe54a31c894`. This is a real cross-runtime fingerprint
+  check, separate from complete Windows browser/platform acceptance.
+- [x] Preview Tang recovery, then apply it to a disposable workspace with copied
+  metadata and read-only-use links to scientific payloads. Repeat on the actual
+  `Tang2026_Colorectal` workspace only after that check passed. Both runs restored
+  **90 stage records across 15 samples**, exactly matching the pre-load checkpoint:
+  all clustering/resolution/DE/annotation stages, six explicit CNA omissions,
+  and nine completed base CNA computations. Deterministic filtering matched
+  for all 15 samples; CNA coordinates matched for all nine computed samples.
+  All **93 cache consumers** then passed full dependency validation, two reloads
+  preserved progress, and before/after MD5 checks confirmed all **452 scientific
+  files** (prepared inputs, cache payloads/backups, and results) were unchanged.
+  State generations and manifests were retained in the dataset's recovery
+  evidence directory. No PCA/UMAP rerun or scientific-output replacement occurred.
+
+Focused checks can be reproduced with:
+
+```r
+testthat::test_dir(
+  "tests/testthat",
+  filter = "^(p06b-cache-location|04_utils_caching|07_utils_state|f15-r01-cache-precision|f16-dataset-storage|c04-cna-recovery-status|05_utils_workflow.*|f01-characterization)$",
+  reporter = "summary"
+)
+```
+
+See [cache validity and recovery guidance](../CACHE_VALIDITY.md) for the recovery
+commands and limits. Gitignored evidence is in `artifacts/local-checks/`:
+`p06b_focused_checks.log`, `p06b_focused_results.rds`,
+`p06b_tang_preview.log`, `p06b_tang_copy_checks.log`,
+`p06b_tang_recovery_checks.log`, and `p06b_tang_recovery_results.rds`.
+
+Full-suite Linux acceptance remains open. Existing process-death recovery,
+snapshot rollback/Unicode, and Windows-only `utils::shortPathName()` test failures
+were reproduced against unchanged `HEAD` in an isolated checkout. Browser tests
+are skipped because no Chromium browser is configured. A broader selection
+excluding those three baseline-failing files passed **2,741 assertions**, with
+zero failures/errors/warnings and **13 browser skips**, before the final focused
+refinements. The final full-run evidence is recorded separately in
+`p06b_full_final_checks.log` and `p06b_full_final_results.rds`: **3,468 assertions
+passed**, **9 failed expectations and 3 errors**, **zero warnings**, and **13
+browser skips**. All failures are confined to the same three baseline-failing
+files (`test-c02-clustering-recovery.R`, `test-f17-review-snapshots.R`, and
+`test-standardize-general-template.R`). Do not interpret P06b completion as a
+passing full-suite or completed P07 platform acceptance.
+`git diff --check` passes.
+
 ## 5. Verification plan
 
 Use deterministic synthetic fixtures and temporary workspaces. Tests should
@@ -739,6 +910,7 @@ incorrect dataset or every external modification can be detected.
 | Immediate analysis | Create then open through the normal loader, choose clustering samples, and begin analysis without restarting R or manually repairing state/configuration. |
 | UI and optional files | Standardization/prompt panels and menu actions are absent; browser/path inputs are usable; no obsolete clipboard/navigation observer remains; startup/import work with the prompt/checklist/preparation template files absent. |
 | Dataset transitions | Switch between imported and existing workspaces, reload, and fail a load without carrying metadata or selections across datasets. Preserve unsaved-annotation guards and archived-state behavior. |
+| Workspace relocation | Copy/move an analyzed workspace, including Windows-to-WSL legacy paths and changed timestamps. Verify unchanged caches retain progress after integrity checks; genuinely missing/changed/corrupt files still invalidate affected work. Cover recovery from previously persisted false stale status (P06b). |
 | Analysis regression | On a valid small fixture, run clustering, resolution, DE, annotation save/reload, and CNA finalize or explicit omission. Saving annotations does not incorrectly invalidate clustering. |
 | Console computation progress | DE/CNA batch and single-sample stages show real step/sample elapsed time; cache reuse, skips, failures and batch counts are accurate. Verify callback compatibility and no false success on interruption/state-save failure. |
 | Snapshots/storage | An imported finished workspace without preparation files or YAML can create folder/ZIP snapshots containing unchanged prepared matrices/genes, current cells, and authoritative CSV; manifests verify. Existing optional preparation provenance can be retained; cleanup/reopen and required-damage guards remain correct. |
@@ -789,6 +961,10 @@ be recorded separately, with unresolved items explicitly left open.
   safeguards, cleanup/reopen, and interrupted-run recovery retain their behavior.
 - [ ] Existing usable workspaces load without destructive migration or changes
   to their scripts, notes, raw files, or saved scientific results.
+- [x] P06b is implemented and verified: copying or moving an existing workspace
+  across Windows/Linux does not mark unchanged caches and completed downstream
+  work stale solely because paths or timestamps changed. Previously persisted
+  false stale status has a validated recovery path; genuine invalidation remains.
 - [ ] Review snapshots work without sample YAML, scripts, or checklists and
   retain complete processed data, authoritative CSV, results, summaries, and
   integrity verification before and after cache cleanup.

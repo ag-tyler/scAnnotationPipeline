@@ -54,14 +54,56 @@ selection changes. Reset Sample CNA uses the same manifest-aware invalidation.
 Unchanged decisions do not invalidate reusable artifacts.
 
 Dataset loading uses a fast metadata reconciliation against manifest records,
-cache file sizes/modification times, and recorded source-file sizes. It does not
-read and hash every large cache. Source changes with unchanged size are checked
-on first use. Full integrity, structure, and dependency validation is
+cache file sizes/modification times, and recorded source-file sizes. Unchanged
+metadata does not require hashing every large cache. A changed cache timestamp
+requires a matching checksum rather than automatically invalidating work.
+Workspace-owned source paths resolve against the current dataset, including
+legacy Windows `processed_data/<sample>/<file>` paths; relocated sources must
+match their recorded checksums. An accessible original workspace cannot mask
+changed or missing inputs in the copied workspace. Verified location metadata
+is refreshed under the manifest lock, preserving the fast path on later loads;
+invalid records remain rejected. Other source changes with
+unchanged size are checked on first use. Full integrity, structure, and dependency validation is
 performed when an artifact is consumed; validated checksums can be reused while
 file metadata remains unchanged. Missing, untracked, changed, or invalid caches
 make the affected completed work and its completed downstream steps `stale`.
 
 ## Recovery and migration
+
+New dependency fingerprints hash uncompressed serialization with a fixed writer
+stamp, UTF-8 text, and consistent dataframe representation. They exclude R's
+writer-version stamp, gzip's platform header, and data.table's session
+bookkeeping. Legacy fingerprints remain verifiable against their original
+serialization profile when the current scientific inputs reproduce them.
+
+For an existing workspace copied from Windows or another Linux location, use
+the following from the repository root with the app stopped:
+
+```sh
+Rscript scripts/recover_cache_location.R Tang2026_Colorectal
+Rscript scripts/recover_cache_location.R Tang2026_Colorectal --apply
+```
+
+The first command previews changes without modifying the workspace. Recovery
+verifies every registered cache's size/checksum and recorded source-file
+contents, current filtering/clustering parameters, saved annotations, and CNA
+configuration. If an old cell-input hash cannot be reproduced, it independently
+replays deterministic filtering and requires exact equality with the saved
+expression matrix and clustered input rows. For old gene-position hashes it
+checks every coordinate actually used by CNA, selected genes, and cell
+membership against the saved matrix; reference identities and upstream
+fingerprints must still validate. These explicit checks can read large matrices;
+ordinary loading does not perform this replay.
+
+Apply preserves both state generations and manifests in a
+`cache-location-recovery-*` directory before updating metadata. Verified legacy
+bindings survive annotation-only cache rewrites. The tool can migrate completed
+workspaces without changing their statuses, or restore stages through base CNA
+only when the preserved checkpoint proves they became stale solely from the
+old startup cache screen. Genuine invalidations, changed decisions, retired
+storage, or unverifiable inputs block recovery. Later CNA decisions remain
+stale for review. Scientific input files, cache payloads, and result files are
+not replaced, and normal loads never automatically promote stale stages.
 
 If the current artifact is damaged but its recorded previous version is valid,
 the previous version is restored. If the manifest is damaged, its previous

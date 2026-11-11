@@ -290,6 +290,30 @@ save_cache_manifest_atomic <- function(
 }
 
 
+# Resolve workspace-owned sources against this copy, even if the old workspace
+# still exists. Older manifests lack dataset_root; only their unambiguous
+# processed_data/<sample>/<file> layout can be relocated safely.
+.cache_source_path <- function(source, dataset_dir_path, dataset_root = NULL) {
+  path <- gsub("\\", "/", source$path, fixed = TRUE)
+  if (length(path) != 1L || is.na(path)) return(NULL)
+  relative <- NULL
+  if (!is.null(dataset_root)) {
+    root <- sub("/+$", "", gsub("\\", "/", dataset_root, fixed = TRUE))
+    if (startsWith(path, paste0(root, "/"))) {
+      relative <- substring(path, nchar(root) + 2L)
+    }
+  }
+  if (is.null(relative) && grepl("/processed_data/[^/]+/[^/]+$", path)) {
+    relative <- sub("^.*(/processed_data/[^/]+/[^/]+)$", "\\1", path)
+    relative <- substring(relative, 2L)
+  }
+  if (is.null(relative)) return(path)
+  parts <- strsplit(relative, "/", fixed = TRUE)[[1]]
+  if (any(parts %in% c("", ".", "..")) || grepl(":", relative, fixed = TRUE)) return(NULL)
+  file.path(dataset_dir_path, relative)
+}
+
+
 .cache_file_fingerprint <- function(path) {
   if (!file.exists(path)) return(NULL)
   normalized_path <- normalizePath(path, winslash = "/", mustWork = TRUE)
@@ -368,9 +392,21 @@ cache_clear_fingerprint_index <- function() {
         record$dependencies$files[[name]]$size_bytes <- actual_size
       }
       if (!identical(record$dependencies, old_dependencies)) {
-        repaired_fingerprint <- cache_dependency_fingerprint(record$dependencies)
+        fingerprint <- cache_dependency_fingerprint
+        implementation <- switch(record$artifact_type,
+          filtered_expression = "filter-v1", clustered_cells = "pca-umap-louvain-v1",
+          cna_matrix = "cna-matrix-v1", cna_hclust = "ward-d2-v1",
+          cna_signal_correlation = "cna-signal-correlation-v1", NULL)
+        if (is.null(record$fingerprint_format) && !is.null(implementation) &&
+            !is.null(record$dependencies$values$implementation$hash)) {
+          profile <- .cache_legacy_profile(implementation, record$dependencies$values$implementation$hash)
+          if (!identical(profile, FALSE)) fingerprint <- function(dependencies) {
+            .cache_legacy_hash(.cache_scientific_dependencies(dependencies), profile)
+          }
+        }
+        repaired_fingerprint <- fingerprint(record$dependencies)
         if (!(record$dependency_fingerprint %in% c(
-          repaired_fingerprint, cache_dependency_fingerprint(old_dependencies)
+          repaired_fingerprint, fingerprint(old_dependencies)
         ))) {
           stop("Dependency fingerprint cannot be explained by legacy YAML rounding.")
         }
@@ -416,11 +452,207 @@ repair_cache_manifest_precision <- function(dataset_dir_path, dry_run = TRUE) {
 }
 
 
+# Explicit metadata refresh for moved workspaces. Every artifact and relocated
+# source must match its original size and checksum; scientific fingerprints
+# remain untouched. This is also used before recovering saved false staleness.
+.cache_manifest_location_plan <- function(dataset_dir_path) {
+  manifest <- load_cache_manifest(dataset_dir_path, recover = FALSE)
+  reports <- list()
+  for (filename in names(manifest$artifacts)) {
+    record <- original <- manifest$artifacts[[filename]]
+    problem <- tryCatch({
+      artifact <- file.path(dataset_dir_path, "cache", filename)
+      if (!.cache_record_matches(record, artifact)) stop("Artifact size or checksum mismatch.")
+      for (name in names(record$dependencies$files)) {
+        source <- record$dependencies$files[[name]]
+        if (is.null(source$path)) next
+        path <- .cache_source_path(source, dataset_dir_path, record$dataset_root)
+        if (is.null(path) || !file.exists(path) ||
+            !identical(as.numeric(file.info(path)$size), as.numeric(source$size_bytes)) ||
+            !identical(.cache_file_fingerprint(path), source$checksum)) {
+          stop("Source is missing or its size/checksum differs: ", name, ".")
+        }
+        source$path <- normalizePath(path, winslash = "/", mustWork = TRUE)
+        source$modified_at <- .cache_mtime_token(file.info(path)$mtime)
+        record$dependencies$files[[name]] <- source
+      }
+      record$modified_at <- .cache_mtime_token(file.info(artifact)$mtime)
+      record$dataset_root <- normalizePath(dataset_dir_path, winslash = "/", mustWork = TRUE)
+      NULL
+    }, error = conditionMessage)
+    reports[[filename]] <- data.frame(artifact = filename,
+      action = if (!is.null(problem)) "blocked" else if (identical(record, original)) "unchanged" else "repair",
+      reason = if (is.null(problem)) "" else problem)
+    if (is.null(problem)) manifest$artifacts[[filename]] <- record
+  }
+  report <- if (length(reports)) do.call(rbind, unname(reports)) else {
+    data.frame(artifact = character(), action = character(), reason = character())
+  }
+  list(manifest = manifest, report = report)
+}
+
+
+repair_cache_manifest_location <- function(dataset_dir_path, dry_run = TRUE) {
+  paths <- cache_manifest_paths(dataset_dir_path)
+  if (!isTRUE(dry_run)) {
+    acquire_cache_manifest_lock(paths$lock)
+    on.exit(unlink(paths$lock, recursive = TRUE, force = TRUE), add = TRUE)
+  }
+  plan <- .cache_manifest_location_plan(dataset_dir_path)
+  if (!isTRUE(dry_run)) {
+    if (any(plan$report$action == "blocked")) {
+      stop("Location repair blocked; inspect the dry-run report. No manifest was changed.", call. = FALSE)
+    }
+    if (any(plan$report$action == "repair")) {
+      .save_cache_manifest_unlocked(plan$manifest, dataset_dir_path)
+    }
+  }
+  plan$report
+}
+
+
+# Persist checksum-proven location metadata once on load, so later sessions
+# retain the metadata-only fast path. Invalid entries remain untouched and are
+# still rejected by normal state reconciliation; no scientific hashes change.
+reconcile_cache_manifest_location <- function(dataset_dir_path, manifest) {
+  if (!dir.exists(dataset_dir_path) || !length(manifest$artifacts)) return(manifest)
+  root <- normalizePath(dataset_dir_path, winslash = "/", mustWork = TRUE)
+  changed <- any(vapply(names(manifest$artifacts), function(filename) {
+    record <- manifest$artifacts[[filename]]
+    if (!is.null(record$dataset_root) && !identical(record$dataset_root, root)) return(TRUE)
+    path <- file.path(dataset_dir_path, "cache", filename)
+    if (file.exists(path) && !is.null(record$modified_at) &&
+        !identical(.cache_mtime_token(file.info(path)$mtime), record$modified_at)) return(TRUE)
+    any(vapply(record$dependencies$files, function(source) {
+      if (is.null(source$path)) return(FALSE)
+      path <- .cache_source_path(source, dataset_dir_path, record$dataset_root)
+      !is.null(path) && file.exists(path) &&
+        !identical(normalizePath(path, winslash = "/"), source$path)
+    }, logical(1)))
+  }, logical(1)))
+  if (!changed) return(manifest)
+  paths <- cache_manifest_paths(dataset_dir_path)
+  locked <- FALSE
+  on.exit(if (locked) unlink(paths$lock, recursive = TRUE, force = TRUE), add = TRUE)
+  tryCatch({
+    acquire_cache_manifest_lock(paths$lock)
+    locked <- TRUE
+    plan <- .cache_manifest_location_plan(dataset_dir_path)
+    if (any(plan$report$action == "repair")) {
+      .save_cache_manifest_unlocked(plan$manifest, dataset_dir_path)
+    } else load_cache_manifest(dataset_dir_path, recover = FALSE)
+  }, error = function(error) manifest)
+}
+
+
 cache_hash_value <- function(value) {
-  path <- tempfile(fileext = ".rds")
+  # Serialization v2 is portable, but its writer-version stamp and gzip's OS
+  # header are not scientific inputs. Hash uncompressed XDR with a fixed stamp.
+  bytes <- serialize(.cache_canonical_value(value), NULL, version = 2)
+  bytes[7:10] <- as.raw(0)
+  path <- tempfile()
   on.exit(if (file.exists(path)) file.remove(path), add = TRUE)
-  saveRDS(value, path, version = 2)
+  writeBin(bytes, path)
   .cache_md5(path)
+}
+
+
+.cache_canonical_value <- function(value) {
+  if (is.data.frame(value)) {
+    # data.table bookkeeping and attribute insertion order vary with the
+    # session/platform. Hash columns, names, and row identity in a fixed form.
+    columns <- lapply(seq_along(value), function(i) .cache_canonical_value(value[[i]]))
+    attributes(columns) <- list(names = enc2utf8(names(value)),
+      row.names = enc2utf8(rownames(value)), class = "data.frame")
+    return(columns)
+  }
+  if (is.list(value)) {
+    for (i in seq_along(value)) value[i] <- list(.cache_canonical_value(value[[i]]))
+  }
+  if (is.character(value)) {
+    converted <- enc2utf8(value)
+    attributes(converted) <- attributes(value)
+    value <- converted
+  }
+  value
+}
+
+
+.cache_legacy_hash <- function(value, profile) {
+  bytes <- serialize(value, NULL, version = 2)
+  bytes[7:10] <- as.raw(profile[1:4])
+  path <- tempfile()
+  on.exit(unlink(path), add = TRUE)
+  connection <- gzfile(path, "wb")
+  tryCatch(writeBin(bytes, connection), finally = close(connection))
+  compressed <- readBin(path, "raw", n = file.info(path)$size)
+  compressed[10] <- as.raw(profile[[5]])
+  writeBin(compressed, path)
+  .cache_md5(path)
+}
+
+
+.cache_legacy_profile_index <- new.env(parent = emptyenv())
+.cache_legacy_profiles <- function() {
+  grid <- expand.grid(patch = 0:9, minor = 0:9, os = c(3L, 6L))
+  lapply(seq_len(nrow(grid)), function(i) c(0L, 4L, grid$minor[[i]], grid$patch[[i]], grid$os[[i]]))
+}
+
+
+.cache_legacy_profile <- function(implementation, expected_hash) {
+  key <- paste(implementation, expected_hash, sep = "/")
+  profile <- .cache_legacy_profile_index[[key]]
+  if (is.null(profile)) {
+    profiles <- .cache_legacy_profiles()
+    matched <- vapply(profiles, function(p) identical(
+      .cache_legacy_hash(implementation, p), expected_hash), logical(1))
+    profile <- if (any(matched)) profiles[[which(matched)[[1]]]] else FALSE
+    .cache_legacy_profile_index[[key]] <- profile
+  }
+  profile
+}
+
+
+.cache_dependency_matches <- function(record, dependencies) {
+  if (is.null(dependencies)) return(TRUE)
+  if (identical(cache_dependency_fingerprint(dependencies), record$dependency_fingerprint)) return(TRUE)
+  if (identical(record$fingerprint_format, "xdr-v2-portable-1")) return(FALSE)
+  values <- attr(dependencies, "cache_values")
+  # Legacy manifests used saveRDS(version=2), including R's writer version and
+  # gzip platform byte. Recreate those bytes from CURRENT inputs, never adopt
+  # hashes from the manifest as proof of current values.
+  expected_implementation <- record$dependencies$values$implementation$hash
+  implementation <- values$implementation
+  profiles <- .cache_legacy_profiles()
+  if (!is.null(expected_implementation) && !is.null(implementation)) {
+    profile <- .cache_legacy_profile(implementation, expected_implementation)
+    if (identical(profile, FALSE)) return(FALSE)
+    profiles <- list(profile)
+  } else if (length(dependencies$values)) {
+    return(FALSE)
+  }
+  scientific <- .cache_scientific_dependencies(dependencies)
+  any(vapply(profiles, function(profile) {
+    candidate <- scientific
+    candidate$values <- lapply(values, function(value) list(hash = .cache_legacy_hash(value, profile)))
+    proof <- record$verified_legacy_values$cells_input
+    if (!is.null(values$cells_input) &&
+        identical(proof$method, "filtered-expression-replay-v1") &&
+        identical(proof$canonical_hash, cache_hash_value(values$cells_input)) &&
+        identical(proof$legacy_hash, record$dependencies$values$cells_input$hash)) {
+      candidate$values$cells_input$hash <- proof$legacy_hash
+    }
+    proof <- record$verified_legacy_values$gene_positions
+    if (!is.null(values$gene_positions) &&
+        identical(proof$method, "cna-coordinate-check-v1") &&
+        identical(proof$canonical_hash, cache_hash_value(values$gene_positions)) &&
+        identical(proof$legacy_hash, record$dependencies$values$gene_positions$hash)) {
+      candidate$values$gene_positions$hash <- proof$legacy_hash
+    }
+    # Preserve empty-list representation and order for schema-v1 fingerprints.
+    if (!length(values)) candidate$values <- scientific$values
+    identical(.cache_legacy_hash(candidate, profile), record$dependency_fingerprint)
+  }, logical(1)))
 }
 
 
@@ -466,7 +698,11 @@ cache_dependency_spec <- function(
       )
     })
   }
-  list(files = file_records, values = value_records, artifacts = artifact_records)
+  result <- list(files = file_records, values = value_records, artifacts = artifact_records)
+  # Transient inputs are needed only to prove legacy hashes on first use; they
+  # are never written into a manifest or included in scientific fingerprints.
+  if (length(values)) attr(result, "cache_values") <- values
+  result
 }
 
 
@@ -476,14 +712,20 @@ cache_dependency_fingerprint <- function(dependencies) {
   # Path and mtime support the fast metadata screen but are not scientific
   # dependencies. Excluding them preserves fingerprints from schema-v1 records
   # and avoids invalidating content merely because a dataset was moved.
+  cache_hash_value(.cache_scientific_dependencies(dependencies))
+}
+
+
+.cache_scientific_dependencies <- function(dependencies) {
   fingerprint_dependencies <- dependencies
+  attr(fingerprint_dependencies, "cache_values") <- NULL
   if (is.list(fingerprint_dependencies$files)) {
     fingerprint_dependencies$files <- lapply(
       fingerprint_dependencies$files,
       function(record) record[setdiff(names(record), c("path", "modified_at"))]
     )
   }
-  cache_hash_value(fingerprint_dependencies)
+  fingerprint_dependencies
 }
 
 
@@ -591,10 +833,7 @@ validate_cache_object <- function(object, artifact_type = "generic", filename = 
   if (is.null(record) || !file.exists(path)) return(FALSE)
   checksum_matches <- identical(.cache_md5(path), as.character(record$checksum))
   size_matches <- identical(as.numeric(file.info(path)$size), as.numeric(record$size_bytes))
-  dependency_matches <- is.null(dependencies) || identical(
-    cache_dependency_fingerprint(dependencies),
-    record$dependency_fingerprint
-  )
+  dependency_matches <- .cache_dependency_matches(record, dependencies)
   checksum_matches && size_matches && dependency_matches
 }
 
@@ -622,6 +861,7 @@ cache_save_data <- function(
   old_record <- manifest$artifacts[[data_file_name]]
   inherit_dependencies <- is.null(dependencies) && !is.null(old_record)
   if (inherit_dependencies) dependencies <- old_record$dependencies
+  attr(dependencies, "cache_values") <- NULL
   if (is.null(producer) && !is.null(old_record)) producer <- old_record$producer
 
   temporary <- tempfile(pattern = paste0(".", data_file_name, "-"), tmpdir = paths$cache_dir, fileext = ".tmp")
@@ -651,6 +891,11 @@ cache_save_data <- function(
     checksum = .cache_md5(paths$primary),
     size_bytes = unname(info$size),
     modified_at = .cache_mtime_token(info$mtime),
+    dataset_root = if (inherit_dependencies && !is.null(old_record$dataset_root)) {
+      old_record$dataset_root
+    } else normalizePath(dataset_dir_path, winslash = "/", mustWork = TRUE),
+    fingerprint_format = if (inherit_dependencies) old_record$fingerprint_format else "xdr-v2-portable-1",
+    verified_legacy_values = if (inherit_dependencies) old_record$verified_legacy_values else NULL,
     dependency_fingerprint = if (inherit_dependencies) {
       old_record$dependency_fingerprint
     } else cache_dependency_fingerprint(dependencies),
@@ -792,8 +1037,9 @@ cache_check_exists <- function(data_file_name, dataset_dir_path) {
 }
 
 
-# Fast startup/reconciliation screen. This intentionally does not checksum or
-# deserialize the artifact. Scientific consumers must still call
+# Fast startup/reconciliation screen. Metadata changes require a checksum;
+# unchanged metadata avoids hashing. This never deserializes artifacts.
+# Scientific consumers must still call
 # cache_check_valid()/cache_load_data(), with dependencies where applicable.
 cache_check_available <- function(
   data_file_name,
@@ -813,6 +1059,9 @@ cache_check_available <- function(
       .cache_mtime_token(info$mtime),
       as.character(record$modified_at)
     )
+    if (size_matches && !mtime_matches) {
+      mtime_matches <- identical(.cache_file_fingerprint(paths$primary), record$checksum)
+    }
     dependency_files <- record$dependencies$files
     source_metadata_matches <- is.null(dependency_files) || all(vapply(
       dependency_files,
@@ -820,8 +1069,11 @@ cache_check_available <- function(
         # Legacy dependency records do not carry their source path/mtime. They
         # remain available here and receive full dependency validation on use.
         if (is.null(source$path) || is.null(source$modified_at)) return(TRUE)
-        if (!file.exists(source$path)) return(FALSE)
-        source_info <- file.info(source$path)
+        path <- .cache_source_path(source, dataset_dir_path, record$dataset_root)
+        if (is.null(path) || !file.exists(path)) return(FALSE)
+        source_info <- file.info(path)
+        relocated <- !identical(normalizePath(path, winslash = "/"), source$path)
+        if (relocated && !identical(.cache_file_fingerprint(path), source$checksum)) return(FALSE)
         # A changed mtime with unchanged size is inconclusive. Keep the step
         # available and let first-use dependency validation rehash the source.
         identical(as.numeric(source_info$size), as.numeric(source$size_bytes))
