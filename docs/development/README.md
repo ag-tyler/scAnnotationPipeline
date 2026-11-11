@@ -5,6 +5,10 @@ records live here. Historical findings remain separate from implementation
 verification and final acceptance.
 
 - [Original development plan](scAnnotationPipeline_Development_Plan.md)
+- [Result-preserving computation performance plan](RESULT_PRESERVING_PERFORMANCE_PLAN.md) —
+  E00 comparison harness and Windows baseline evidence; experimental branch plan
+  for graph/cache reuse, sparse PCA, CNA intermediates and DE/subclone work.
+  Each optimization requires scientific and performance evidence.
 - [Prepared-data import and workflow entry plan](PREPARED_DATA_IMPORT_PLAN.md) —
   current workflow direction; supersedes earlier mandatory template, sample-YAML,
   checklist, and prompt-screen onboarding requirements in historical plans.
