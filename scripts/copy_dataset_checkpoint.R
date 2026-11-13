@@ -215,6 +215,7 @@ copy_dataset_checkpoint <- function(source_dir, output_dir, app_dir = ".", origi
       ". For a relocated workspace, supply original_source_dir.")
   }
   rebase_record <- function(record, filename, current = TRUE, backup_artifact = FALSE) {
+    if (!is.null(record$dataset_root)) record$dataset_root <- output_dir
     original_fingerprint <- record$dependency_fingerprint
     if (!is.null(original_fingerprint) && !identical(
       helpers$cache_dependency_fingerprint(record$dependencies), original_fingerprint)) {
@@ -299,6 +300,9 @@ copy_dataset_checkpoint <- function(source_dir, output_dir, app_dir = ".", origi
     record
   }
   validation_manifest$artifacts <- lapply(manifest$artifacts, stage_paths)
+  # Validation runs in a temporary directory. Keep automatic relocation from
+  # persisting staging paths over the final paths already verified above.
+  helpers$reconcile_cache_manifest_location <- function(dataset_dir_path, manifest) manifest
   helpers$cache_check_available <- local({
     original <- helpers$cache_check_available
     function(data_file_name, dataset_dir_path, manifest = NULL) {

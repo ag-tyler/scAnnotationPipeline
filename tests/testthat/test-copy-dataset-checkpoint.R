@@ -114,6 +114,7 @@ test_that("checkpoint copies preserve caches, recovery metadata, notes and scien
   expect_true(file.exists(file.path(output, "checkpoint_copy.yaml")))
   manifest <- load_cache_manifest(output)
   for (filename in names(manifest$artifacts)) {
+    expect_identical(manifest$artifacts[[filename]]$dataset_root, normalizePath(output, winslash = "/"))
     expect_true(cache_check_available(filename, output))
     expect_true(cache_check_valid(filename, output))
     dependency <- manifest$artifacts[[filename]]$dependencies$files$expression
