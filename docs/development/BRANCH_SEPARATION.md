@@ -10,7 +10,7 @@ in both prepared versions. The catalog remains a historical inventory.
 | Branch | Purpose |
 | --- | --- |
 | `main` | Existing default branch. It has not been changed by this preparation. After review, the app-focused candidate can be merged here. |
-| `chore/app-development-separation` | App-focused candidate based on `dd6d7e3`; contains the application, tests, operational documentation and supported user tools. |
+| `chore/app-development-separation` | App-focused candidate `50a91af`, based on `dd6d7e3`; contains the application, tests, operational documentation and supported user tools. |
 | `development` | Full application snapshot plus development tools, current/future plans, historical records, catalog and legacy/reference assets. The app source and ordinary regression suite match the candidate. |
 | `chore/repository-cleanup-audit` | Preserved standalone pre-cleanup catalog commit. |
 | `perf/result-preserving-computation` | Existing archived experiment at `a62b241`; not merged or resumed. |
@@ -83,6 +83,47 @@ or validate those deferred optimizations.
 
 ## Verification record
 
-Preparation checks and their actual outcomes are recorded here after the
-candidate has been assembled and tested. A prepared branch is not an accepted
-release or a completed human/Linux scientific review.
+The standalone catalog commit `4e357cc` was pushed to
+`origin/chore/repository-cleanup-audit`. The app-focused candidate is `50a91af`.
+The two prepared branches preserve the local `main` baseline at `dd6d7e3`;
+preparation does not update local or remote `main`.
+
+| Check | Actual result |
+| --- | --- |
+| Shared runtime and ordinary tests | Exact Git comparison between candidate and development passed for `app.R`, `app/`, `util_scripts/`, `R/`, configuration/dependency metadata, all three retained scripts, both retained templates, `tests/testthat.R`, and all `tests/testthat/` files. Runtime sources and user tools also match pre-separation `main`. |
+| Asset retention | All 20 tracked files removed relative to pre-separation `main` exist on `development`. Catalog/record/development-test files are additional development-only assets. |
+| App tree | 130 tracked files versus 149 on pre-separation `main`; Git blob content totals 2,003,568 versus 3,742,210 bytes. This measures the checked-out tracked tree; Git history has not been pruned. |
+| Static checks | All 110 app-candidate R files parsed; all seven configured local biological resources remained present. Seven app Markdown documents passed 57 local link/heading checks; development-branch link targets were verified in the development Git tree. |
+| Development-tool contract | `testthat::test_file("tests/development/test-profile-interactions.R")`: 6 passed, zero failures/errors/warnings/skips. |
+| Complete app suite | **4,434 passed, 2 failed out of 4,436 expectations**, zero errors/warnings/skips; 808.9 seconds. Includes browser/layout, scientific/workflow, snapshot/storage, cache portability and reusable-tool tests. |
+
+The full suite ran on Windows with R 4.5.3 and headless Microsoft Edge
+157.0.4341.46, using the existing Windows screenshot-worker locale setup.
+`UPDATE_UI_BASELINES` was false; the optional greater-than-4-GiB test was not
+enabled. An initial vanilla R launch needed an explicit installed Edge path,
+and browser process pipes required running the harness outside the sandbox.
+Those environment issues were resolved before the complete run above.
+
+The two failures are screenshot comparisons in the baseline navigation journey:
+`02-start-menu.png` and `06-clustering-sample-selection.png`. Visual inspection
+of the Start Menu comparison shows cache size **13.3 KB** in the current app
+versus **12.4 KB** in the stored baseline. No runtime implementation, image,
+comparison threshold, or scientific fixture was changed for the separation.
+
+A control replay of the same original browser journey against an untouched Git
+archive of `main` at `dd6d7e3` reproduced **the same two screenshot failures**:
+37 passed out of 39 expectations, with zero errors/warnings/skips. Both screenshot
+comparison scores also matched the candidate's results. The setup functions,
+journey, image baselines and thresholds were retained unchanged; other browser
+journeys were omitted from this focused control. This establishes existing
+baseline drift on `main`, rather than a difference introduced by separation.
+
+Local runners, full logs, result summaries and the two captured candidate
+screenshots are retained in ignored `artifacts/local-checks/branch-separation/`.
+The control archive contains only tracked main files, and all browser datasets/
+resources are generated synthetic fixtures. No local scientific workspace or
+ignored resource was deleted or published.
+
+This preparation is **not a green release gate**. Resolving/reviewing screenshot
+baseline drift is separate from approving the branch separation. Existing human
+and Linux scientific acceptance items remain open.
