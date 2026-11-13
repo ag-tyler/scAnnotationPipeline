@@ -2,6 +2,12 @@
 
 A Shiny application for clustering, differential-expression analysis, manual cell-type annotation, and copy-number alteration (CNA) analysis of prepared single-cell RNA-seq cancer datasets.
 
+This is the **development** branch. It retains development tools, historical
+records, current plans, and future proposals alongside the application. Use
+[`main`](https://github.com/ag-tyler/scAnnotationPipeline/tree/main) for the
+app-focused version. See the [branch separation record](docs/development/BRANCH_SEPARATION.md)
+and [development index](docs/development/README.md) for scope and workflow.
+
 The pipeline guides a dataset through:
 
 1. **Import prepared data** – copy an externally prepared directory into an independent workspace and open it immediately.

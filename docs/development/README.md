@@ -4,6 +4,8 @@ Implementation plans, manual review/replay evidence and release acceptance
 records live here. Historical findings remain separate from implementation
 verification and final acceptance.
 
+- [Branch separation and maintenance workflow](BRANCH_SEPARATION.md) —
+  app-focused candidate, preserved development assets, and validation evidence.
 - [Repository file catalog and cleanup assessment](REPOSITORY_FILE_CATALOG.md) —
   pre-cleanup usage evidence, file inventory, and cleanup candidates; excludes
   `datasets/`.
@@ -23,7 +25,17 @@ verification and final acceptance.
 
 User-facing guides and runtime references remain in the parent directory:
 [User Guide](../USER_GUIDE.md),
+[Testing](../TESTING.md),
 [Standardization Checklist](../STANDARDIZATION_CHECKLIST.md),
 [Pipeline State](../PIPELINE_STATE.md),
 [Pipeline Logging](../PIPELINE_LOGGING.md) and
 [Cache Validity](../CACHE_VALIDITY.md).
+
+The catalog is a dated baseline, not a live manifest. The subsequent cache
+portability work and branch-separation changes are described in the import plan
+and separation record. Run app regression tests with `Rscript tests/testthat.R`.
+The profiler-specific contract is maintained separately on this branch:
+
+```r
+testthat::test_file("tests/development/test-profile-interactions.R")
+```

@@ -205,7 +205,12 @@ resources/
 
 Expected filenames are configured under `resource_files` in `general_config.yaml`.
 
-Only `metadata_extract_prompt.txt` is currently intended to be tracked with the repository. The remaining resource files must be obtained/generated separately and placed into `resources/`.
+The seven configured biological inputs below must be obtained/generated
+separately and placed into `resources/`. The metadata prompt is tracked. This
+development branch also retains `canonical_markers.csv`,
+`cancer_type_markers.csv`, and `markers_ss.csv` as older reference tables; they
+are not the configured app inputs. See the
+[branch separation record](development/BRANCH_SEPARATION.md).
 
 Biological resource files are validated at app startup. Missing required resources
 stop startup with an explicit list of paths. The metadata extraction prompt is
