@@ -308,3 +308,30 @@ retirement; prior screenshot findings remain as recorded. Local evidence is in
 ignored `artifacts/local-checks/retire-legacy-preparation-templates/`. No dataset,
 configured biological resource or ignored validation artifact was removed or
 published.
+
+## Local housekeeping and compatibility review (2026-11-13)
+
+The user approved deleting three ignored local files from the shared workspace:
+
+- `Rplots.pdf`: automatically generated R graphics output, 3,448 bytes.
+- `tests/testthat/Rplots.pdf`: test-generated graphics output, 3,667 bytes.
+- `.vscode/launch.json`: generic Node launcher scaffold, 506 bytes; it did not
+  launch this R application.
+
+The three ordinary files were confirmed ignored and inside the workspace before
+deletion, and absent afterward. Only these files were removed; their combined
+logical size was 7,621 bytes. R can regenerate the PDFs during ordinary plotting.
+Ignored files belong to this workspace independently of the selected branch;
+their deletion is not represented by a Git commit or propagated to other clones.
+
+The documentation record is maintained on `chore/local-housekeeping`, based on
+`development` at `e432d8a`, and fast-forwarded into `development`. Other branch
+tips are unchanged. Runtime code, tests, configuration, resources and datasets
+were not edited. No regression tests were run for this local/documentation-only
+housekeeping; file-state and Git diff checks provide verification.
+
+Compatibility and recovery implementations were reviewed and retained. Current
+workspace loading still uses legacy-state inference; configured marker inputs
+still use the supported `gene` column alias; precision/location recovery remains
+documented and covered by regressions. Age alone does not establish that these
+paths are unnecessary. No recovery tool was executed against a dataset.
