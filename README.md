@@ -58,7 +58,7 @@ cd scAnnotationPipeline
 
 Add the required untracked biological resource files to the existing `resources/` directory. See the [Resource Files](docs/USER_GUIDE.md#resource-files) section of the User Guide for the expected files and formats.
 
-The standard directory layout is:
+The following representative directory layout shows the main folders and selected files:
 
 ```text
 scAnnotationPipeline/
@@ -68,7 +68,7 @@ scAnnotationPipeline/
 ├── general_config.yaml
 ├── DESCRIPTION
 ├── README.md
-├── docs/
+├── docs/                    # User guides, testing and workflow references
 │   ├── USER_GUIDE.md
 │   ├── TESTING.md
 │   └── development/          # Plans, manual replays and release acceptance
