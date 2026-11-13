@@ -5,6 +5,9 @@ records live here. Historical findings remain separate from implementation
 verification and final acceptance.
 
 - [Original development plan](scAnnotationPipeline_Development_Plan.md)
+- [Deferred computation performance plan](RESULT_PRESERVING_PERFORMANCE_PLAN.md) —
+  proposed result-preserving optimizations and historical E00 evidence; work
+  deferred 2026-11-13, with experimental code retained on its archived branch.
 - [Prepared-data import and workflow entry plan](PREPARED_DATA_IMPORT_PLAN.md) —
   current workflow direction; supersedes earlier mandatory template, sample-YAML,
   checklist, and prompt-screen onboarding requirements in historical plans.
