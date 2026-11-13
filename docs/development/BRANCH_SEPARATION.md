@@ -127,3 +127,39 @@ ignored resource was deleted or published.
 This preparation is **not a green release gate**. Resolving/reviewing screenshot
 baseline drift is separate from approving the branch separation. Existing human
 and Linux scientific acceptance items remain open.
+
+## Obsolete-content cleanup (2026-11-13)
+
+The first cleanup pass was approved before editing and limited to four files:
+
+- `tests/testthat/helper-source.R`: removed the repeated utility-loading
+  explanation while retaining the package-loading explanation and executable code.
+- `util_scripts/03_utils_misc.R`: removed the machine-specific `local_config.yaml`
+  claim; retained the Windows-reserved-name validation and its explanation.
+- `app/context.R`: the missing-resource diagnostic now names the actual
+  `config_path`, instead of implying an automatic `local_config.yaml` override.
+- `util_scripts/17_utils_prepared_data.R`: describes the existing import/load
+  workflows rather than calling them forthcoming.
+
+Commit `382ca34` on `chore/remove-obsolete-content` starts from the app-focused
+candidate `50a91af`. It was cherry-picked onto `development` as `d26e3b1`.
+The shared app source and ordinary test files match between these two updated
+branches. The original separation candidate, `main`, audit branch and archived
+performance branch were not changed by this pass. Configuration defaults,
+scientific parameters, resource loading and compatibility behavior were retained.
+
+Verification on Windows with R 4.5.3:
+
+- Existing `app-bootstrap`, `p01-prepared-data` and `p04-preparation-ui` tests:
+  **145 assertions passed**, zero failures/errors/warnings/skips. The run used an
+  isolated temporary R user cache.
+- Parsed executable expressions remained identical to the app-focused base in
+  all three comment-only files; `app/context.R` also parsed successfully.
+- A synthetic configuration with a custom filename produced an error naming
+  that file and the missing resources, without creating a dataset directory.
+- Git diff checks passed. The full/browser suite was not rerun for this narrow
+  comment/diagnostic change; the earlier screenshot findings remain as recorded.
+
+The local runner, log and result summary are in ignored
+`artifacts/local-checks/obsolete-content-cleanup/`. The catalog remains a dated
+pre-cleanup snapshot; no dataset or biological resource was edited.
