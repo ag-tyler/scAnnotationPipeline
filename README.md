@@ -566,3 +566,8 @@ It covers:
 * pipeline assumptions;
 * known limitations.
 
+## License
+
+Licensed under the [MIT License](LICENSE.md). Copyright-holder attribution is
+pending; both license files retain an explicit placeholder until it is decided.
+
