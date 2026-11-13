@@ -2,6 +2,9 @@
 local_config.yaml
 .Renviron
 
+# macOS Finder metadata
+.DS_Store
+
 # R / RStudio session files
 .Rhistory
 .RData
