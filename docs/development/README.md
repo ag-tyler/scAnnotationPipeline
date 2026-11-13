@@ -5,7 +5,8 @@ records live here. Historical findings remain separate from implementation
 verification and final acceptance.
 
 - [Branch separation and maintenance workflow](BRANCH_SEPARATION.md) —
-  app-focused candidate, preserved development assets, and validation evidence.
+  finalized app-focused `main`, development branch roles, completed cleanup,
+  and validation evidence, including known verification failures.
 - [Repository file catalog and cleanup assessment](https://github.com/ag-tyler/scAnnotationPipeline/blob/4e357cc8d9f4de76ba174bd236f0800881e1e02b/docs/development/REPOSITORY_FILE_CATALOG.md) —
   pre-cleanup usage evidence, file inventory, and cleanup candidates; excludes
   `datasets/`. The link uses the original audit snapshot so historical file

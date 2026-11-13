@@ -52,8 +52,8 @@ install.packages(c("devtools", "testthat", "withr", "shinytest2"))
 Clone the repository and enter the application directory:
 
 ```bash
-git clone <your-repo-url>
-cd <repo-folder>
+git clone --branch development https://github.com/ag-tyler/scAnnotationPipeline.git
+cd scAnnotationPipeline
 ```
 
 Add the required untracked biological resource files to the existing `resources/` directory. See the [Resource Files](docs/USER_GUIDE.md#resource-files) section of the User Guide for the expected files and formats.
@@ -63,15 +63,19 @@ The standard directory layout is:
 ```text
 scAnnotationPipeline/
 ├── app.R
+├── app/                     # Context, state, UI and server components
+├── R/                       # Disables implicit Shiny autoload
 ├── general_config.yaml
 ├── DESCRIPTION
 ├── README.md
 ├── docs/
 │   ├── USER_GUIDE.md
+│   ├── TESTING.md
 │   └── development/          # Plans, manual replays and release acceptance
 ├── resources/
 ├── datasets/
 ├── templates/
+├── scripts/                 # Launcher, preparation/checkpoint and development tools
 ├── util_scripts/
 └── tests/
 ```
@@ -517,8 +521,10 @@ set still run all functional browser assertions.
 
 See the [Testing](docs/USER_GUIDE.md#testing) section for the test-file breakdown and coverage summary.
 
-See [Release Acceptance](docs/development/RELEASE_ACCEPTANCE.md) for the complete portable
-automated gate and scenario-to-test map.
+See [Testing the application](docs/TESTING.md) for the current automated gate,
+browser requirements, known verification failures, and fixture/evidence policy.
+The dated [Release Acceptance](docs/development/RELEASE_ACCEPTANCE.md) preserves
+the historical scenario-to-test map and remaining human review.
 
 Development plans and manual review/replay records are indexed in
 [Development Documentation](docs/development/README.md).
@@ -543,6 +549,8 @@ append-only processing history is described in
 dependency fingerprints, recovery, and migration are described in
 [**docs/CACHE\_VALIDITY.md**](docs/CACHE_VALIDITY.md). The reproducible release
 gate is described in
+[**Testing the application**](docs/TESTING.md). Dated release acceptance and
+remaining human review are preserved in
 [**Release Acceptance**](docs/development/RELEASE_ACCEPTANCE.md).
 
 It covers:

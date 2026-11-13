@@ -38,7 +38,9 @@ layout; the test and utility listings are not exhaustive:
 
 ```text
 scAnnotationPipeline/
-├── app.R                              # Main Shiny application
+├── app.R                              # Bootstrap entry point
+├── app/                               # Context, state, UI and server components
+├── R/                                 # Disables implicit Shiny autoload
 ├── .gitignore
 ├── general_config.yaml                # Shared application configuration
 ├── DESCRIPTION
@@ -49,6 +51,7 @@ scAnnotationPipeline/
 │   ├── PIPELINE_STATE.md
 │   ├── CACHE_VALIDITY.md
 │   ├── STANDARDIZATION_CHECKLIST.md
+│   ├── TESTING.md                      # Current verification instructions
 │   ├── development/                   # Plans, manual replays and acceptance
 │   └── USER_GUIDE.md
 │
@@ -77,6 +80,15 @@ scAnnotationPipeline/
 │   ├── dataset_config_template.yaml
 │   └── standardize_general.R            # optional legacy preparation tool
 │
+├── scripts/
+│   ├── run_app.R
+│   ├── downsample_processed_data.R
+│   ├── copy_dataset_checkpoint.R
+│   ├── profile_interactions.R
+│   ├── profile_cna_export.R
+│   ├── recover_cache_location.R
+│   └── recover_cache_precision.R
+│
 ├── util_scripts/
 │   ├── 01_utils_io.R
 │   ├── 02_utils_annotation.R
@@ -88,6 +100,7 @@ scAnnotationPipeline/
 │
 └── tests/
     ├── testthat.R
+    ├── development/                    # Separate development-tool contracts
     └── testthat/
         ├── helper-source.R
         ├── helper-fixtures.R
@@ -216,8 +229,8 @@ an optional external aid; its file and configuration key are not read by the app
 | `metadata_prompt` | `metadata_extract_prompt.txt` | Yes | Optional external metadata-extraction aid; not displayed or required by the app |
 | `hgnc_complete_set` | `hgnc_complete_set.txt` | No | HGNC reference used for Ensembl→symbol and genomic-location mapping; requires fields including `ensembl_gene_id`, `symbol`, and location information |
 | `gene_positions` | `gene_positions_biomaRt_0626.csv` | No | Genomic positions for CNA ordering; requires `ensembl_gene_id`, `chromosome_name`, `start_position`, `hgnc_symbol` |
-| `marker_sets` | `global_cell_type_markers.csv` | No | Marker sets used for DE matching/signature scoring; columns include `cell_type`, gene symbol, `combined` |
-| `malignant_markers` | `malignant_markers.csv` | No | Cancer-type-specific malignant markers; columns include `cancer_type`, `symbol`, `combined` |
+| `marker_sets` | `global_cell_type_markers.csv` | No | Marker sets used for DE matching/signature scoring; required columns: `cell_type`, `symbol` (or legacy `gene`), `combined` |
+| `malignant_markers` | `malignant_markers.csv` | No | Cancer-type-specific malignant markers; required columns: `cancer_type`, `symbol` (or legacy `gene`), `combined` |
 | `housekeeping_genes` | `housekeeping_genes.txt` | No | One housekeeping gene symbol per line |
 | `mitochondrial_genes` | `mt_genes.txt` | No | One mitochondrial gene symbol per line |
 | `cancer_cell_map` | `cancer_cell_map.json` | No | Maps sample cancer types to malignant-marker acronyms and display cell types |
@@ -694,7 +707,9 @@ skipped with an actionable reason instead of entering a numerical failure.
    provides the summary heatmap plus saved pre-CNA and proposed post-CNA UMAPs.
 7. Save only while the preview fingerprint still matches the current inputs.
    Use **Reset Sample CNA** before deliberately rerunning a sample; this removes
-   dependent CNA artifacts/state while preserving its saved CNA configuration.
+   dependent CNA artifacts and resets downstream state. Saved reference and
+   potentially malignant cell-type settings remain; saved Ward cluster
+   selections and thresholds are cleared.
 
 A cell satisfying malignant thresholds for exactly one subclone receives that subclone ID.
 
@@ -907,11 +922,14 @@ Rscript tests/testthat.R
 
 A clean test run should finish with zero failures and zero unexpected warnings/skips.
 
+For the latest recorded verification and its two known screenshot failures,
+see [Recorded verification status](TESTING.md#recorded-verification-status).
+
 Some tests deliberately exercise validation/error/warning paths. Those conditions are captured by expectations and therefore should not appear as uncaught suite warnings.
 
 ### Profiling interactive paths
 
-To collect read-only, hardware-specific timings for a standardized dataset, run:
+To collect hardware-specific timings for a standardized dataset, run:
 
 ```bash
 Rscript scripts/profile_interactions.R Che2021_Colorectal_2 5
@@ -919,8 +937,12 @@ Rscript scripts/profile_interactions.R Che2021_Colorectal_2 5
 
 The optional first argument is a dataset ID or path and the second is the
 iteration count. The profiler measures Start Menu summary and storage rendering,
-CNA status preflight, and Manual Annotation sample loading. It does not write
-configuration, state, results, or cache files.
+CNA status preflight, and Manual Annotation sample loading. It does not run
+analysis or explicitly save user decisions, but its loaders enable automatic
+recovery: they can restore state backups, recover cache artifacts/manifests, and
+create configured directories. Run it on a disposable workspace copy when the
+original must remain unchanged. The separate profiler contract command is in
+the [development index](development/README.md).
 
 ### Test structure
 
@@ -996,8 +1018,9 @@ Areas intentionally not exhaustively covered include:
 
 Plot tests generally validate construction/buildability and workflow side effects rather than rendered pixels.
 
-For the complete portable release gate and scenario-to-test map, see
-[Release Acceptance](development/RELEASE_ACCEPTANCE.md).
+For the current automated gate, browser prerequisites, and fixture policy, see
+[Testing the application](TESTING.md). The historical scenario-to-test map and
+remaining human review are in [Release Acceptance](development/RELEASE_ACCEPTANCE.md).
 
 ### Golden fixtures
 
@@ -1082,7 +1105,15 @@ selections automatically invalidate their dependent CNA cache families.
 
 ### Marker sets or marker filtering changed
 
-Marker sets are rebuilt when the dataset is loaded. Reload the dataset so `complete_markers` is regenerated.
+Biological resource files are read when the app starts. After editing a marker
+resource file, stop and restart the app, then load the dataset. Reloading a
+dataset in the same app session does not reread those files.
+
+Dataset-specific `marker_filter_params` are applied when the dataset is loaded;
+after changing those settings, reload the dataset to rebuild `complete_markers`.
+Rebuilding marker sets does not rerun differential expression or replace saved
+marker-match results. Rerun the affected DE analysis and review downstream
+annotations/results before relying on them.
 
 ### Redoing CNA for one sample
 
