@@ -1099,6 +1099,9 @@ reconcile_pipeline_state_cache <- function(
     load_cache_manifest(dataset_dir_path, recover = FALSE),
     error = function(error) NULL
   )
+  if (!is.null(manifest)) {
+    manifest <- reconcile_cache_manifest_location(dataset_dir_path, manifest)
+  }
 
   cache_available <- function(filename) {
     !is.null(manifest) && cache_check_available(
