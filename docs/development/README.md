@@ -4,6 +4,9 @@ Implementation plans, manual review/replay evidence and release acceptance
 records live here. Historical findings remain separate from implementation
 verification and final acceptance.
 
+- [Repository file catalog and cleanup assessment](REPOSITORY_FILE_CATALOG.md) —
+  pre-cleanup usage evidence, file inventory, and cleanup candidates; excludes
+  `datasets/`.
 - [Original development plan](scAnnotationPipeline_Development_Plan.md)
 - [Deferred computation performance plan](RESULT_PRESERVING_PERFORMANCE_PLAN.md) —
   proposed result-preserving optimizations and historical E00 evidence; work
