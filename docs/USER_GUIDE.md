@@ -690,8 +690,11 @@ skipped with an actionable reason instead of entering a numerical failure.
    metrics. Progress reports the current stage and real sample/subclone counts.
 5. Choose malignant/non-malignant thresholds on one shared y-axis. An unsaved
    view starts at 0.5; a saved view restores its display maximum. The available
-   range accounts for the data and saved thresholds, and expands to keep saved
-   values representable. Display clipping is indicated and never changes
+   plot-axis range accounts for the data and saved thresholds. Y-threshold
+   sliders normally extend to 1.0, independently of signal outliers and plot
+   scale, and expand to keep higher saved thresholds representable. Their
+   existing linked bounds still enforce the threshold ordering. Display
+   clipping is indicated and never changes
    assignments. Default threshold increments are 0.05 for X and 0.01 for Y;
    saved values retain finer precision when necessary. Ticks mark selectable
    increments and stay aligned as linked bounds change.

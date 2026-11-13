@@ -27,13 +27,18 @@ test_that("C08 unsaved axis starts at 0.5 and saved limits/precision stay repres
   expect_equal(axis$selected, 0.5)
   expect_equal(axis$recommended, 3.2)
   expect_gte(axis$control_max, 3.2)
+  expect_equal(axis$threshold_max, 1)
   expect_gt(axis$data_max, axis$selected)
   expect_equal(cna_signal_axis_summary(list())$selected, 0.5)
+  expect_equal(cna_signal_axis_summary(list())$threshold_max, 1)
+  wide_view <- list(list(m_y = 0.163, nm_y = 0.15, y_max = 9))
+  expect_equal(cna_signal_axis_summary(tables, wide_view)$threshold_max, 1)
   saved <- list(list(m_y = 4.137, nm_y = 4.137, y_max = 0.47), list(m_y = 0.163, nm_y = 0.163, y_max = 1.43))
   before <- saved
   axis <- cna_signal_axis_summary(tables, saved)
   expect_equal(axis$selected, 1.43)
   expect_gte(axis$control_max, 4.137)
+  expect_equal(axis$threshold_max, 4.2)
   expect_identical(saved, before)
   expect_equal(cna_threshold_control_step(c(0.4, 0.6), 0.05), 0.05)
   expect_equal(cna_threshold_control_step(c(0.4, 0.43), 0.05), 0.01)
@@ -50,6 +55,54 @@ test_that("C08 unsaved axis starts at 0.5 and saved limits/precision stay repres
   expect_match(below, 'data-min="0.05"', fixed = TRUE)
   outside <- as.character(env$cna_threshold_slider("high", "Saved X", -1, 1, 1.2, 0.05))
   expect_match(outside, 'data-max="1.2"', fixed = TRUE)
+})
+
+test_that("C08 rendered Y sliders stay compact and restore higher saved thresholds exactly", {
+  suppressPackageStartupMessages(library(shiny))
+  suppressPackageStartupMessages(library(bslib))
+  app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
+  env <- new.env(parent = environment())
+  sys.source(file.path(app_dir, "app/ui/cna_ui.R"), env)
+  sys.source(file.path(app_dir, "app/server/cna_threshold_server.R"), env)
+  env$cache_load_data <- function(...) data.table::data.table(
+    cell_name = c("a", "b"), cna_cor = c(0.1, 0.8), cna_signal = c(0.2, 9.1))
+  env$cache_save_data <- env$persist_pipeline_step_update <- function(...) stop("Unexpected write while rendering thresholds")
+  state <- shiny::reactiveValues(
+    paths_list = list(sample_dir_paths = file.path(tempdir(), "sample1")),
+    dataset_dir_path = tempdir(),
+    pipeline_state = new_pipeline_state("C08_UI", "sample1"),
+    live_selected_config = list(
+      cna_ward_ref_cluster = list(sample1 = list(list(cluster = 1L, k = 2L))),
+      cna_thresholds = list(sample1 = list())
+    )
+  )
+  server <- function(input, output, session) env$register_cna_threshold_server(input, output, session, state, list())
+  shiny::testServer(server, {
+    for (step in c("cna_configuration", "cna_compute", "cna_cluster_selection", "cna_signal_correlation")) {
+      state$pipeline_state <- transition_pipeline_step(state$pipeline_state, step, "completed", "sample1", force = TRUE)
+    }
+    state$cna_view_context <- cna_analysis_context(state, "sample1", "cna_view_thresholds")
+    session$setInputs(main_nav = "cna_tab", cna_main_views = "cna_view_thresholds", cna_sample_idx = "1")
+    slider <- function(id) {
+      html <- output$cna_dynamic_thresholds_ui$html
+      regmatches(html, regexpr(paste0('<input[^>]*id="', id, '"[^>]*>'), html))
+    }
+    expect_match(slider("cna_thresh_my_1"), 'data-max="1"', fixed = TRUE)
+    expect_match(slider("cna_thresh_nmy_1"), 'data-max="1"', fixed = TRUE)
+    expect_match(slider("cna_thresh_my_1"), 'data-from="0.16"', fixed = TRUE)
+    expect_match(slider("cna_shared_ymax"), 'data-max="9.1"', fixed = TRUE)
+    expect_match(slider("cna_shared_ymax"), 'data-from="0.5"', fixed = TRUE)
+    config <- shiny::isolate(state$live_selected_config)
+    config$cna_thresholds$sample1 <- list(list(m_y = 2.137, nm_y = 1.163, y_max = 7.5))
+    state$live_selected_config <- config
+    session$flushReact()
+    expect_match(slider("cna_thresh_my_1"), 'data-max="2.2"', fixed = TRUE)
+    expect_match(slider("cna_thresh_my_1"), 'data-from="2.137"', fixed = TRUE)
+    expect_match(slider("cna_thresh_my_1"), 'data-step="0.001"', fixed = TRUE)
+    expect_match(slider("cna_thresh_nmy_1"), 'data-from="1.163"', fixed = TRUE)
+    expect_match(slider("cna_shared_ymax"), 'data-from="7.5"', fixed = TRUE)
+    expect_identical(shiny::isolate(state$live_selected_config), config)
+  })
 })
 
 test_that("C08 multi-subclone assignments are identical for clipped and saved display scales", {
