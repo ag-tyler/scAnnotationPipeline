@@ -38,7 +38,9 @@ layout; the test and utility listings are not exhaustive:
 
 ```text
 scAnnotationPipeline/
-├── app.R                              # Main Shiny application
+├── app.R                              # Bootstrap entry point
+├── app/                               # Context, state, UI and server components
+├── R/                                 # Disables implicit Shiny autoload
 ├── .gitignore
 ├── general_config.yaml                # Shared application configuration
 ├── DESCRIPTION
@@ -220,8 +222,8 @@ an optional external aid; its file and configuration key are not read by the app
 | `metadata_prompt` | `metadata_extract_prompt.txt` | Yes | Optional external metadata-extraction aid; not displayed or required by the app |
 | `hgnc_complete_set` | `hgnc_complete_set.txt` | No | HGNC reference used for Ensembl→symbol and genomic-location mapping; requires fields including `ensembl_gene_id`, `symbol`, and location information |
 | `gene_positions` | `gene_positions_biomaRt_0626.csv` | No | Genomic positions for CNA ordering; requires `ensembl_gene_id`, `chromosome_name`, `start_position`, `hgnc_symbol` |
-| `marker_sets` | `global_cell_type_markers.csv` | No | Marker sets used for DE matching/signature scoring; columns include `cell_type`, gene symbol, `combined` |
-| `malignant_markers` | `malignant_markers.csv` | No | Cancer-type-specific malignant markers; columns include `cancer_type`, `symbol`, `combined` |
+| `marker_sets` | `global_cell_type_markers.csv` | No | Marker sets used for DE matching/signature scoring; required columns: `cell_type`, `symbol` (or legacy `gene`), `combined` |
+| `malignant_markers` | `malignant_markers.csv` | No | Cancer-type-specific malignant markers; required columns: `cancer_type`, `symbol` (or legacy `gene`), `combined` |
 | `housekeeping_genes` | `housekeeping_genes.txt` | No | One housekeeping gene symbol per line |
 | `mitochondrial_genes` | `mt_genes.txt` | No | One mitochondrial gene symbol per line |
 | `cancer_cell_map` | `cancer_cell_map.json` | No | Maps sample cancer types to malignant-marker acronyms and display cell types |
@@ -698,7 +700,9 @@ skipped with an actionable reason instead of entering a numerical failure.
    provides the summary heatmap plus saved pre-CNA and proposed post-CNA UMAPs.
 7. Save only while the preview fingerprint still matches the current inputs.
    Use **Reset Sample CNA** before deliberately rerunning a sample; this removes
-   dependent CNA artifacts/state while preserving its saved CNA configuration.
+   dependent CNA artifacts and resets downstream state. Saved reference and
+   potentially malignant cell-type settings remain; saved Ward cluster
+   selections and thresholds are cleared.
 
 A cell satisfying malignant thresholds for exactly one subclone receives that subclone ID.
 
@@ -911,6 +915,9 @@ Rscript tests/testthat.R
 
 A clean test run should finish with zero failures and zero unexpected warnings/skips.
 
+For the latest recorded verification and its two known screenshot failures,
+see [Recorded verification status](TESTING.md#recorded-verification-status).
+
 Some tests deliberately exercise validation/error/warning paths. Those conditions are captured by expectations and therefore should not appear as uncaught suite warnings.
 
 ### Development profiling
@@ -1084,7 +1091,15 @@ selections automatically invalidate their dependent CNA cache families.
 
 ### Marker sets or marker filtering changed
 
-Marker sets are rebuilt when the dataset is loaded. Reload the dataset so `complete_markers` is regenerated.
+Biological resource files are read when the app starts. After editing a marker
+resource file, stop and restart the app, then load the dataset. Reloading a
+dataset in the same app session does not reread those files.
+
+Dataset-specific `marker_filter_params` are applied when the dataset is loaded;
+after changing those settings, reload the dataset to rebuild `complete_markers`.
+Rebuilding marker sets does not rerun differential expression or replace saved
+marker-match results. Rerun the affected DE analysis and review downstream
+annotations/results before relying on them.
 
 ### Redoing CNA for one sample
 

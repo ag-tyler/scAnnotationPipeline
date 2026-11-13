@@ -40,6 +40,26 @@ Baseline changes require inspecting the images and reviewing their Git diff.
 The optional greater-than-4-GiB snapshot regression is enabled explicitly with
 `RUN_F17_LARGE_TESTS=true`; ordinary verification uses smaller synthetic files.
 
+## Recorded verification status
+
+The full app suite recorded on **2026-11-13** at integration commit `be1d546`
+ran on Windows with R 4.5.3 and headless Edge 157.0.4341.46: **4,434 passed and
+2 failed out of 4,436 expectations**, with zero errors, warnings, or skips
+(674.05 seconds). The optional greater-than-4-GiB test and screenshot updates
+were disabled.
+
+The two known failures are the `02-start-menu.png` and
+`06-clustering-sample-selection.png` comparisons in the baseline navigation
+journey. Their failure messages and comparison scores match the earlier
+separation verification. This is not a fully green release gate. Screenshot
+baseline review and outstanding human/Linux acceptance remain open; do not
+update images or thresholds merely to suppress these failures.
+
+This is a dated result, not a claim about every subsequent checkout. The
+[integration verification record](https://github.com/ag-tyler/scAnnotationPipeline/blob/fe23fca/docs/development/BRANCH_SEPARATION.md#final-app-focused-main-integration-and-finder-metadata-ignore-2026-11-13)
+preserves its context and evidence. Documentation-only updates do not constitute
+a new app-suite run.
+
 ## Golden outputs and evidence
 
 `tests/testthat/fixtures/compute_cna_golden.rds` is the deliberately committed

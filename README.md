@@ -50,8 +50,8 @@ install.packages(c("devtools", "testthat", "withr", "shinytest2"))
 Clone the repository and enter the application directory:
 
 ```bash
-git clone <your-repo-url>
-cd <repo-folder>
+git clone --branch main https://github.com/ag-tyler/scAnnotationPipeline.git
+cd scAnnotationPipeline
 ```
 
 Add the required untracked biological resource files to the existing `resources/` directory. See the [Resource Files](docs/USER_GUIDE.md#resource-files) section of the User Guide for the expected files and formats.
@@ -61,6 +61,8 @@ The standard directory layout is:
 ```text
 scAnnotationPipeline/
 ├── app.R
+├── app/                     # Context, state, UI and server components
+├── R/                       # Disables implicit Shiny autoload
 ├── general_config.yaml
 ├── DESCRIPTION
 ├── README.md
@@ -70,6 +72,7 @@ scAnnotationPipeline/
 ├── resources/
 ├── datasets/
 ├── templates/
+├── scripts/                 # Launcher, downsampling and checkpoint tools
 ├── util_scripts/
 └── tests/
 ```
@@ -515,8 +518,8 @@ set still run all functional browser assertions.
 
 See the [Testing](docs/USER_GUIDE.md#testing) section for the test-file breakdown and coverage summary.
 
-See [Testing the application](docs/TESTING.md) for the portable automated gate,
-browser requirements, and fixture/evidence policy.
+See [Testing the application](docs/TESTING.md) for the current automated gate,
+browser requirements, known verification failures, and fixture/evidence policy.
 
 Development plans and manual review/replay records are indexed in
 [Development Documentation](https://github.com/ag-tyler/scAnnotationPipeline/tree/development/docs/development).
