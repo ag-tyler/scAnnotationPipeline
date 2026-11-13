@@ -75,8 +75,7 @@ scAnnotationPipeline/
 │
 ├── templates/
 │   ├── dataset_config_template.yaml
-│   ├── standardize_general.R            # optional legacy preparation tool
-│   └── standardize_*.{R,qmd}             # historical/reference templates
+│   └── standardize_general.R            # optional legacy preparation tool
 │
 ├── util_scripts/
 │   ├── 01_utils_io.R
@@ -404,8 +403,6 @@ The helpers calculate `n_cells` from their final cell tables and write
 
 `templates/standardize_general.R` remains available if you prefer its workflow.
 The app does not copy it, prepare its prerequisites, or ask users to run it.
-Older technology-specific R/Quarto templates remain historical/reference tools;
-their paths, dependencies, and helper assumptions may need manual adaptation.
 
 The general template expects a preparation workspace under the configured
 datasets directory. With default configuration, set it up yourself as:
@@ -995,7 +992,6 @@ Areas intentionally not exhaustively covered include:
   numerical fixtures between real GUI decisions and saves;
 - pixel-identical plot snapshots (browser screenshots use a small comparison
   threshold to tolerate platform rendering differences);
-- Quarto rendering across every platform;
 - every possible real biological dataset/resource combination.
 
 Plot tests generally validate construction/buildability and workflow side effects rather than rendered pixels.
