@@ -9,12 +9,13 @@ in both prepared versions. The catalog remains a historical inventory.
 
 | Branch | Purpose |
 | --- | --- |
-| `main` | Default branch. Only the subsequent unused marker-table removal has been published here; the app-focused separation and other cleanup candidates remain unmerged. |
+| `main` | Default branch. Only the unused marker-table removal and legacy preparation-template retirement have been published here; the app-focused separation and other cleanup candidates remain unmerged. |
 | `chore/app-development-separation` | App-focused candidate `50a91af`, based on `dd6d7e3`; contains the application, tests, operational documentation and supported user tools. |
 | `development` | Full application snapshot plus development tools, current/future plans, historical records, catalog and legacy/reference assets. The app source and ordinary regression suite match the candidate. |
-| `chore/repository-cleanup-audit` | Original catalog remains pinned at `4e357cc`; the branch tip subsequently removes unused marker tables and links its index to the original snapshot. |
-| `chore/prune-unused-marker-tables` | Deletion-only commit `9631d08` based on remote main `57f9998`, used to publish the marker-table removal without unrelated local main commits. |
-| `perf/result-preserving-computation` | Archived experiment originally at `a62b241`; subsequently received only the unused marker-table removal described below. Experimental code was not changed, merged or resumed. |
+| `chore/repository-cleanup-audit` | Original catalog remains pinned at `4e357cc`; the branch tip removes unused marker tables and retired templates, with its index linked to the original snapshot. |
+| `chore/prune-unused-marker-tables` | Original deletion-only commit `9631d08`, followed by template retirement `8ddc0b3`; both are based on remote main without unrelated unpublished local main commits. |
+| `chore/retire-legacy-preparation-templates` | Focused template-retirement commit `8ddc0b3`, based on remote main `9631d08`. |
+| `perf/result-preserving-computation` | Archived experiment originally at `a62b241`; received the two artifact retirements and related guide cleanup described below. Experimental implementation was not changed, merged or resumed. |
 
 No force-push, default-branch change or merge into `main` is part of this
 preparation. Publishing branches does not publish the ignored local datasets,
@@ -45,15 +46,14 @@ biological resources, environment settings or validation artifacts.
 | All `docs/development/` | Past findings/manual evidence, current implementation and acceptance records, future proposals, the catalog, and this maintenance record. |
 | `scripts/profile_interactions.R`, `scripts/profile_cna_export.R` | Development profilers rather than ordinary app startup dependencies. |
 | `scripts/recover_cache_precision.R`, `scripts/recover_cache_location.R` | Explicit manual recovery/migration entrypoints. Their underlying utility implementation and all recovery/portability regression tests remain on the app branch. |
-| `templates/standardize_10x.R`, `templates/standardize_10x.qmd`, `templates/standardize_undefined.qmd` | Historical/reference external preparation workflows. |
 | `tests/development/test-profile-interactions.R` | Preserved profiler-file contract, run explicitly from the development checkout. |
 
 The lean branch's README/guide link to the development records and tools.
 Those links become usable remotely when `development` is published. The cache
 guide explicitly requires a development checkout for the manual migration CLI.
-The unused legacy marker tables have subsequently been removed from branch
-tips; their original versions remain accessible through the historical links
-in the cleanup record below.
+The unused marker tables and legacy technology-specific preparation templates
+have subsequently been removed from branch tips; their original versions remain
+accessible through the historical links in the cleanup records below.
 
 No ignored local file or dataset is removed. The 3.14-GiB local artifact tree is
 outside branch contents and remains a separate retention decision. Historical
@@ -255,3 +255,56 @@ earlier screenshot findings remain as recorded. The local manifest, verification
 runner, log and results are in ignored
 `artifacts/local-checks/prune-unused-marker-tables/`. No dataset, configured
 biological resource or ignored validation artifact was removed or published.
+
+## Legacy preparation-template retirement (2026-11-13)
+
+The user approved retiring the three older technology-specific workflows from
+every branch that retained them, with historical versions accessible here:
+
+- [standardize_10x.R at the original audit commit](https://github.com/ag-tyler/scAnnotationPipeline/blob/4e357cc8d9f4de76ba174bd236f0800881e1e02b/templates/standardize_10x.R)
+- [standardize_10x.qmd at the original audit commit](https://github.com/ag-tyler/scAnnotationPipeline/blob/4e357cc8d9f4de76ba174bd236f0800881e1e02b/templates/standardize_10x.qmd)
+- [standardize_undefined.qmd at the original audit commit](https://github.com/ag-tyler/scAnnotationPipeline/blob/4e357cc8d9f4de76ba174bd236f0800881e1e02b/templates/standardize_undefined.qmd)
+
+No current app or test called these files, and the retained general preparation
+workflow does not depend on them. Current READMEs no longer list Quarto as a
+requirement for the retired templates. Current User Guides no longer advertise
+their availability, list their directory entries, or list Quarto rendering as
+an application test-coverage limitation. Historical plans and catalog contents
+remain unchanged; their descriptions refer to the versions available then.
+
+| Branch | Change |
+| --- | --- |
+| `chore/retire-legacy-preparation-templates` | `8ddc0b3`, based on remote main `9631d08`: three retired files plus focused README/User Guide cleanup. |
+| Remote `main` | Advanced only to `8ddc0b3`; app separation and the earlier comment/default cleanups remain unmerged. |
+| Local `main` | Merge `87f3586` preserves the three pre-existing unpublished commits and incorporates the retirement. No unpublished local commit or local merge was pushed to remote main. |
+| `chore/prune-unused-marker-tables` | Fast-forwarded to `8ddc0b3`, retaining the earlier marker-table removal. |
+| `chore/repository-cleanup-audit` | Retirement `e4de970`; the dated catalog and CSV inventory remain unchanged and linked through their original snapshot. |
+| `perf/result-preserving-computation` | Retirement `650a72c`; only the retired files and related README/User Guide content changed, not experimental implementation. |
+| `development` | Retirement `739bd46`, followed by this development-only record and retained-assets update. |
+| `chore/app-development-separation` | Documentation-only `d43097e`; templates were already absent. |
+| `chore/remove-obsolete-content` | Documentation-only `3ce6498`; templates were already absent. |
+| `chore/neutral-template-defaults` | Documentation-only `471b966`; templates were already absent. |
+
+Verification on Windows with R 4.5.3:
+
+- Existing app bootstrap, prepared-input import/startup, and general preparation
+  tests: **216 assertions passed**, zero failures/errors/warnings/skips, using
+  an isolated temporary R user cache.
+- A separate synthetic general-helper run completed staging, strict validation
+  and publication after the legacy files were removed.
+- Per-branch comparisons preserve `standardize_general.R`,
+  `dataset_config_template.yaml`, runtime source, utilities, configuration,
+  supported scripts, permanent tests and scientific fixtures exactly as they
+  were before this pass. Dataset-specific preparation scripts were not touched.
+- Branch-tree checks confirm that all current local/remote tips lack the three
+  retired templates, active runtime resource hashes are unchanged, historical
+  source links resolve, and current guides have no stale availability claims.
+- Original unpublished local main commits remain reachable locally and excluded
+  from the dedicated remote main update. No history rewrite or force-push was
+  used. The dated catalog and original planning records were not rewritten.
+
+The full/browser suite was not rerun for this external-template/documentation
+retirement; prior screenshot findings remain as recorded. Local evidence is in
+ignored `artifacts/local-checks/retire-legacy-preparation-templates/`. No dataset,
+configured biological resource or ignored validation artifact was removed or
+published.
