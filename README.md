@@ -16,7 +16,6 @@ Prepare data with your own tools using the [input specification](#preparing-inpu
 ## Requirements
 
 * **R ≥ 4.5.2**
-* **Quarto** only if using the historical/reference `.qmd` templates
 * Required R packages:
 
 ```r
