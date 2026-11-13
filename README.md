@@ -568,6 +568,6 @@ It covers:
 
 ## License
 
-Licensed under the [MIT License](LICENSE.md). Copyright-holder attribution is
-pending; both license files retain an explicit placeholder until it is decided.
+Licensed under the [MIT License](LICENSE.md).
+Copyright (c) 2026 Michael Tyler and Georg-Speyer-Haus.
 
