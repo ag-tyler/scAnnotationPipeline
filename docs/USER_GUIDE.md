@@ -84,6 +84,8 @@ scAnnotationPipeline/
 │   ├── run_app.R
 │   ├── downsample_processed_data.R
 │   ├── copy_dataset_checkpoint.R
+│   ├── benchmark_computation.R          # Development-only E00 entry point
+│   ├── performance/                     # E00 harness and instructions
 │   ├── profile_interactions.R
 │   ├── profile_cna_export.R
 │   ├── recover_cache_location.R

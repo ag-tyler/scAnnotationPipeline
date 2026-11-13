@@ -4,14 +4,18 @@
 
 **Status:** Performance investigation closed/deferred on **2026-11-13** at the
 user's request because there is insufficient time for implementation and testing.
-This plan is retained on `main` for reference. No performance implementation,
-E00 harness or associated tests are included in `main` by this documentation
-change. E01-E08 were not started and are deferred.
+This plan and the E00 comparison harness are retained on `development` for
+reference. They are excluded from the app-focused `main`. E01-E08 were not
+started and remain deferred; branch consolidation does not resume optimization.
 
-**Archived experiment:** `perf/result-preserving-computation`, preserved at
+**Original experiment:** formerly on `perf/result-preserving-computation`, implemented at
 [`a62b241`](https://github.com/ag-tyler/scAnnotationPipeline/commit/a62b241a716110e4e72fc2c612b15dbfcb9de265).
-E00 was implemented and verified only on that branch; its historical evidence
-is recorded below. The branch is retained as an archive, not merged into `main`.
+E00 was originally implemented and verified on that branch; its historical
+evidence is recorded below. On 2026-11-13, the user approved preserving its
+history and tools on `development` and deleting the separate experiment branch.
+The merge retains current application code and defaults. The harness instructions
+are in [scripts/performance/README.md](../../scripts/performance/README.md), and
+its separately invoked test is `tests/development/test-e00-performance-harness.R`.
 
 **Historical pinned baseline:** `23b5f49` on `main` when the experiment branch
 was created. Its runtime code matches `acbb4ce`, the source tested by the recorded
@@ -230,7 +234,7 @@ Gate: comparison thresholds/protocol are recorded, baseline repeats understood,
 and the harness detects deliberately changed partitions, reordered inputs,
 threshold flips and invalid cache reuse.
 
-#### E00 implementation and verification record (2026-11-11; archived branch only)
+#### E00 implementation and verification record (2026-11-11; original experiment)
 
 The implementation is absent from `main`. These links point to the archived
 experimental commit: [runner](https://github.com/ag-tyler/scAnnotationPipeline/blob/a62b241a716110e4e72fc2c612b15dbfcb9de265/scripts/benchmark_computation.R),

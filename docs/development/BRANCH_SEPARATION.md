@@ -9,6 +9,10 @@ The separation is now finalized: `main` is the app-focused distribution, and
 `development` retains development tools and records. The final integration and
 macOS metadata-ignore verification are recorded at the end of this document.
 
+The subsequent consolidation record at the end defines the final two-branch
+layout. The branch table and dated sections below preserve the earlier snapshots;
+retired branch names identify historical work rather than maintained branches.
+
 ## Branch roles
 
 | Branch | Purpose |
@@ -503,3 +507,55 @@ classification and captured screenshots are kept in ignored
 `artifacts/local-checks/finalize-app-focused-main/`. Synthetic tests use
 disposable workspaces; no scientific dataset was opened for this integration,
 and no ignored local data or validation evidence was published.
+
+## Performance archive consolidation and branch retirement (2026-11-13)
+
+The user approved consolidating the E00 performance experiment into
+`development`, then retaining only `main` and `development` locally and on
+GitHub. This supersedes the earlier separate-archive branch arrangement.
+
+The merge preserves experiment tip `af9f564` and original implementation
+`a62b241` in development history. It retains the current development tree and
+explicitly imports only `scripts/benchmark_computation.R`, the six files under
+`scripts/performance/`, and the E00 contract test. That test moves to
+`tests/development/test-e00-performance-harness.R` and is invoked separately
+from the app suite. The historical baseline remains pinned in `contract.yaml`.
+Application source, defaults, ordinary app tests, and the `main` branch are
+unchanged. E01-E08 remain deferred; preserving E00 does not resume optimization
+or establish a current performance baseline.
+
+The development index, performance-plan status, and User Guide layout describe
+the consolidated tools. Earlier dated findings and acceptance evidence remain
+historical records. The original repository catalog remains reachable through
+development history at its pinned audit commit `4e357cc`.
+
+After verification and publishing the merge, these eleven branches are retired
+locally and on GitHub:
+
+- `chore/app-development-separation`
+- `chore/finalize-app-focused-main`
+- `chore/local-housekeeping`
+- `chore/neutral-template-defaults`
+- `chore/prune-old-performance-smoke-artifacts`
+- `chore/prune-superseded-performance-runs`
+- `chore/prune-unused-marker-tables`
+- `chore/remove-obsolete-content`
+- `chore/repository-cleanup-audit`
+- `chore/retire-legacy-preparation-templates`
+- `perf/result-preserving-computation`
+
+The ten cleanup branches have no remaining content to carry over: their work
+is retained or superseded in the two maintained branches. Different commit IDs
+from cherry-picks and clean integration do not represent missing work. Branch
+deletion does not remove local datasets, resources, or saved performance evidence.
+
+Verification with Windows R 4.5.3 passed **62 assertions** across both separate
+development-tool test files, with zero failures, errors, warnings, or skips.
+The E00 test runs four independent synthetic cache workers, including the saved
+baseline and current candidate, and checks unsafe-cache detection. All imported
+R sources and both development tests parsed. Git blob comparisons confirm all
+eight imported files retain their original contents; the test's path alone
+changes. All **106 documentation link/heading checks** and the benchmark CLI
+`--help` smoke check passed. The existing application files are unchanged, so the full app suite
+was not rerun. Local verification code/results remain ignored under
+`artifacts/local-checks/consolidate-development-branches/`.

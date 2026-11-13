@@ -14,7 +14,8 @@ verification and final acceptance.
 - [Original development plan](scAnnotationPipeline_Development_Plan.md)
 - [Deferred computation performance plan](RESULT_PRESERVING_PERFORMANCE_PLAN.md) —
   proposed result-preserving optimizations and historical E00 evidence; work
-  deferred 2026-11-13, with experimental code retained on its archived branch.
+  deferred 2026-11-13. The E00 tools and original experiment history are retained
+  on `development`; see the [harness instructions](../../scripts/performance/README.md).
 - [Prepared-data import and workflow entry plan](PREPARED_DATA_IMPORT_PLAN.md) —
   current workflow direction; supersedes earlier mandatory template, sample-YAML,
   checklist, and prompt-screen onboarding requirements in historical plans.
@@ -36,8 +37,13 @@ User-facing guides and runtime references remain in the parent directory:
 The catalog is a dated baseline, not a live manifest. The subsequent cache
 portability work and branch-separation changes are described in the import plan
 and separation record. Run app regression tests with `Rscript tests/testthat.R`.
-The profiler-specific contract is maintained separately on this branch:
+Development-tool contracts are maintained separately on this branch:
 
 ```r
 testthat::test_file("tests/development/test-profile-interactions.R")
+testthat::test_file("tests/development/test-e00-performance-harness.R")
 ```
+
+The E00 contract includes independent synthetic cache workers. Its pinned
+historical baseline supports reproducing the original experiment; it is not a
+current app performance baseline or evidence that deferred optimizations shipped.

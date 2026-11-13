@@ -1,0 +1,19 @@
+schema_version: 1
+baseline_commit: 23b5f49531ab19878c4642f389282bae604c10b4
+default_policy: exact
+numeric_max_absolute_error: 1.0e-8
+pca_relative_singular_value_error: 1.0e-6
+pca_max_principal_angle_radians: 1.0e-3
+embedding_rms_relative_error: 0.01
+embedding_p99_relative_error: 0.05
+embedding_neighborhood_mean_overlap: 0.99
+embedding_neighbors: 15
+embedding_max_anchors: 128
+require_identical_cluster_ids: true
+require_identical_rounded_cna: true
+require_identical_final_assignments: true
+notes:
+  - Exact policy is required for baseline repeatability and reuse-only candidates.
+  - Numerical policy never permits changed identities, rankings, graph structure, partitions, or final assignments.
+  - PCA/embedding alignment is diagnostic only; workers never receive the other run's outputs.
+  - Threshold changes require a new recorded contract before a candidate comparison.
