@@ -381,3 +381,52 @@ resources are unchanged. No file under the root `datasets/` directory was
 inspected or removed. Regression tests were not run for this local artifact
 cleanup; containment, ownership, link, file-state and Git diff checks provide
 verification.
+
+## Superseded performance-run cleanup (2026-11-13)
+
+The user approved deleting three older local runs that had been superseded in
+the final performance evidence records by later verified runs:
+
+| Deleted directory under `artifacts/local-checks/` | Files removed | Logical bytes removed | Retained evidence directory |
+| --- | ---: | ---: | --- |
+| `e00-synthetic-final/` | 715 | 41,713,189 | `e00-synthetic-verified/` |
+| `e00-boundaries-final/` | 715 | 368,962,201 | `e00-boundaries-verified/` |
+| `e00-tang-t1-final/` | 751 | 547,219,498 | `e00-tang-t1-verified/` |
+| **Total** | **2,181** | **957,894,888** | |
+
+This removes about 913.5 MiB of generated captures. This later approval changes
+the earlier retention decision only for the three named `*-final` directories.
+The runs were separate historical executions; no byte-identical duplication
+claim is made. The performance plan, consolidated `e00_final_evidence.csv`, and
+final verification script all select the retained replacements above.
+
+Before deletion, read-only checks confirmed that the saved summaries and final
+comparison JSON records were readable for all five documented evidence cases:
+the three replacements above plus `e00-tang-lm1-final/` and
+`e00-tang-lm3-final/`. All five saved summaries reported success and unchanged
+source/input, and all **55 saved comparison groups** reported passing. No
+comparison, scientific computation or performance experiment was rerun.
+
+Each deletion target was confirmed as an ordinary immediate child of the
+intended artifact directory inside the workspace, with the expected disposable
+performance-run marker and ignore status. The artifact root, target directories
+and descendants were checked for links/reparse points. Counts and sizes matched
+the approved batch before recursive deletion; all three paths were absent
+afterward.
+
+All five documented evidence runs, root logs, summaries, consolidated evidence,
+and recent cleanup outputs were retained. The retained inventory matched before
+and after by relative path, file size and modification time: **4,113 files,
+2,391,084,819 logical bytes**. These metadata checks do not constitute a new
+scientific validation. Deleted generated contents were never tracked and are
+not recoverable from Git branches.
+
+The documentation record is maintained on
+`chore/prune-superseded-performance-runs`, based on `development` at `5142742`,
+and fast-forwarded into `development`. Only this record is committed/pushed;
+ignored-file deletion is local to this workspace. Other branch tips,
+application code, configuration, permanent tests, historical plans/catalogs,
+archived harness code and biological resources are unchanged. No file under
+the root `datasets/` directory was inspected or removed. Regression tests were
+not run for this local artifact cleanup; retained-record readability,
+containment, ownership, link, file-state and Git diff checks provide verification.
