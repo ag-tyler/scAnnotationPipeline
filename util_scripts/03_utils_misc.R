@@ -877,8 +877,7 @@ sanitize_dataset_name <- function(name) {
          call. = FALSE)
   }
   
-  # Reject Windows-reserved device names (CON, PRN, AUX, NUL, COM1-9, LPT1-9), 
-  # relevant since local_config.yaml shows this app runs on Windows
+  # Reject Windows-reserved device names (CON, PRN, AUX, NUL, COM1-9, LPT1-9).
   reserved <- c("CON", "PRN", "AUX", "NUL", paste0("COM", 1:9), paste0("LPT", 1:9))
   if (toupper(name) %in% reserved) {
     stop("'", name, "' is a reserved name on Windows and cannot be used.", call. = FALSE)

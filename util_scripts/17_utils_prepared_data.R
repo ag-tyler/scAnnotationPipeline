@@ -1,4 +1,4 @@
-# Prepared-input structure checks shared by the forthcoming import/load paths.
+# Prepared-input structure checks shared by the import and load workflows.
 # Only the sample CSV is read; expression, cell, and gene contents are not read.
 
 prepared_sample_columns <- function() {

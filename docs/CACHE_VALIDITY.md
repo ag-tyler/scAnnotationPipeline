@@ -76,8 +76,12 @@ writer-version stamp, gzip's platform header, and data.table's session
 bookkeeping. Legacy fingerprints remain verifiable against their original
 serialization profile when the current scientific inputs reproduce them.
 
-For an existing workspace copied from Windows or another Linux location, use
-the following from the repository root with the app stopped:
+For an existing workspace copied from Windows or another Linux location, the
+optional manual recovery CLI is maintained on the
+[development branch](https://github.com/ag-tyler/scAnnotationPipeline/blob/development/scripts/recover_cache_location.R).
+Stop the app and use a development checkout with the intended workspace and
+resource paths configured. Run the following from that checkout's repository
+root (the scripts are not included in the app-focused checkout):
 
 ```sh
 Rscript scripts/recover_cache_location.R Tang2026_Colorectal

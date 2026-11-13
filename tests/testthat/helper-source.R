@@ -10,17 +10,6 @@
 # so new utility scripts can be dropped in with no manual source() calls.
 # We replicate exactly that logic here so the functions under test are
 # always the same functions the running app actually uses -- not a copy.
-
-# testthat automatically sources every file matching "helper-*.R" in this
-# directory before running the test suite (both for testthat::test_dir()
-# and devtools::test()). We use that hook to source the actual pipeline
-# code under test.
-#
-# util_scripts/ is intentionally NOT an R/ package directory: app.R sources
-# every *.R file in it at startup (see app.R, "2. Source utility scripts"),
-# so new utility scripts can be dropped in with no manual source() calls.
-# We replicate exactly that logic here so the functions under test are
-# always the same functions the running app actually uses -- not a copy.
 #
 # app.R also attaches a handful of packages via library() BEFORE sourcing
 # util_scripts/ (see app.R, top of file). util_scripts/ code relies on that:

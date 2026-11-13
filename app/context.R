@@ -64,8 +64,8 @@ create_app_context <- function(config_path = "general_config.yaml") {
       unlist(resource_paths[missing_names], use.names = FALSE)
     )
     stop(
-      "The following resource files could not be found (check `resources_dir` in ",
-      "general_config.yaml / local_config.yaml, and `resource_files` for correct filenames):\n",
+      "The following resource files could not be found (check `resources_dir` and ",
+      "`resource_files` in ", config_path, " for correct paths and filenames):\n",
       paste(missing_lines, collapse = "\n"),
       call. = FALSE
     )

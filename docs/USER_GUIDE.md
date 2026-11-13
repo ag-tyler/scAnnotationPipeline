@@ -49,7 +49,7 @@ scAnnotationPipeline/
 │   ├── PIPELINE_STATE.md
 │   ├── CACHE_VALIDITY.md
 │   ├── STANDARDIZATION_CHECKLIST.md
-│   ├── development/                   # Plans, manual replays and acceptance
+│   ├── TESTING.md                      # Current verification instructions
 │   └── USER_GUIDE.md
 │
 ├── resources/
@@ -75,7 +75,12 @@ scAnnotationPipeline/
 │
 ├── templates/
 │   ├── dataset_config_template.yaml
-│   └── standardize_general.R            # optional legacy preparation tool
+│   └── standardize_general.R            # optional preparation tool
+│
+├── scripts/
+│   ├── run_app.R
+│   ├── downsample_processed_data.R
+│   └── copy_dataset_checkpoint.R
 │
 ├── util_scripts/
 │   ├── 01_utils_io.R
@@ -289,6 +294,16 @@ This file is copied from:
 ```text
 templates/dataset_config_template.yaml
 ```
+
+The shared template leaves `project_info.dataset_id` and
+`project_info.technology` blank. New-dataset import sets the dataset ID from the
+new workspace name and derives technology from `Samples.csv`, leaving it blank
+when technologies are mixed or unknown.
+
+For an optional manual preparation workspace, set `project_info.dataset_id` to
+the preparation folder name and fill `project_info.technology` if known in your
+copied configuration before running the helper. The template does not require
+a `raw_files` section.
 
 Important fields include:
 
@@ -898,18 +913,14 @@ A clean test run should finish with zero failures and zero unexpected warnings/s
 
 Some tests deliberately exercise validation/error/warning paths. Those conditions are captured by expectations and therefore should not appear as uncaught suite warnings.
 
-### Profiling interactive paths
+### Development profiling
 
-To collect read-only, hardware-specific timings for a standardized dataset, run:
-
-```bash
-Rscript scripts/profile_interactions.R Che2021_Colorectal_2 5
-```
-
-The optional first argument is a dataset ID or path and the second is the
-iteration count. The profiler measures Start Menu summary and storage rendering,
-CNA status preflight, and Manual Annotation sample loading. It does not write
-configuration, state, results, or cache files.
+The optional interaction and synthetic CNA-export profilers are maintained with
+the [development tools](https://github.com/ag-tyler/scAnnotationPipeline/tree/development/scripts).
+Use a development checkout and follow each script's usage instructions. App
+runtime performance regression tests remain in the ordinary test suite;
+the separate profiler contract is documented in the
+[development index](https://github.com/ag-tyler/scAnnotationPipeline/blob/development/docs/development/README.md).
 
 ### Test structure
 
@@ -985,8 +996,10 @@ Areas intentionally not exhaustively covered include:
 
 Plot tests generally validate construction/buildability and workflow side effects rather than rendered pixels.
 
-For the complete portable release gate and scenario-to-test map, see
-[Release Acceptance](development/RELEASE_ACCEPTANCE.md).
+For the current portable gate, browser prerequisites and fixture policy, see
+[Testing the application](TESTING.md). Dated scenario/acceptance records and
+remaining human review are preserved on the
+[development branch](https://github.com/ag-tyler/scAnnotationPipeline/blob/development/docs/development/RELEASE_ACCEPTANCE.md).
 
 ### Golden fixtures
 
