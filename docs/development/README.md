@@ -6,9 +6,10 @@ verification and final acceptance.
 
 - [Branch separation and maintenance workflow](BRANCH_SEPARATION.md) —
   app-focused candidate, preserved development assets, and validation evidence.
-- [Repository file catalog and cleanup assessment](REPOSITORY_FILE_CATALOG.md) —
+- [Repository file catalog and cleanup assessment](https://github.com/ag-tyler/scAnnotationPipeline/blob/4e357cc8d9f4de76ba174bd236f0800881e1e02b/docs/development/REPOSITORY_FILE_CATALOG.md) —
   pre-cleanup usage evidence, file inventory, and cleanup candidates; excludes
-  `datasets/`.
+  `datasets/`. The link uses the original audit snapshot so historical file
+  references remain available after cleanup.
 - [Original development plan](scAnnotationPipeline_Development_Plan.md)
 - [Deferred computation performance plan](RESULT_PRESERVING_PERFORMANCE_PLAN.md) —
   proposed result-preserving optimizations and historical E00 evidence; work

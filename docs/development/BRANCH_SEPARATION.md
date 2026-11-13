@@ -9,11 +9,12 @@ in both prepared versions. The catalog remains a historical inventory.
 
 | Branch | Purpose |
 | --- | --- |
-| `main` | Existing default branch. It has not been changed by this preparation. After review, the app-focused candidate can be merged here. |
+| `main` | Default branch. Only the subsequent unused marker-table removal has been published here; the app-focused separation and other cleanup candidates remain unmerged. |
 | `chore/app-development-separation` | App-focused candidate `50a91af`, based on `dd6d7e3`; contains the application, tests, operational documentation and supported user tools. |
 | `development` | Full application snapshot plus development tools, current/future plans, historical records, catalog and legacy/reference assets. The app source and ordinary regression suite match the candidate. |
-| `chore/repository-cleanup-audit` | Preserved standalone pre-cleanup catalog commit. |
-| `perf/result-preserving-computation` | Existing archived experiment at `a62b241`; not merged or resumed. |
+| `chore/repository-cleanup-audit` | Original catalog remains pinned at `4e357cc`; the branch tip subsequently removes unused marker tables and links its index to the original snapshot. |
+| `chore/prune-unused-marker-tables` | Deletion-only commit `9631d08` based on remote main `57f9998`, used to publish the marker-table removal without unrelated local main commits. |
+| `perf/result-preserving-computation` | Archived experiment originally at `a62b241`; subsequently received only the unused marker-table removal described below. Experimental code was not changed, merged or resumed. |
 
 No force-push, default-branch change or merge into `main` is part of this
 preparation. Publishing branches does not publish the ignored local datasets,
@@ -45,14 +46,14 @@ biological resources, environment settings or validation artifacts.
 | `scripts/profile_interactions.R`, `scripts/profile_cna_export.R` | Development profilers rather than ordinary app startup dependencies. |
 | `scripts/recover_cache_precision.R`, `scripts/recover_cache_location.R` | Explicit manual recovery/migration entrypoints. Their underlying utility implementation and all recovery/portability regression tests remain on the app branch. |
 | `templates/standardize_10x.R`, `templates/standardize_10x.qmd`, `templates/standardize_undefined.qmd` | Historical/reference external preparation workflows. |
-| `resources/cancer_type_markers.csv`, `resources/canonical_markers.csv`, `resources/markers_ss.csv` | Older tracked tables with no current configured consumer found. Retaining them here preserves content/provenance uncertainty without distributing them in the app-focused tree. |
 | `tests/development/test-profile-interactions.R` | Preserved profiler-file contract, run explicitly from the development checkout. |
 
 The lean branch's README/guide link to the development records and tools.
 Those links become usable remotely when `development` is published. The cache
 guide explicitly requires a development checkout for the manual migration CLI.
-The development guide labels the old marker tables as references, not required
-runtime inputs.
+The unused legacy marker tables have subsequently been removed from branch
+tips; their original versions remain accessible through the historical links
+in the cleanup record below.
 
 No ignored local file or dataset is removed. The 3.14-GiB local artifact tree is
 outside branch contents and remains a separate retention decision. Historical
@@ -206,3 +207,51 @@ The full/browser suite was not rerun for this template/documentation change;
 earlier screenshot findings remain as recorded. Local verification output is
 in ignored `artifacts/local-checks/neutral-template-defaults/`. No existing
 dataset configuration, scientific workspace or biological resource was edited.
+
+## Unused marker-table removal across branches (2026-11-13)
+
+After reviewing the active marker inputs and preservation options, the user
+approved removal from every branch tip that still contained these three files:
+
+- [canonical_markers.csv at the original audit commit](https://github.com/ag-tyler/scAnnotationPipeline/blob/4e357cc8d9f4de76ba174bd236f0800881e1e02b/resources/canonical_markers.csv)
+- [cancer_type_markers.csv at the original audit commit](https://github.com/ag-tyler/scAnnotationPipeline/blob/4e357cc8d9f4de76ba174bd236f0800881e1e02b/resources/cancer_type_markers.csv)
+- [markers_ss.csv at the original audit commit](https://github.com/ag-tyler/scAnnotationPipeline/blob/4e357cc8d9f4de76ba174bd236f0800881e1e02b/resources/markers_ss.csv)
+
+No current app, script, template or test consumer was found, and none was
+selected by resource configuration. The files total 1,125,117 working-tree bytes
+(about 1.07 MiB). Removal is from current branch trees; no Git history was
+rewritten or purged. Earlier audit and development commits retain the contents.
+
+| Branch | Change |
+| --- | --- |
+| `chore/prune-unused-marker-tables` | `9631d08`, based on remote main `57f9998`: exactly the three file deletions. |
+| Remote `main` | Advanced to the same deletion-only commit `9631d08`. The app-focused separation, neutral template and comment cleanup were not merged. |
+| Local `main` | Merge `d66f9fe` retains the two original unpublished commits (`dd6d7e3`, `ef12c9a`) and incorporates the removal. Those original commits and this local merge were not published to remote main. |
+| `chore/repository-cleanup-audit` | Deletion `6d4eb0f`; index update `88b005a` points to the original audit snapshot. The dated catalog and CSV inventory are unchanged. |
+| `perf/result-preserving-computation` | Deletion-only commit `0e89cf7` on the archived experiment. Experimental implementation and original `a62b241` remain unchanged in history. |
+| `development` | Deletion `98763d2`, followed by this documentation update. The User Guide no longer says the tables are retained; the development index links to the original audit snapshot. |
+| App-focused separation and two earlier app cleanup branches | Already lacked these tables; their branch tips were left unchanged. |
+
+Verification on Windows with R 4.5.3:
+
+- Existing DE/marker, app bootstrap, and preparation/startup tests:
+  **70 assertions passed**, zero failures/errors/warnings/skips, using an
+  isolated temporary R user cache.
+- The real application context loaded all seven configured biological
+  resources after deletion. Its datasets path was redirected to an empty
+  temporary directory, so no scientific workspace was opened.
+- Hash checks preserve the configured cell-type/malignant marker tables,
+  housekeeping and mitochondrial lists, cancer map, genomic positions and HGNC
+  reference. Runtime code, configuration, tests and scientific fixtures were
+  not edited on any affected branch.
+- Per-branch diff checks restrict changes to the three deletions and the
+  approved documentation updates. Earlier review branches retain their original
+  tips, every local branch tip lacks the removed tables, historical source
+  links remain resolvable, and the original unpublished main commits remain
+  local. No force-push is used.
+
+The full/browser suite was not rerun for deletion of unconsumed files; the
+earlier screenshot findings remain as recorded. The local manifest, verification
+runner, log and results are in ignored
+`artifacts/local-checks/prune-unused-marker-tables/`. No dataset, configured
+biological resource or ignored validation artifact was removed or published.
