@@ -2,6 +2,10 @@
 
 A Shiny application for clustering, differential-expression analysis, manual cell-type annotation, and copy-number alteration (CNA) analysis of prepared single-cell RNA-seq cancer datasets.
 
+For development plans, investigations, historical preparation templates, and
+diagnostic tools, see the
+[`development` branch](https://github.com/ag-tyler/scAnnotationPipeline/tree/development/docs/development).
+
 The pipeline guides a dataset through:
 
 1. **Import prepared data** – copy an externally prepared directory into an independent workspace and open it immediately.
@@ -62,7 +66,7 @@ scAnnotationPipeline/
 ├── README.md
 ├── docs/
 │   ├── USER_GUIDE.md
-│   └── development/          # Plans, manual replays and release acceptance
+│   └── TESTING.md
 ├── resources/
 ├── datasets/
 ├── templates/
@@ -511,11 +515,11 @@ set still run all functional browser assertions.
 
 See the [Testing](docs/USER_GUIDE.md#testing) section for the test-file breakdown and coverage summary.
 
-See [Release Acceptance](docs/development/RELEASE_ACCEPTANCE.md) for the complete portable
-automated gate and scenario-to-test map.
+See [Testing the application](docs/TESTING.md) for the portable automated gate,
+browser requirements, and fixture/evidence policy.
 
 Development plans and manual review/replay records are indexed in
-[Development Documentation](docs/development/README.md).
+[Development Documentation](https://github.com/ag-tyler/scAnnotationPipeline/tree/development/docs/development).
 
 ## Repository Notes
 
@@ -537,7 +541,9 @@ append-only processing history is described in
 dependency fingerprints, recovery, and migration are described in
 [**docs/CACHE\_VALIDITY.md**](docs/CACHE_VALIDITY.md). The reproducible release
 gate is described in
-[**Release Acceptance**](docs/development/RELEASE_ACCEPTANCE.md).
+[**Testing the application**](docs/TESTING.md). Dated release acceptance and
+remaining human review are preserved on the
+[development branch](https://github.com/ag-tyler/scAnnotationPipeline/blob/development/docs/development/RELEASE_ACCEPTANCE.md).
 
 It covers:
 
