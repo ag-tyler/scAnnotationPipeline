@@ -5,11 +5,16 @@ Prepared on **2026-11-13**. The catalog was committed independently as
 the subsequent portability fixes on local `main` at `dd6d7e3` are preserved
 in both prepared versions. The catalog remains a historical inventory.
 
+The separation is now finalized: `main` is the app-focused distribution, and
+`development` retains development tools and records. The final integration and
+macOS metadata-ignore verification are recorded at the end of this document.
+
 ## Branch roles
 
 | Branch | Purpose |
 | --- | --- |
-| `main` | Default branch. Only the unused marker-table removal and legacy preparation-template retirement have been published here; the app-focused separation and other cleanup candidates remain unmerged. |
+| `main` | Default app-focused branch at clean integration tip `06723f3`: includes the approved separation, comment/diagnostic cleanup, neutral template defaults and Finder metadata ignore rule. Local main has the same tracked tree while retaining its prior local history. |
+| `chore/finalize-app-focused-main` | Clean integration `be1d546` plus ignore-only `06723f3`, based directly on remote main `8ddc0b3`; no unrelated local-main history was published. |
 | `chore/app-development-separation` | App-focused candidate `50a91af`, based on `dd6d7e3`; contains the application, tests, operational documentation and supported user tools. |
 | `development` | Full application snapshot plus development tools, current/future plans, historical records, catalog and legacy/reference assets. The app source and ordinary regression suite match the candidate. |
 | `chore/repository-cleanup-audit` | Original catalog remains pinned at `4e357cc`; the branch tip removes unused marker tables and retired templates, with its index linked to the original snapshot. |
@@ -17,9 +22,10 @@ in both prepared versions. The catalog remains a historical inventory.
 | `chore/retire-legacy-preparation-templates` | Focused template-retirement commit `8ddc0b3`, based on remote main `9631d08`. |
 | `perf/result-preserving-computation` | Archived experiment originally at `a62b241`; received the two artifact retirements and related guide cleanup described below. Experimental implementation was not changed, merged or resumed. |
 
-No force-push, default-branch change or merge into `main` is part of this
-preparation. Publishing branches does not publish the ignored local datasets,
-biological resources, environment settings or validation artifacts.
+The initial preparation left `main` unchanged; the approved final integration
+below publishes the app-focused tree. No force-push, history rewrite or
+default-branch setting change was used. Ignored local datasets, biological
+resources, environment settings and validation artifacts were not published.
 
 ## What belongs on the app-focused branch
 
@@ -430,3 +436,70 @@ archived harness code and biological resources are unchanged. No file under
 the root `datasets/` directory was inspected or removed. Regression tests were
 not run for this local artifact cleanup; retained-record readability,
 containment, ownership, link, file-state and Git diff checks provide verification.
+
+## Final app-focused main integration and Finder metadata ignore (2026-11-13)
+
+The user approved completing the prepared separation, applying the previously
+approved comment/diagnostic and neutral-template cleanup on `main`, and keeping
+development assets on `development`. A subsequent explicit request approved
+adding `.DS_Store` to root `.gitignore` on **all branches**.
+
+| Revision | Purpose |
+| --- | --- |
+| `be1d546` | Clean app integration based directly on remote main `8ddc0b3`. Its complete tracked tree matches prepared app revision `471b966`; 23 paths changed relative to that remote base. |
+| `06723f3` | Integration tip after the separate ignore-only commit. A root `.DS_Store` filename rule ignores Finder metadata at every directory depth. |
+| Local main `2bc6de1` | Preserves the four pre-existing local commits in its parent history while matching the integration's tracked tree exactly. The expected development-index modify/delete conflict was resolved as the approved deletion, and the local-only performance-plan copy was removed from the current tree. |
+
+Remote main was updated using the clean integration branch, not the local-main
+merge. Its history therefore excludes the four pre-existing local-main commits
+(`87f3586`, `d66f9fe`, `dd6d7e3`, `ef12c9a`), while local main retains them.
+No commits were rewritten and no force-push was used. The original local
+performance-plan contents remain in that history and on `development`.
+
+Main now retains the launcher, downsampling and checkpoint tools, both supported
+templates, all shared utility implementations, ordinary app regressions and
+reviewed scientific/browser fixtures. The nine remote development documents
+and four profiler/manual-recovery scripts excluded from the app distribution
+remain on `development`. Scientific processing, numerical parameters, cache
+compatibility and recovery implementations were not changed. Documentation
+links lead to the development branch for the extra tools and records.
+
+The Finder ignore rule was also cherry-picked as an isolated `.gitignore`
+change to every other branch. Existing review/archive branches received no
+runtime, test or documentation changes in this final pass. Git probes confirmed
+matches for `.DS_Store`, `app/.DS_Store`, `docs/example/nested/.DS_Store`, and
+`future/nested/.DS_Store`. No Finder files were tracked or deleted, and no
+machine-global Git configuration was changed.
+
+Verification on Windows with R 4.5.3 and headless Edge 157.0.4341.46:
+
+- Full suite at integration commit `be1d546`: **4,434 passed, 2 failed out of
+  4,436 expectations**, zero errors/warnings/skips; **674.05 seconds**. The
+  complete result counts and both failure messages match the earlier full
+  separation run. No new test failures were introduced.
+- The existing failures remain the `02-start-menu.png` and
+  `06-clustering-sample-selection.png` comparisons in the baseline navigation
+  journey. Their comparison scores also match the earlier run/control. Images
+  and thresholds were not changed. This is **not a fully green release gate**;
+  the existing screenshot drift and outstanding human/Linux acceptance remain
+  separate follow-up items.
+- The later ignore-only change was checked with Git ignore probes; no repeated
+  full suite was needed because executable code, configuration and tests did
+  not change after the tested commit. Screenshot updates and the optional
+  greater-than-4-GiB test were disabled during verification.
+- All **110 R files** parsed. Parsed template comparison found only the approved
+  two metadata defaults and removed `raw_files` field; scientific parameters and
+  standardized filenames were retained.
+- Seven app Markdown documents passed **57 local link/heading checks**, and
+  development-branch link targets were verified in Git. Main has **130 tracked
+  files**, with no `docs/development/` files in its current tree.
+- Shared app source, retained user tools/templates and ordinary tests match
+  development. All seven configured local biological resource hashes are
+  unchanged. Other branch changes are restricted to the approved ignore rule.
+
+Only the separation record and the ignore rule changed on `development`; its
+development assets were retained. Local test logs, summaries, failure
+classification and captured screenshots are kept in ignored
+`artifacts/local-checks/finalize-app-focused-main/`. Synthetic tests use
+disposable workspaces; no scientific dataset was opened for this integration,
+and no ignored local data or validation evidence was published.
