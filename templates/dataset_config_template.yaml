@@ -1,6 +1,8 @@
-project_info: 
-  dataset_id: "Werba2023_Pancreas"
-  technology: "10x"
+project_info:
+  # Import uses the new workspace name; set manually for preparation.
+  dataset_id: ""
+  # Import derives this from Samples.csv; set manually for preparation if known.
+  technology: ""
   source_doi: "" # Optional publication DOI, e.g. 10.1234/example
   source_url: "" # Optional dataset/repository URL; included in review snapshots
 
@@ -10,10 +12,6 @@ std_names:
   genes: "Genes.txt"
   cells: "Cells.csv"
   samples: "Samples.csv"
-
-# Standardization Parameters
-raw_files:
-  type: "10x" # Options: 10x
 
 # Marker filter parameters
 marker_filter_params:

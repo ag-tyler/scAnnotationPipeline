@@ -296,6 +296,16 @@ This file is copied from:
 templates/dataset_config_template.yaml
 ```
 
+The shared template leaves `project_info.dataset_id` and
+`project_info.technology` blank. New-dataset import sets the dataset ID from the
+new workspace name and derives technology from `Samples.csv`, leaving it blank
+when technologies are mixed or unknown.
+
+For an optional manual preparation workspace, set `project_info.dataset_id` to
+the preparation folder name and fill `project_info.technology` if known in your
+copied configuration before running the helper. The template does not require
+a `raw_files` section.
+
 Important fields include:
 
 - `project_info.dataset_id`
