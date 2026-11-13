@@ -163,3 +163,46 @@ Verification on Windows with R 4.5.3:
 The local runner, log and result summary are in ignored
 `artifacts/local-checks/obsolete-content-cleanup/`. The catalog remains a dated
 pre-cleanup snapshot; no dataset or biological resource was edited.
+
+## Neutral template defaults (2026-11-13)
+
+The second cleanup pass was approved before editing and changed the shared
+dataset template and its User Guide explanation:
+
+- `project_info.dataset_id` is blank instead of `Werba2023_Pancreas`.
+- `project_info.technology` is blank instead of `10x`.
+- Comments explain import population and manual preparation metadata.
+- The unused `raw_files: type: 10x` default block and its heading were removed.
+- The guide explains that import fills metadata from the workspace name and
+  `Samples.csv`, while optional manual preparation uses explicitly supplied
+  project metadata in the copied configuration.
+
+Commit `407b93a` on `chore/neutral-template-defaults` starts from the previous
+cleanup branch at `382ca34`, retaining that work. It was cherry-picked onto
+`development` as `5892cfb`. A separate development-only record commit documents
+the results here. Earlier review branches, `main`, the audit branch and the
+performance archive remain unchanged by this pass.
+
+Verification on Windows with R 4.5.3:
+
+- Existing `p03-dataset-import` and `standardize-general-template` tests:
+  **175 assertions passed**, zero failures/errors/warnings/skips, using an
+  isolated temporary R user cache.
+- Parsed YAML comparison confirms that only the two project metadata defaults
+  and the removed `raw_files` field differ. Scientific parameters, marker
+  thresholds, standardized filenames and optional source fields are identical.
+- Synthetic imports supplied the new workspace ID correctly and handled
+  uniform, mixed and unknown technologies as before. A separate legacy-template
+  import confirmed that the unchanged import code still overwrites historical
+  metadata and removes an older template's `raw_files` field.
+- An adapted copy of the neutral template, with explicit manual project
+  metadata and no `raw_files`, completed the preparation helper's staging,
+  strict validation and publication lifecycle successfully.
+- Runtime code and permanent tests were not edited. Shared runtime, templates
+  and ordinary tests match between the new cleanup branch and development.
+  Git diff checks passed.
+
+The full/browser suite was not rerun for this template/documentation change;
+earlier screenshot findings remain as recorded. Local verification output is
+in ignored `artifacts/local-checks/neutral-template-defaults/`. No existing
+dataset configuration, scientific workspace or biological resource was edited.
