@@ -105,12 +105,12 @@ register_cna_threshold_server <- function(input, output, session, state, context
                  card(
                    card_header(paste("Set Thresholds - Subclone", i, "—", cluster_label)),
                    card_body(
-                     helpText("Y thresholds use 0.01 increments, with finer precision when needed to retain saved values. The shared axis changes only the visible range."),
+                     helpText("Y threshold sliders normally extend to 1.0 and expand to retain higher saved thresholds. They use 0.01 increments, with finer precision when needed to retain saved values. The shared axis changes only the visible range."),
                      cna_threshold_guidance_ui(),
                      cna_threshold_slider(paste0("cna_thresh_mx_", i), "Malignant X (m_x):", min = -1, max = 1, value = def_mx, step = 0.05),
-                     cna_threshold_slider(paste0("cna_thresh_my_", i), "Malignant Y (m_y):", min = 0, max = axis$control_max, value = def_my, step = 0.01),
+                     cna_threshold_slider(paste0("cna_thresh_my_", i), "Malignant Y (m_y):", min = 0, max = axis$threshold_max, value = def_my, step = 0.01),
                      cna_threshold_slider(paste0("cna_thresh_nmx_", i), "Non-Malignant X (nm_x):", min = -1, max = 1, value = def_nmx, step = 0.05),
-                     cna_threshold_slider(paste0("cna_thresh_nmy_", i), "Non-Malignant Y (nm_y):", min = 0, max = axis$control_max, value = def_nmy, step = 0.01)
+                     cna_threshold_slider(paste0("cna_thresh_nmy_", i), "Non-Malignant Y (nm_y):", min = 0, max = axis$threshold_max, value = def_nmy, step = 0.01)
                    )
                  )
           )

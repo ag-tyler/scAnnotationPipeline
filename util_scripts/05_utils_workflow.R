@@ -1563,11 +1563,14 @@ cna_signal_axis_summary <- function(
   recommended <- max(minimum_limit, ceiling(data_max / increment) * increment)
   selected <- if (length(saved_limits) == 0L) 0.5 else max(saved_limits)
   control_max <- max(3, recommended, selected, saved_y_thresholds, na.rm = TRUE)
+  # Keep threshold selection compact even when the plot contains large signals.
+  threshold_max <- max(1, saved_y_thresholds, na.rm = TRUE)
   list(
     data_max = data_max,
     recommended = recommended,
     selected = selected,
-    control_max = ceiling(control_max / increment) * increment
+    control_max = ceiling(control_max / increment) * increment,
+    threshold_max = ceiling(threshold_max / increment) * increment
   )
 }
 
