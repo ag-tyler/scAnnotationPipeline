@@ -335,3 +335,49 @@ workspace loading still uses legacy-state inference; configured marker inputs
 still use the supported `gene` column alias; precision/location recovery remains
 documented and covered by regressions. Age alone does not establish that these
 paths are unnecessary. No recovery tool was executed against a dataset.
+
+## Early performance smoke/diagnostic artifact cleanup (2026-11-13)
+
+The user approved deleting exactly six early local run directories under
+`artifacts/local-checks/` after reviewing their purpose and retention limits:
+
+| Directory | Files removed | Logical bytes removed |
+| --- | ---: | ---: |
+| `e00-smoke-01/` | 59 | 2,178,002 |
+| `e00-smoke-02/` | 86 | 6,064,945 |
+| `e00-smoke-03/` | 108 | 6,696,305 |
+| `e00-smoke-04/` | 108 | 6,696,418 |
+| `e00-smoke-05/` | 271 | 15,076,291 |
+| `e00-diagnostic-01/` | 22 | 315,028 |
+| **Total** | **654** | **37,026,989** |
+
+This removes about 35.3 MiB of generated early-run captures, copied sources,
+inputs, and diagnostics. All six directories were gitignored and carried the
+`Owned disposable performance experiment` marker. Their resolved absolute
+paths were checked as immediate children of the intended artifact directory
+inside the workspace. The artifact root, deletion targets and descendants were
+checked for reparse points/links before recursive deletion. Counts and sizes
+matched the approved batch, and all six paths were absent afterward.
+
+All `*-verified/` and `*-final/` directories were retained, including the runs
+referenced by the performance plan's final evidence. Root-level logs, summaries,
+consolidated evidence, other local review outputs and recent cleanup checks
+were retained too. Across deletion, the retained artifact inventory matched
+exactly by relative file path, size and modification time: **6,294 files,
+3,348,979,707 logical bytes**. This is a metadata comparison, not a new scientific
+or performance validation.
+
+The deleted generated contents are not recoverable from Git branches; they
+were never tracked or uploaded. The retained final evidence and archived
+performance harness remain. No performance experiment was resumed, and neither
+the dated catalog nor the historical performance plan was rewritten.
+
+The documentation record is maintained on
+`chore/prune-old-performance-smoke-artifacts`, based on `development` at
+`38f78fa`, and fast-forwarded into `development`. Only this documentation record
+is committed/pushed; ignored-file deletion is local to this workspace. Other
+branch tips, application code, configuration, permanent tests and biological
+resources are unchanged. No file under the root `datasets/` directory was
+inspected or removed. Regression tests were not run for this local artifact
+cleanup; containment, ownership, link, file-state and Git diff checks provide
+verification.
