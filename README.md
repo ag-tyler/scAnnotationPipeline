@@ -492,6 +492,20 @@ runners, diagnostic scripts, logs and generated result files belong in
 repository root; keep `datasets/` for scientific workspaces and their runtime
 data.
 
+From the application root, check dependencies, browser startup, and UTF-8 in both
+the main R process and an independent worker before starting the suite:
+
+```sh
+Rscript scripts/check_test_setup.R
+```
+
+The suite's `tests/testthat.R` entry point also runs this read-only check
+automatically. Tests generate their own biological resources and datasets,
+including app bootstrap; a GitHub ZIP without private resources can be tested.
+Real app startup still requires the resource files described above. See
+[test setup and troubleshooting](docs/TESTING.md#check-the-setup-first) for browser
+paths, platform-specific UTF-8 settings, and alternative test entry points.
+
 Run the complete test suite from the repository root:
 
 ```r

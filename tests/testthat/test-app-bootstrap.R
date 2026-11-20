@@ -15,13 +15,32 @@ test_that("Shiny package-directory support autoload is disabled", {
 test_that("componentized app entry point assembles a Shiny application", {
   skip_if_not_installed("shiny")
 
-  app_dir <- testthat::test_path("..", "..")
+  source_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
+  app_dir <- make_ui_baseline_app(source_dir)
   app <- shiny::as.shiny.appobj(app_dir)
 
   expect_s3_class(app, "shiny.appobj")
   expect_type(app$serverFuncSource, "closure")
 })
 
+
+test_that("component loading preserves the dashboard dash in a C-locale R worker", {
+  source_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
+  app_dir <- make_ui_baseline_app(source_dir)
+  script <- paste0(
+    'invisible(Sys.setlocale("LC_CTYPE", "C")); ',
+    'suppressPackageStartupMessages(source("app.R")); ',
+    'summary <- summarize_pipeline_overview(new_pipeline_state("UTF8", "sample1")); ',
+    'html <- as.character(pipeline_status_overview_ui(summary)); ',
+    'stopifnot(grepl(intToUtf8(8212L), html, fixed=TRUE)); ',
+    'cat("DASH_UTF8_OK")'
+  )
+  rscript <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")
+  result <- processx::run(rscript, c("--vanilla", "-e", script), wd = app_dir,
+    error_on_status = FALSE, timeout = 60000)
+  expect_equal(result$status, 0, info = result$stderr)
+  expect_match(result$stdout, "DASH_UTF8_OK", fixed = TRUE)
+})
 
 test_that("stable launcher disables autoreload before starting Shiny", {
   app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")

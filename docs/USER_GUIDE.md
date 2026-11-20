@@ -82,6 +82,7 @@ scAnnotationPipeline/
 │
 ├── scripts/
 │   ├── run_app.R
+│   ├── check_test_setup.R               # Read-only test preflight
 │   ├── downsample_processed_data.R
 │   ├── copy_dataset_checkpoint.R
 │   ├── benchmark_computation.R          # Development-only E00 entry point
@@ -913,6 +914,15 @@ Synthetic test data are built in `tests/testthat/helper-fixtures.R`; routine tes
 
 ### Running the tests
 
+First run `Rscript scripts/check_test_setup.R` from the application root. It
+checks dependencies, a working headless browser, and host/worker UTF-8 settings.
+The ordinary `Rscript tests/testthat.R` entry point runs this preflight
+automatically; direct `devtools`/`testthat` entry points need the explicit check.
+Tests, including bootstrap, supply synthetic resources and do not require private
+biological files. Those files remain required to launch the real app. See
+[Testing the application](TESTING.md#check-the-setup-first) for fresh-ZIP setup
+and browser/locale troubleshooting.
+
 From the repository root:
 
 ```r
@@ -989,6 +999,8 @@ The helper files have distinct roles:
 
 - `helper-source.R` sources the real utility scripts;
 - `helper-fixtures.R` builds deterministic synthetic matrices, metadata, configurations, and CNA inputs;
+- `helper-app-fixtures.R` assembles disposable app checkouts with synthetic
+  biological resources and prepared inputs for bootstrap and browser tests;
 - temporary directories isolate cache/result/file-I/O tests from real datasets.
 
 ### Coverage summary

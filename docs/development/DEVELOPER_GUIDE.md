@@ -117,6 +117,12 @@ Run the full app suite after runtime changes before finalizing the candidate:
 Rscript tests/testthat.R
 ```
 
+This entry point checks dependencies, browser startup, and host/worker UTF-8
+before running tests. Run `Rscript scripts/check_test_setup.R` explicitly before
+direct `devtools`/`testthat` calls. The bootstrap fixture is synthetic too; verify
+fresh ZIP checkouts without private resources rather than relying on a configured
+developer workstation. See the [setup diagnostics](../TESTING.md#check-the-setup-first).
+
 The [Testing guide](../TESTING.md) covers browser setup, screenshot baselines,
 the optional large-file test, evidence, and the latest dated verification.
 Keep screenshot updates disabled during verification. For an intentional visual
