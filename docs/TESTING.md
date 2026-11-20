@@ -42,23 +42,35 @@ The optional greater-than-4-GiB snapshot regression is enabled explicitly with
 
 ## Recorded verification status
 
-The full app suite recorded on **2026-11-13** at integration commit `be1d546`
-ran on Windows with R 4.5.3 and headless Edge 157.0.4341.46: **4,434 passed and
-2 failed out of 4,436 expectations**, with zero errors, warnings, or skips
-(674.05 seconds). The optional greater-than-4-GiB test and screenshot updates
-were disabled.
+The full run on **2026-11-20** verified the shared app at `main` commit `435472e`
+and `development` commit `fc7fb6a`, on Windows with R 4.5.3 and headless Edge
+157.0.4341.60:
 
-The two known failures are the `02-start-menu.png` and
-`06-clustering-sample-selection.png` comparisons in the baseline navigation
-journey. Their failure messages and comparison scores match the earlier
-separation verification. This is not a fully green release gate. Screenshot
-baseline review and outstanding human/Linux acceptance remain open; do not
-update images or thresholds merely to suppress these failures.
+| Suite | Passed | Failures/errors/warnings/skips |
+| --- | --- | --- |
+| Full app suite, including browser journeys and screenshots | 4,451 | 0 / 0 / 0 / 0 |
+| Separate development-tool contracts | 62 | 0 / 0 / 0 / 0 |
+| Total | 4,513 | 0 / 0 / 0 / 0 |
 
-This is a dated result, not a claim about every subsequent checkout. The
-[integration verification record](https://github.com/ag-tyler/scAnnotationPipeline/blob/fe23fca/docs/development/BRANCH_SEPARATION.md#final-app-focused-main-integration-and-finder-metadata-ignore-2026-11-13)
-preserves its context and evidence. Documentation-only updates do not constitute
-a new app-suite run.
+The app suite took 751.67 seconds; the complete run took 777 seconds. Automatic
+screenshot updates and the optional greater-than-4-GiB stress test were disabled.
+The local log, result summaries, and environment record are retained in ignored
+`artifacts/local-checks/full-suite-2026-11-20/`.
+
+The earlier November 13 run had two screenshot failures, `02-start-menu.png` and
+`06-clustering-sample-selection.png`. Review found only the synthetic cache-size
+label changed from 12.4 KB to 13.3 KB, including the dashboard behind the modal.
+The user approved those two image updates on November 20; test code and comparison
+thresholds were unchanged. A focused browser rerun passed 39 assertions, followed
+by the clean full run above. The
+[original integration record](https://github.com/ag-tyler/scAnnotationPipeline/blob/fe23fca/docs/development/BRANCH_SEPARATION.md#final-app-focused-main-integration-and-finder-metadata-ignore-2026-11-13)
+preserves the historical failures.
+
+This is dated automated verification, not a claim about every later checkout or
+completion of human, biological, or broader platform acceptance. The reported
+real-workstation WSL use is separate practical evidence; this Windows run does
+not establish a full Linux acceptance gate. Documentation-only updates do not
+constitute another app-suite run.
 
 ## Golden outputs and evidence
 

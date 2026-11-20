@@ -918,7 +918,7 @@ Rscript tests/testthat.R
 
 A clean test run should finish with zero failures and zero unexpected warnings/skips.
 
-For the latest recorded verification and its two known screenshot failures,
+For the latest recorded verification and screenshot-baseline follow-up,
 see [Recorded verification status](TESTING.md#recorded-verification-status).
 
 Some tests deliberately exercise validation/error/warning paths. Those conditions are captured by expectations and therefore should not appear as uncaught suite warnings.

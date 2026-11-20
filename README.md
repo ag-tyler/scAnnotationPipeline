@@ -6,6 +6,9 @@ For development plans, investigations, historical preparation templates, and
 diagnostic tools, see the
 [`development` branch](https://github.com/ag-tyler/scAnnotationPipeline/tree/development/docs/development).
 
+To extend or fix the app, start with the
+[Developer Guide](https://github.com/ag-tyler/scAnnotationPipeline/blob/development/docs/development/DEVELOPER_GUIDE.md).
+
 The pipeline guides a dataset through:
 
 1. **Import prepared data** – copy an externally prepared directory into an independent workspace and open it immediately.
@@ -519,7 +522,7 @@ set still run all functional browser assertions.
 See the [Testing](docs/USER_GUIDE.md#testing) section for the test-file breakdown and coverage summary.
 
 See [Testing the application](docs/TESTING.md) for the current automated gate,
-browser requirements, known verification failures, and fixture/evidence policy.
+browser requirements, recorded verification status, and fixture/evidence policy.
 
 Development plans and manual review/replay records are indexed in
 [Development Documentation](https://github.com/ag-tyler/scAnnotationPipeline/tree/development/docs/development).
