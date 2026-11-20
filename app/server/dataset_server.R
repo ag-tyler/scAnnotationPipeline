@@ -298,7 +298,7 @@ register_dataset_server <- function(input, output, session, state, context) {
       n_passing <- sum(combined > dataset_config$marker_filter_params$cell_type$min_score)
       n_keep <- max(dataset_config$marker_filter_params$cell_type$min_genes,
                     min(n_passing, dataset_config$marker_filter_params$cell_type$max_genes))
-      head(.SD, n_keep)
+      head(.SD[order(-combined)], n_keep)
     }, by = cell_type]
 
     complete_markers <- complete_markers[, .(cell_type, symbol)]
@@ -325,7 +325,7 @@ register_dataset_server <- function(input, output, session, state, context) {
             n_passing <- sum(combined > dataset_config$marker_filter_params$cancer_type$min_score)
             n_keep <- max(dataset_config$marker_filter_params$cancer_type$min_genes,
                           min(n_passing, dataset_config$marker_filter_params$cancer_type$max_genes))
-            head(.SD, n_keep)
+            head(.SD[order(-combined)], n_keep)
           }, by = cancer_type]
 
           if (cancer_type_acronym == 'HNSCC') {
