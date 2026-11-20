@@ -1,5 +1,8 @@
 # App and development branch separation
 
+This is a historical decision and verification record. For current development
+instructions and branch maintenance, use the [Developer Guide](DEVELOPER_GUIDE.md).
+
 Prepared on **2026-11-13**. The catalog was committed independently as
 `4e357cc` on `chore/repository-cleanup-audit`. Its baseline is `ef12c9a`;
 the subsequent portability fixes on local `main` at `dd6d7e3` are preserved
@@ -70,6 +73,10 @@ outside branch contents and remains a separate retention decision. Historical
 evidence is preserved without representing it as current release acceptance.
 
 ## Maintenance workflow
+
+The following workflow records the original separation arrangement. Use the
+[current maintenance instructions](DEVELOPER_GUIDE.md#review-publish-and-maintain-the-branches)
+for new work; the performance tools have since been consolidated on `development`.
 
 1. Create app feature/fix branches from current `main`. Include runtime changes,
    corresponding regression tests and operational documentation in the same

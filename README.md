@@ -8,6 +8,9 @@ records, current plans, and future proposals alongside the application. Use
 app-focused version. See the [branch separation record](docs/development/BRANCH_SEPARATION.md)
 and [development index](docs/development/README.md) for scope and workflow.
 
+To extend or fix the app, start with the
+[Developer Guide](docs/development/DEVELOPER_GUIDE.md).
+
 The pipeline guides a dataset through:
 
 1. **Import prepared data** – copy an externally prepared directory into an independent workspace and open it immediately.
@@ -522,7 +525,7 @@ set still run all functional browser assertions.
 See the [Testing](docs/USER_GUIDE.md#testing) section for the test-file breakdown and coverage summary.
 
 See [Testing the application](docs/TESTING.md) for the current automated gate,
-browser requirements, known verification failures, and fixture/evidence policy.
+browser requirements, recorded verification status, and fixture/evidence policy.
 The dated [Release Acceptance](docs/development/RELEASE_ACCEPTANCE.md) preserves
 the historical scenario-to-test map and remaining human review.
 
