@@ -7,7 +7,8 @@ diagnostic tools, see the
 [`development` branch](https://github.com/ag-tyler/scAnnotationPipeline/tree/development/docs/development).
 
 To extend or fix the app, start with the
-[Developer Guide](https://github.com/ag-tyler/scAnnotationPipeline/blob/development/docs/development/DEVELOPER_GUIDE.md).
+[Developer Guide](https://github.com/ag-tyler/scAnnotationPipeline/blob/development/docs/development/DEVELOPER_GUIDE.md)
+on the `development` branch.
 
 The pipeline guides a dataset through:
 
