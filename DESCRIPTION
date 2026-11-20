@@ -1,7 +1,7 @@
 Package: scAnnotationPipeline
 Type: Package
 Title: scRNA-seq Prepared-Data Import, Clustering, Annotation, and CNA Pipeline
-Version: 0.0.0.9000
+Version: 1.0.0
 Description: Shiny application and utility functions for importing prepared
     single-cell RNA-seq cancer datasets, clustering, differential-expression
     analysis, manual cell-type annotation, and copy-number alteration analysis.
