@@ -67,10 +67,14 @@ by the clean full run above. The
 preserves the historical failures.
 
 This is dated automated verification, not a claim about every later checkout or
-completion of human, biological, or broader platform acceptance. The reported
-real-workstation WSL use is separate practical evidence; this Windows run does
-not establish a full Linux acceptance gate. Documentation-only updates do not
-constitute another app-suite run.
+completion of all human, biological, or broader platform acceptance. Application
+code, tests, and fixtures are unchanged for the 1.0.0 release; version and
+documentation updates do not constitute another app-suite run.
+
+**WSL acceptance: closed on 2026-11-20 by user decision** following workstation
+use. Reopen this point if an issue is reported. Detailed dataset outcomes are
+not required for this closure. This acceptance is separate from the Windows
+automated coverage recorded above.
 
 ## Golden outputs and evidence
 
