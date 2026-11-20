@@ -566,3 +566,32 @@ changes. All **106 documentation link/heading checks** and the benchmark CLI
 `--help` smoke check passed. The existing application files are unchanged, so the full app suite
 was not rerun. Local verification code/results remain ignored under
 `artifacts/local-checks/consolidate-development-branches/`.
+
+## App-focused 1.0.1 promotion (2026-11-20)
+
+The user approved promoting the shared app fixes and user documentation to
+`main` as 1.0.1. Main commit `9fa0bce` transfers marker-score sorting,
+explicit UTF-8 app loading, the read-only test preflight, self-contained
+ordinary tests and reviewed start-menu screenshot, resource/setup guidance,
+README subsection order, and the local snapshot/preprocessing ignore rules. Release metadata
+and notes are aligned on both maintained branches.
+
+Main retains its app-focused README, user-guide layout, and external links to
+development instructions. Development records, profiling/recovery CLIs, the
+E00 harness, and separate development-tool tests remain on `development`.
+The entire development branch was not merged into main.
+
+The full ordinary gate ran against a disposable main ZIP-equivalent copy
+without Git, biological resources, scientific datasets, or development tools;
+the result and environment are recorded in [Testing](../TESTING.md#101-release-gate).
+Marker sorting may change selections for previously unsorted tables and
+downstream DE/signature evidence; existing outputs are not recomputed. No
+local scientific data or resources were changed. The original `v1.0.0` tag
+remains unchanged. Local verification evidence is ignored under
+`artifacts/local-checks/promote-1.0.1/`.
+
+The separate development-tool contracts also passed **62 assertions**, with
+zero failures, errors, warnings, or skips. Together with the main app gate,
+verification totals **4,550 passing assertions**. Shared app code and ordinary
+tests match between the maintained branches; documentation examples and
+repository links/anchors also passed validation.

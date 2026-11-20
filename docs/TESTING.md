@@ -144,6 +144,32 @@ a matching image alone is not proof that its characters are correct.
 
 ## Recorded verification status
 
+### 1.0.1 release gate
+
+The app-focused 1.0.1 candidate passed **4,488 app assertions** on
+2026-11-20, with **zero failures, errors, warnings, or skips**. The full ordinary
+suite ran through `tests/testthat.R` in a disposable ZIP-equivalent copy,
+without Git metadata, biological resource files, scientific datasets, or
+development-only tools. Dependency, host/worker UTF-8, and actual browser
+startup checks passed before the suite. The run used Windows, R 4.5.3, and
+headless Edge 157.0.4341.60, including functional browser journeys and
+screenshot comparisons (801.63 seconds).
+
+The gate includes unsorted-marker selection regressions, UTF-8 bootstrap and
+dashboard text checks, and fresh-ZIP test preflight. Screenshot updates were
+disabled; the promoted start-menu baseline is the reviewed UTF-8 correction.
+The optional greater-than-4-GiB stress test was not enabled. This run does not
+repeat the closed WSL dataset acceptance or claim validation of every
+biological dataset.
+
+Local logs, source hashes, environment details, and assertion summaries are
+retained in ignored `artifacts/local-checks/promote-1.0.1/`. The app fixes,
+ordinary tests, preflight, user documentation, and version metadata are
+promoted to `main`; development-only assets stay on `development`. The
+original `v1.0.0` tag remains unchanged.
+
+### 1.0.0 release gate
+
 The full run on **2026-11-20** verified the shared app at `main` commit `435472e`
 and `development` commit `fc7fb6a`, on Windows with R 4.5.3 and headless Edge
 157.0.4341.60:
@@ -199,8 +225,8 @@ The corrected `02-start-menu.png` was visually reviewed; the other five baseline
 images were byte-for-byte unchanged. Comparison thresholds were not changed.
 
 The local snapshot manifest, log, and result summaries are retained under ignored
-`artifacts/local-checks/test-preflight-dev/`. These changes and results belong to
-`development`; the released `main` and `v1.0.0` remain unchanged pending review.
+`artifacts/local-checks/test-preflight-dev/`. This was the development verification
+before promotion to `main` in 1.0.1; the original `v1.0.0` tag remains unchanged.
 
 ## Golden outputs and evidence
 

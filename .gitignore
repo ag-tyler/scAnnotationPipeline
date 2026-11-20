@@ -17,6 +17,7 @@ Rplots.pdf
 
 # Local datasets
 datasets/
+dataset_preprocessing/
 
 # Local snapshots
 snapshots/

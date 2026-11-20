@@ -2,7 +2,7 @@
 
 A Shiny application for clustering, differential-expression analysis, manual cell-type annotation, and copy-number alteration (CNA) analysis of prepared single-cell RNA-seq cancer datasets.
 
-Version **1.0.0**. See the [release notes](NEWS.md).
+Version **1.0.1**. See the [release notes](NEWS.md).
 
 This is the **development** branch. It retains development tools, historical
 records, current plans, and future proposals alongside the application. Use
