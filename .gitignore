@@ -17,6 +17,10 @@ Rplots.pdf
 
 # Local datasets
 datasets/
+dataset_preprocessing/
+
+# Local snapshots
+snapshots/
 
 # Local validation runners, logs and generated results
 /artifacts/local-checks/

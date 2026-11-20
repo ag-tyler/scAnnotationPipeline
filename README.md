@@ -2,7 +2,7 @@
 
 A Shiny application for clustering, differential-expression analysis, manual cell-type annotation, and copy-number alteration (CNA) analysis of prepared single-cell RNA-seq cancer datasets.
 
-Version **1.0.0**. See the [release notes](NEWS.md).
+Version **1.0.1**. See the [release notes](NEWS.md).
 
 For development plans, investigations, historical preparation templates, and
 diagnostic tools, see the
@@ -60,7 +60,194 @@ git clone --branch main https://github.com/ag-tyler/scAnnotationPipeline.git
 cd scAnnotationPipeline
 ```
 
-Add the required untracked biological resource files to the existing `resources/` directory. See the [Resource Files](docs/USER_GUIDE.md#resource-files) section of the User Guide for the expected files and formats.
+### Required biological resources
+
+**Normal app startup requires all seven files below. They are not included in
+GitHub clones or ZIP downloads.** Obtain or prepare compatible reference files
+separately before launching the app. Synthetic tests supply their own resources
+and can run without these external files. The tracked `metadata_extract_prompt.txt`
+is an optional preparation aid, not one of the required app resources.
+
+| `resource_files` key | Default filename | Required contents | Used for |
+| --- | --- | --- | --- |
+| `hgnc_complete_set` | `hgnc_complete_set.txt` | HGNC TSV with `ensembl_gene_id`, `symbol`, `location_sortable` | Approved gene-symbol mapping and cytogenetic locations |
+| `gene_positions` | `gene_positions_biomaRt_0626.csv` | CSV/TSV with `ensembl_gene_id`, `hgnc_symbol`, `chromosome_name`, `start_position`; `end_position` may also be retained | Genomic coordinates and gene ordering for CNA |
+| `marker_sets` | `global_cell_type_markers.csv` | CSV with `cell_type`, `symbol` (or legacy `gene`), numeric `combined` | Cell-type marker matching and signature scoring during DE/annotation |
+| `malignant_markers` | `malignant_markers.csv` | CSV with `cancer_type`, `symbol` (or legacy `gene`), numeric `combined` | Cancer-specific marker evidence for annotation |
+| `housekeeping_genes` | `housekeeping_genes.txt` | Headerless text, one gene symbol per line | The `Housekeeping_artifact` marker/signature set |
+| `mitochondrial_genes` | `mt_genes.txt` | Headerless text, one gene symbol per line | The `Mito_artifact` marker/signature set |
+| `cancer_cell_map` | `cancer_cell_map.json` | JSON objects named `cancer_types` and `cell_types`, with string values | Connecting sample cancer names to malignant-marker groups and annotation labels |
+
+Keep column names exactly as shown and use gene symbols consistent with the
+prepared `Genes.txt` files. Extra reference-table columns are allowed. Use plain
+text tables, not spreadsheet workbooks. The
+[User Guide resource reference](docs/USER_GUIDE.md#resource-files) provides the
+related configuration and format overview.
+
+#### File names and locations
+
+Either place all seven files in `resources/` using the default names above, or
+edit their existing entries under `resource_files` in `general_config.yaml` to
+match your filenames. Keep the configuration keys unchanged. To use another
+directory, change `paths.resources_dir`; it may be relative to the application
+root or an absolute path. Resource filenames are resolved within that directory.
+Capitalization must match, especially on Linux/WSL.
+
+This is a **partial example**: edit these values in the existing configuration
+and retain its other resource entries and settings:
+
+```yaml
+paths:
+  resources_dir: "resources"
+
+resource_files:
+  hgnc_complete_set: "hgnc_complete_set.txt"
+  gene_positions: "gene_positions_ensembl116_GRCh38.csv"
+  marker_sets: "my_cell_type_markers.csv"
+```
+
+Renaming a file does not change the required columns or biological meaning.
+The repository's `.gitignore` lists the default resource filenames explicitly;
+add matching ignore entries for alternative filenames stored inside the
+repository, such as `resources/my_cell_type_markers.csv` and
+`resources/gene_positions_ensembl116_GRCh38.csv`.
+
+Restart the app after changing resource files or their configuration. Existing
+DE outputs are not regenerated automatically; rerun affected DE and review
+downstream annotations when adopting changed references.
+
+#### Download the HGNC reference
+
+Open the [official HGNC Statistics & download files page](https://www.genenames.org/download/statistics-and-files/).
+Under **Complete dataset download links**, select the **Complete HGNC approved
+dataset** in TXT/TSV format, rather than JSON or a chromosome-specific subset.
+Save it as `resources/hgnc_complete_set.txt`, or configure its alternative name.
+Keep its original header and columns, including `ensembl_gene_id`, `symbol`, and
+`location_sortable`. HGNC describes these fields in its
+[download documentation](https://www.genenames.org/help/statistics-and-downloads/).
+
+Record the download date and retain the file used for an analysis. HGNC offers
+[archived datasets](https://www.genenames.org/download/archive/) when a dated
+reference needs to be reproduced.
+
+#### Download gene positions from Ensembl BioMart
+
+Open the [Ensembl BioMart landing page](https://www.ensembl.org/info/data/biomart/index.html),
+follow its link to the BioMart tool, and use the
+[official instructions](https://www.ensembl.org/info/data/biomart/how_to_use_biomart.html):
+
+1. Select **Ensembl Genes** and the **Human genes** dataset for the assembly and
+   annotation release appropriate to your prepared data. Use an archive for a
+   specific release; record the release, assembly, and download date.
+2. Select the gene-level attributes below. Use the unversioned gene stable ID,
+   HGNC symbol, and gene coordinates, rather than transcript coordinates.
+3. In **Results**, export **all results** as TSV or CSV with a header, not just
+   the displayed preview. Rename the exported display headers to the exact app
+   column names below.
+4. Save the table using the configured `gene_positions` filename. Chromosome
+   labels should be `1` through `22`, `X`, or `Y`, without a `chr` prefix; the app
+   filters to these standard human chromosomes.
+
+| BioMart attribute/display header | App column name |
+| --- | --- |
+| Gene stable ID | `ensembl_gene_id` |
+| HGNC symbol | `hgnc_symbol` |
+| Chromosome/scaffold name | `chromosome_name` |
+| Gene start (bp) | `start_position` |
+| Gene end (bp), optional for the app | `end_position` |
+
+The default filename's `0626` suffix does not select or verify an annotation
+release. Keep reference versions consistent within an analysis. HGNC supplies
+gene names and cytogenetic locations; BioMart supplies base-pair coordinates.
+
+Alternatively, the optional Bioconductor
+[`biomaRt` package](https://bioconductor.org/packages/release/bioc/vignettes/biomaRt/inst/doc/accessing_ensembl.html)
+can produce the internal column names directly. This one-off preparation example
+uses Ensembl release 116 and its human GRCh38 dataset; choose a compatible
+reference for your own data. `biomaRt` is not an app or test dependency.
+
+```r
+# Install only if using this optional download method.
+if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
+if (!requireNamespace("biomaRt", quietly = TRUE)) BiocManager::install("biomaRt")
+
+mart <- biomaRt::useEnsembl(
+  biomart = "genes", dataset = "hsapiens_gene_ensembl", version = 116
+)
+positions <- biomaRt::getBM(
+  attributes = c("ensembl_gene_id", "hgnc_symbol", "chromosome_name",
+                 "start_position", "end_position"),
+  mart = mart
+)
+output <- "resources/gene_positions_ensembl116_GRCh38.csv"
+stopifnot(!file.exists(output)) # Choose a new filename if it already exists.
+write.csv(positions, output, row.names = FALSE)
+```
+
+Point `resource_files.gene_positions` at this output, as in the configuration
+example above. Downloading a new reference does not update the app automatically.
+
+#### Marker tables and artifact gene lists
+
+In the marker CSVs, `cell_type` is a cell-type label and `cancer_type` identifies
+a cancer marker group. Each row supplies a gene symbol and a finite numeric
+`combined` evidence score: higher scores rank first. Use meaningful, consistently
+defined scores and avoid duplicate gene/group rows. Additional columns such as
+`specificity` and `sensitivity` are optional; the app does not calculate
+`combined` from them. These examples illustrate structure, not usable reference
+datasets:
+
+```csv
+cell_type,symbol,combined
+Example_cell_type,GENE_A,2.4
+Example_cell_type,GENE_B,1.8
+```
+
+```csv
+cancer_type,symbol,combined
+EXAMPLE,GENE_C,2.1
+EXAMPLE,GENE_D,1.6
+```
+
+The app sorts each group by descending `combined`, then selects its marker count
+using `marker_filter_params` in `dataset_config.yaml`. `min_genes` and
+`max_genes` bound the count; `min_score` counts scores strictly greater than the
+cutoff. This is a **soft cutoff**: reaching the minimum may retain lower-scoring
+genes, and a group with fewer available genes retains only those available.
+HNSCC handling takes up to `min_genes` from each of `HNSCC_HPV-neg` and
+`HNSCC_HPV-pos` before combining them. Generic `Malignant` rows in the global
+cell-type table are excluded; cancer-specific evidence comes from the malignant
+marker table.
+
+Housekeeping and mitochondrial files have **no header or score column**: put one
+gene symbol on each line and avoid duplicates. Their full lists enter the
+corresponding artifact marker sets without sorting or count-based selection.
+They also bypass the ordinary per-signature gene cap; only genes present in the filtered expression
+matrix contribute to scoring. File order does not rank or exclude genes. These
+sets support DE/annotation artifact signatures, not automatic cell filtering.
+Both files remain mandatory under the current startup checks.
+
+#### Cancer-cell map
+
+The map connects the cancer name in `Samples.csv` to the malignant CSV's
+`cancer_type` identifier, then to the label under which those markers are added.
+For the illustrative marker table above:
+
+```json
+{
+  "cancer_types": {"Example cancer": "EXAMPLE"},
+  "cell_types": {"EXAMPLE": "Example_cell_type"}
+}
+```
+
+Match the sample cancer name and marker identifier exactly. The app adds
+cancer-specific markers when the dataset has one recognized cancer type;
+unmapped or multiple distinct cancer types skip that addition. This mapping
+provides annotation marker evidence; it does not choose CNA reference cells or
+assign malignancy itself. Although that augmentation is conditional, the JSON
+file is still required at startup.
+
+### Directory layout
 
 The following representative directory layout shows the main folders and selected files:
 
@@ -78,7 +265,7 @@ scAnnotationPipeline/
 ├── resources/
 ├── datasets/
 ├── templates/
-├── scripts/                 # Launcher, downsampling and checkpoint tools
+├── scripts/                 # Launcher, preparation/checkpoint and test setup tools
 ├── util_scripts/
 └── tests/
 ```
@@ -231,52 +418,6 @@ Prepared input contents must be ordinary files and directories. Resolve child
 symbolic links into copied files/directories before importing, so the workspace
 does not depend on linked source data.
 
-### Preparing a smaller demonstration dataset
-
-Use `scripts/downsample_processed_data.R` to create a separate import-ready
-subset from an existing `processed_data` directory. From the repository root:
-
-```r
-source("scripts/downsample_processed_data.R")
-downsample_processed_data(
-  input_dir = "datasets/Tang2026_Colorectal/processed_data",
-  output_dir = "datasets/Tang2026_Colorectal_demo_input",
-  n_cells = 3000,
-  samples = c("CRC_T3", "CRC_LM3"), # NULL includes every sample
-  stratify_by = "cell_type",
-  min_genes = 500,
-  reset_annotations = TRUE,
-  seed = 3988
-)
-```
-
-Alternatively, edit the `settings` list at the top of the script and run
-`Rscript scripts/downsample_processed_data.R`, or source it and call
-`do.call(downsample_processed_data, settings)`.
-
-The cell cap applies **per sample after filtering**. Smaller samples retain all
-eligible cells. The default filter matches the app's default minimum of 500
-expressed genes; set `min_genes = 0` to sample all input cells. Counts and genes
-are preserved, with matrix columns and cell rows kept in their original order.
-Each selected sample gets a folder and a matching `Samples.csv` row with its
-updated `n_cells`; other sample metadata is retained. A root-level
-`downsampling_report.csv` records input/eligible/output counts and settings.
-
-Sampling allocates cells proportionally to existing cell types, then randomly
-samples without replacement within each type. Integer rounding can omit rare
-types; there is no minimum quota or deliberate enrichment. Set `stratify_by =
-NULL` for uniform sampling or supply multiple column names for finer strata.
-Blank labels form their own stratum. Selection is reproducible for the same
-input order, sample selection, settings and seed.
-
-After sampling, annotation reset blanks `cell_type`, `cell_subtype`, `subclone`
-and `cell_type_pre_cna` where present, and removes prior `clust`, `umap1` and
-`umap2` columns. Extend `annotation_columns` to include any additional annotation
-fields in your input. Set `reset_annotations = FALSE` to retain them. No caches,
-workflow state or results are copied. The input is unchanged, existing output
-folders are refused, and failed runs do not publish partial datasets. Import
-the output folder using the app's new-dataset workflow.
-
 ### Saving resumable presentation checkpoints
 
 After saving edits, finishing all computations and **stopping the app**, use
@@ -424,6 +565,52 @@ structured `errors` (`code`, `sample`, `path`, `message`), text `samples`, detec
 For an existing workspace, pass its filename list as `std_names`. The checker
 does not write files, update workflow state, or cache a validation result.
 
+### Preparing a smaller demonstration dataset
+
+Use `scripts/downsample_processed_data.R` to create a separate import-ready
+subset from an existing `processed_data` directory. From the repository root:
+
+```r
+source("scripts/downsample_processed_data.R")
+downsample_processed_data(
+  input_dir = "datasets/Tang2026_Colorectal/processed_data",
+  output_dir = "datasets/Tang2026_Colorectal_demo_input",
+  n_cells = 3000,
+  samples = c("CRC_T3", "CRC_LM3"), # NULL includes every sample
+  stratify_by = "cell_type",
+  min_genes = 500,
+  reset_annotations = TRUE,
+  seed = 3988
+)
+```
+
+Alternatively, edit the `settings` list at the top of the script and run
+`Rscript scripts/downsample_processed_data.R`, or source it and call
+`do.call(downsample_processed_data, settings)`.
+
+The cell cap applies **per sample after filtering**. Smaller samples retain all
+eligible cells. The default filter matches the app's default minimum of 500
+expressed genes; set `min_genes = 0` to sample all input cells. Counts and genes
+are preserved, with matrix columns and cell rows kept in their original order.
+Each selected sample gets a folder and a matching `Samples.csv` row with its
+updated `n_cells`; other sample metadata is retained. A root-level
+`downsampling_report.csv` records input/eligible/output counts and settings.
+
+Sampling allocates cells proportionally to existing cell types, then randomly
+samples without replacement within each type. Integer rounding can omit rare
+types; there is no minimum quota or deliberate enrichment. Set `stratify_by =
+NULL` for uniform sampling or supply multiple column names for finer strata.
+Blank labels form their own stratum. Selection is reproducible for the same
+input order, sample selection, settings and seed.
+
+After sampling, annotation reset blanks `cell_type`, `cell_subtype`, `subclone`
+and `cell_type_pre_cna` where present, and removes prior `clust`, `umap1` and
+`umap2` columns. Extend `annotation_columns` to include any additional annotation
+fields in your input. Set `reset_annotations = FALSE` to retain them. No caches,
+workflow state or results are copied. The input is unchanged, existing output
+folders are refused, and failed runs do not publish partial datasets. Import
+the output folder using the app's new-dataset workflow.
+
 ## Creating a Dataset
 
 1. Prepare a directory following the [input specification](#preparing-input-data).
@@ -490,6 +677,20 @@ runners, diagnostic scripts, logs and generated result files belong in
 repository root; keep `datasets/` for scientific workspaces and their runtime
 data.
 
+From the application root, check dependencies, browser startup, and UTF-8 in both
+the main R process and an independent worker before starting the suite:
+
+```sh
+Rscript scripts/check_test_setup.R
+```
+
+The suite's `tests/testthat.R` entry point also runs this read-only check
+automatically. Tests generate their own biological resources and datasets,
+including app bootstrap; a GitHub ZIP without private resources can be tested.
+Real app startup still requires the resource files described above. See
+[test setup and troubleshooting](docs/TESTING.md#check-the-setup-first) for browser
+paths, platform-specific UTF-8 settings, and alternative test entry points.
+
 Run the complete test suite from the repository root:
 
 ```r
@@ -526,9 +727,11 @@ See the [Testing](docs/USER_GUIDE.md#testing) section for the test-file breakdow
 
 See [Testing the application](docs/TESTING.md) for the current automated gate,
 browser requirements, recorded verification status, and fixture/evidence policy.
+The dated [Release Acceptance](https://github.com/ag-tyler/scAnnotationPipeline/blob/development/docs/development/RELEASE_ACCEPTANCE.md) preserves
+the historical scenario-to-test map and remaining human review.
 
 Development plans and manual review/replay records are indexed in
-[Development Documentation](https://github.com/ag-tyler/scAnnotationPipeline/tree/development/docs/development).
+[Development Documentation](https://github.com/ag-tyler/scAnnotationPipeline/blob/development/docs/development/README.md).
 
 ## Repository Notes
 
@@ -551,8 +754,8 @@ dependency fingerprints, recovery, and migration are described in
 [**docs/CACHE\_VALIDITY.md**](docs/CACHE_VALIDITY.md). The reproducible release
 gate is described in
 [**Testing the application**](docs/TESTING.md). Dated release acceptance and
-remaining human review are preserved on the
-[development branch](https://github.com/ag-tyler/scAnnotationPipeline/blob/development/docs/development/RELEASE_ACCEPTANCE.md).
+remaining human review are preserved in
+[**Release Acceptance**](https://github.com/ag-tyler/scAnnotationPipeline/blob/development/docs/development/RELEASE_ACCEPTANCE.md).
 
 It covers:
 

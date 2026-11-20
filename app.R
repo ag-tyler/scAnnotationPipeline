@@ -29,7 +29,9 @@ if (length(utility_files) == 0) {
     call. = FALSE
   )
 }
-invisible(lapply(utility_files, source))
+invisible(lapply(utility_files, function(path) {
+  eval(parse(file = path, encoding = "UTF-8"), envir = globalenv())
+}))
 
 app_component_files <- c(
   "app/context.R",
@@ -65,7 +67,9 @@ if (length(missing_components) > 0) {
     call. = FALSE
   )
 }
-invisible(lapply(app_component_files, source))
+invisible(lapply(app_component_files, function(path) {
+  eval(parse(file = path, encoding = "UTF-8"), envir = globalenv())
+}))
 
 app_context <- create_app_context()
 

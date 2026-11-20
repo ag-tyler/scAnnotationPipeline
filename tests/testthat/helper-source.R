@@ -45,7 +45,7 @@ if (length(r_files) == 0) {
 .datatable.aware <- TRUE
 
 for (f in r_files) {
-  source(f, local = TRUE)
+  eval(parse(file = f, encoding = "UTF-8"), envir = environment())
 }
 
 rm(f, r_files, util_scripts_dir)
