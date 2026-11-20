@@ -233,52 +233,6 @@ Prepared input contents must be ordinary files and directories. Resolve child
 symbolic links into copied files/directories before importing, so the workspace
 does not depend on linked source data.
 
-### Preparing a smaller demonstration dataset
-
-Use `scripts/downsample_processed_data.R` to create a separate import-ready
-subset from an existing `processed_data` directory. From the repository root:
-
-```r
-source("scripts/downsample_processed_data.R")
-downsample_processed_data(
-  input_dir = "datasets/Tang2026_Colorectal/processed_data",
-  output_dir = "datasets/Tang2026_Colorectal_demo_input",
-  n_cells = 3000,
-  samples = c("CRC_T3", "CRC_LM3"), # NULL includes every sample
-  stratify_by = "cell_type",
-  min_genes = 500,
-  reset_annotations = TRUE,
-  seed = 3988
-)
-```
-
-Alternatively, edit the `settings` list at the top of the script and run
-`Rscript scripts/downsample_processed_data.R`, or source it and call
-`do.call(downsample_processed_data, settings)`.
-
-The cell cap applies **per sample after filtering**. Smaller samples retain all
-eligible cells. The default filter matches the app's default minimum of 500
-expressed genes; set `min_genes = 0` to sample all input cells. Counts and genes
-are preserved, with matrix columns and cell rows kept in their original order.
-Each selected sample gets a folder and a matching `Samples.csv` row with its
-updated `n_cells`; other sample metadata is retained. A root-level
-`downsampling_report.csv` records input/eligible/output counts and settings.
-
-Sampling allocates cells proportionally to existing cell types, then randomly
-samples without replacement within each type. Integer rounding can omit rare
-types; there is no minimum quota or deliberate enrichment. Set `stratify_by =
-NULL` for uniform sampling or supply multiple column names for finer strata.
-Blank labels form their own stratum. Selection is reproducible for the same
-input order, sample selection, settings and seed.
-
-After sampling, annotation reset blanks `cell_type`, `cell_subtype`, `subclone`
-and `cell_type_pre_cna` where present, and removes prior `clust`, `umap1` and
-`umap2` columns. Extend `annotation_columns` to include any additional annotation
-fields in your input. Set `reset_annotations = FALSE` to retain them. No caches,
-workflow state or results are copied. The input is unchanged, existing output
-folders are refused, and failed runs do not publish partial datasets. Import
-the output folder using the app's new-dataset workflow.
-
 ### Saving resumable presentation checkpoints
 
 After saving edits, finishing all computations and **stopping the app**, use
@@ -425,6 +379,52 @@ structured `errors` (`code`, `sample`, `path`, `message`), text `samples`, detec
 `std_names`/`expression_type`, and `paths_list` in CSV order only on success.
 For an existing workspace, pass its filename list as `std_names`. The checker
 does not write files, update workflow state, or cache a validation result.
+
+### Preparing a smaller demonstration dataset
+
+Use `scripts/downsample_processed_data.R` to create a separate import-ready
+subset from an existing `processed_data` directory. From the repository root:
+
+```r
+source("scripts/downsample_processed_data.R")
+downsample_processed_data(
+  input_dir = "datasets/Tang2026_Colorectal/processed_data",
+  output_dir = "datasets/Tang2026_Colorectal_demo_input",
+  n_cells = 3000,
+  samples = c("CRC_T3", "CRC_LM3"), # NULL includes every sample
+  stratify_by = "cell_type",
+  min_genes = 500,
+  reset_annotations = TRUE,
+  seed = 3988
+)
+```
+
+Alternatively, edit the `settings` list at the top of the script and run
+`Rscript scripts/downsample_processed_data.R`, or source it and call
+`do.call(downsample_processed_data, settings)`.
+
+The cell cap applies **per sample after filtering**. Smaller samples retain all
+eligible cells. The default filter matches the app's default minimum of 500
+expressed genes; set `min_genes = 0` to sample all input cells. Counts and genes
+are preserved, with matrix columns and cell rows kept in their original order.
+Each selected sample gets a folder and a matching `Samples.csv` row with its
+updated `n_cells`; other sample metadata is retained. A root-level
+`downsampling_report.csv` records input/eligible/output counts and settings.
+
+Sampling allocates cells proportionally to existing cell types, then randomly
+samples without replacement within each type. Integer rounding can omit rare
+types; there is no minimum quota or deliberate enrichment. Set `stratify_by =
+NULL` for uniform sampling or supply multiple column names for finer strata.
+Blank labels form their own stratum. Selection is reproducible for the same
+input order, sample selection, settings and seed.
+
+After sampling, annotation reset blanks `cell_type`, `cell_subtype`, `subclone`
+and `cell_type_pre_cna` where present, and removes prior `clust`, `umap1` and
+`umap2` columns. Extend `annotation_columns` to include any additional annotation
+fields in your input. Set `reset_annotations = FALSE` to retain them. No caches,
+workflow state or results are copied. The input is unchanged, existing output
+folders are refused, and failed runs do not publish partial datasets. Import
+the output folder using the app's new-dataset workflow.
 
 ## Creating a Dataset
 
