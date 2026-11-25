@@ -14,7 +14,7 @@ and final acceptance.
 - [Testing](../TESTING.md) — test commands, browser/fixture policy, and the latest
   dated automated verification.
 - [1.1.0 release preparation](RELEASE_1_1_0_PREPARATION.md) — completed acceptance,
-  app-focused candidate, transfer scope, and remaining promotion steps.
+  app-focused transfer, local branch commits, and remaining publication steps.
 
 User-facing guides and runtime references remain in the parent directory:
 [User Guide](../USER_GUIDE.md),

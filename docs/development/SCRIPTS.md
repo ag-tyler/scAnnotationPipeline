@@ -3,7 +3,7 @@
 Use a `development` checkout and run commands from the repository root with the
 application's R dependencies installed. This reference covers development-only
 profiling, benchmarking, and recovery tools, plus the personal cache reader
-included in the prepared 1.1.0 app release.
+included in the 1.1.0 app release on local `main`.
 Launching, downsampling, checkpoint copying, and test preflight are shared user
 tools documented in the [README](../../README.md) and [Testing guide](../TESTING.md).
 

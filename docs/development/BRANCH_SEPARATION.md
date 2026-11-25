@@ -618,7 +618,26 @@ application, normalized source parity, R syntax, version metadata, local links,
 and exclusion of local data/development-only files. No application tests were
 run during packaging. See [release preparation](RELEASE_1_1_0_PREPARATION.md).
 
-This is preparation only: main remains `9fa0bce`, development remains `6d5e626`
-with the uncommitted changes, and no branch was switched, commit created, tag
-changed, or release published. The remote main tip must be rechecked when the
-reviewed candidate is promoted. Scientific data and resources are unchanged.
+At the end of preparation, main remained `9fa0bce` and development remained
+`6d5e626` with uncommitted changes. No branch was switched, commit created, tag
+changed, or release published during that preparation. Local application was
+subsequently authorized and completed as recorded below.
+
+## Local 1.1.0 branch application (2026-11-25)
+
+At the user's request, the accepted development implementation, release metadata,
+and development records were committed as `45a3812` (46 files). A remote fetch
+confirmed origin/main and origin/development still matched the prepared bases.
+The app-focused patch was then checked and applied to a separate main worktree
+and committed as `3f9213e` (38 files).
+
+All 140 main files matched the prepared candidate after line-ending normalization,
+including version 1.1.0. Development-only records, profiling/recovery CLIs,
+performance tooling, and separate development tests remain excluded from main.
+Staged whitespace checks passed. The accepted automated/manual verification and
+the user's explicit full-repeat waiver were retained; no app tests were rerun.
+
+The temporary main worktree was removed after verification, leaving the primary
+workspace on development. A follow-up development documentation commit records
+these release commit IDs. No remote branch was pushed, tag created, or hosted
+release published. Scientific data, resources, and existing tags are unchanged.

@@ -4,7 +4,9 @@
 
 **Acceptance:** Automated verification and user manual testing complete.
 
-**Promotion:** Prepared only; `main`, remote branches, and tags are unchanged.
+**Promotion:** Applied to local `development` and `main` on 2026-11-25. Remote branches and tags are unchanged.
+
+**Release commits:** `development` implementation `45a3812`; app-focused `main` `3f9213e`.
 
 ## Version and scope
 
@@ -15,12 +17,12 @@ configured seed handling. Existing saved workspace configurations remain
 authoritative and loadable; no dataset migration is required. The additive
 user-facing features warrant a minor version increment from 1.0.1.
 
-`DESCRIPTION`, README, and NEWS are prepared for 1.1.0. The current main base is
-`9fa0bce` (`9fa0bce` is the locally available 1.0.1 release); the development base
-is `6d5e626`. Final implementation, acceptance, and version changes are still in
-the development working tree and must be committed before promotion. No remote
-fetch was performed during preparation; recheck the remote main tip before
-applying the candidate.
+`DESCRIPTION`, README, and NEWS are set to 1.1.0 on both branches. The candidate
+was prepared from main `9fa0bce` and development `6d5e626`. The accepted
+implementation, version metadata, and development records were committed as
+`45a3812`; the reviewed app-only patch was applied to main and committed as
+`3f9213e`. A remote fetch before application confirmed both prepared base tips
+still matched their remote branches. Nothing has been pushed or tagged.
 
 Ship the app/server/UI and utility changes, the updated configuration and
 preparation/downsampling tools, ordinary regressions, user documentation, and
@@ -81,25 +83,29 @@ ZIP readback preserved all 140 relative paths and matched every candidate file's
 SHA-256 hash.
 These checks do not add an app test run to the accepted sequence above.
 
-## Remaining promotion steps
+## Local application completed
 
-1. Review and commit the implementation/version changes and development-only
-   acceptance records on `development`, preserving their respective branch
-   scope. No commits were created by this preparation.
-2. Fetch the remote branches when ready to promote. If main differs from the
-   pinned base, rebuild/review the transfer before applying it.
-3. Use a separate main checkout/worktree, preserving the development workspace.
-   Review the candidate and run `git apply --check -p2 <main-1.1.0.patch>` followed
-   by `git apply -p2 <main-1.1.0.patch>` from that checkout's root. Use the patch's
-   absolute path or a correctly resolved relative path.
-4. Verify the reviewed file scope and version metadata, then commit using the
-   prepared commit message. Do not include development-only assets or ignored
-   data. The user-approved testing sequence above is the release gate; another
-   full run is not a remaining requirement.
-5. After approval to update/publish main, push the reviewed main commit and
-   create/push the `v1.1.0` tag and release using the prepared notes. Preserve
-   existing tags. Record the final main/development commit IDs here and in the
-   branch-separation record.
+The user requested applying the changes to both branches on 2026-11-25.
+Development already held the implementation, so its existing changes and
+branch-specific documentation were committed directly (46 files). The reviewed
+38-file patch was applied with `git apply --check -p2` and `git apply -p2` in a
+separate main worktree, then committed. The entire main tree (140 files) matched
+the prepared candidate after line-ending normalization. Version and exclusion
+checks passed, and both staged diffs passed `git diff --check`.
+
+No app tests were rerun. The accepted full/focused/manual sequence and the
+user's waiver above remain the release gate. The temporary main worktree was
+removed after verification; the primary workspace remains on `development`.
+The commit references above identify the release implementations; a subsequent
+development-only documentation commit records this application.
+
+## Remaining publication steps
+
+1. Review the local release commits and the prepared release notes. Fetch again
+   before publishing if needed; reconcile any new remote work without force.
+2. When publishing is requested, push both maintained branches and create/push
+   the `v1.1.0` tag and release from the main release commit. Preserve existing
+   tags. No push, tag creation, or hosted release was part of applying the patch.
 
 No scientific inputs, existing workspaces, biological resources, or caches need
 rewriting as part of this release. Users of the annotation type fix should restart
