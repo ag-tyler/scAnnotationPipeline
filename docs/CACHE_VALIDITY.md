@@ -39,9 +39,17 @@ previous version is kept as `<artifact>.bak`.
 Clustering caches fingerprint:
 
 - the standardized expression matrix and gene list;
-- the cell identifiers, sample identifiers, and complexity values used by
-  filtering (not later annotation columns in `Cells.csv`);
+- the `cell_name` and `sample` columns, plus `complexity` when present
+  (not later annotation columns in `Cells.csv`);
 - filtering, PCA, UMAP, seed, and resolution parameters.
+
+Only `cell_name` and `sample` are required in an input cells file. `complexity`
+is optional and is not read to select cells: QC counts nonzero genes directly
+from the expression matrix. The filtering and clustering dependency builders
+include `complexity` only when it exists. Adding, changing, or removing that
+column changes the fingerprint and can invalidate existing caches, even though
+its supplied values do not affect cell selection. See the
+[cells column reference](USER_GUIDE.md#cellscsv).
 
 The configured seed is passed to PCA as well as UMAP and Louvain clustering.
 Older workflows always used PCA seed `3988`. Their clustering caches remain

@@ -9,7 +9,10 @@
   annotations in a local table before storing it in Shiny's reactive state.
 - Clarify the app's required cells columns and optional metadata. QC calculates
   detected-gene counts from the matrix; a supplied `complexity` column is used
-  in cache fingerprints, not cell filtering.
+  in cache fingerprints, not cell filtering. Document the two-column minimum
+  with CSV examples in the README and user guide, align the preparation
+  checklist and cache guide, and distinguish the optional helpers' stricter
+  eight-column requirements.
 
 Restart the app and reload the dataset to use these fixes. Existing clustering
 can be reused; annotation saves add `cell_type` and `cell_type_pre_cna`.

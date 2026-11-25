@@ -49,6 +49,24 @@ keep original prepared inputs and completed analysis workspaces unchanged.
 | Workflow status and events | [`07_utils_state.R`](../../util_scripts/07_utils_state.R) and [`06_utils_logging.R`](../../util_scripts/06_utils_logging.R) |
 | CNA export, storage lifecycle, and snapshots | [`10_utils_cna_export.R`](../../util_scripts/10_utils_cna_export.R), [`11_utils_storage.R`](../../util_scripts/11_utils_storage.R), and [`14_utils_snapshots.R`](../../util_scripts/14_utils_snapshots.R) |
 
+## Prepared cells input contract
+
+The app requires only `cell_name` and `sample` in each sample's cells file.
+Keep cells in matrix-column order; identifiers are unique across the dataset
+and each `sample` matches its directory and `Samples.csv` row. The full
+[column reference](../USER_GUIDE.md#cellscsv) distinguishes optional metadata
+from fields created during annotation and CNA. Sample-table headers remain
+unchanged.
+
+Do not add helper-only metadata requirements to app import or analysis code.
+The optional standardization and downsampling helpers retain their eight-column
+schema. App QC computes detected-gene counts from the matrix; `complexity` is
+optional but participates in cache fingerprints when present. Preserve optional
+columns when loading/saving, and initialize missing annotation columns in a
+local table before assigning it to Shiny reactive state. Regressions for the
+minimal input and annotation save live in `test-01_utils_io.R` and
+`test-f15-r03-annotation-preview.R`.
+
 ## Add or extend a component
 
 Follow an adjacent stage's structure before introducing another abstraction.

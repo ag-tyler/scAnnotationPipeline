@@ -1,5 +1,14 @@
 # Prepared-data import and workflow entry overhaul
 
+**Cells column contract update (1.1.2, 2026-11-25):** Direct app imports require
+only `cell_name` and `sample` in each sample's cells file. The original
+eight-column requirement belongs to the optional standardization/downsampling
+helpers, not to app imports. `complexity` is optional and participates in cache
+fingerprints when present; QC counts detected genes directly from the matrix.
+See the current [column reference](../USER_GUIDE.md#cellscsv) and
+[preparation checklist](../STANDARDIZATION_CHECKLIST.md). Dated implementation
+evidence below remains historical.
+
 **Filename contract supersession (2026-11-25):** DC01 and DC02 in the
 [dataset configuration plan](DATASET_CONFIGURATION_AND_ANNOTATION_PLAN.md)
 replace the original fixed matrix filenames and filename-inferred state rules
@@ -125,20 +134,24 @@ For new imports, document this structure in the README:
 
 Document matrix orientation (genes by cells), positional alignment with gene and
 cell files, supported expression scales, gene identifiers, dataset-wide cell ID
-uniqueness, and required cell columns:
-`cell_name`, `sample`, `cell_type`, `complexity`, `cell_subtype`, `patient`,
-`subclone`, and `source`.
+uniqueness, and the two required cell columns: `cell_name` and `sample`.
+`cell_type`, `complexity`, `cell_subtype`, `patient`, `subclone`, and `source`
+are optional for direct app inputs. The fuller eight-column schema is retained
+by the optional standardization and downsampling helpers.
 
-Explain optional/unknown annotation values and that `complexity` is the number
-of detected genes per cell, currently calculated as the number of nonzero
-matrix entries in that column. State expectations for duplicate genes,
+Explain that manual annotation creates an absent `cell_type` and saves it with
+`cell_type_pre_cna`; CNA assigns `subclone`. A supplied `complexity` column
+represents detected genes per cell but is not used for cell selection. The app
+counts nonzero matrix entries directly and fingerprints `complexity` only when
+present. State expectations for duplicate genes,
 normalization, and cell/sample metadata consistency without requiring any
 particular preparation helper or script.
 
-These are user preparation obligations. The structural checker does not read
-cell/gene contents, load matrices, compare dimensions, calculate complexity,
-validate biological labels, or reconstruct upstream provenance. Existing
-analysis-time errors and cache safeguards remain in place.
+These are user preparation obligations. The structural checker compares
+gene/cell record counts with matrix header dimensions without loading matrix
+values. It does not validate cells-column headers, identifiers/order,
+complexity, biological labels, or upstream provenance. Existing analysis-time
+errors and cache safeguards remain in place.
 
 ## 4. Implementation steps
 
