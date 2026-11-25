@@ -165,6 +165,34 @@ a matching image alone is not proof that its characters are correct.
 
 ## Recorded verification status
 
+### 1.1.2 reduced cells metadata and annotation initialization — 2026-11-25
+
+Fixed the loader warning when `cell_type` is absent and reproduced the exact
+manual annotation failure `i (20) is outside the range of items [1,3]` using
+cells supplied with only `cell_name` and `sample`. The annotation server now
+prepares missing labels in a local copy before storing the completed table in
+Shiny's reactive state.
+
+Focused verification passed **197 assertions across 21 tests**, with zero
+failures, errors, test warnings, or skips:
+
+```r
+testthat::test_dir("tests/testthat", filter =
+  "^(01_utils_io|05_utils_workflow|f05-annotation-recovery|f15-r03-annotation-preview)$")
+```
+
+New regressions verify warning-free two-column loading, numeric-looking IDs,
+preserved row order and input bytes, and optional pre-CNA labels without an
+initial `cell_type`. The Shiny server test uses the real annotation setup and
+clustered cache, initializes missing labels, assigns a cell type, and saves
+`cell_type` and `cell_type_pre_cna` without adding unused metadata columns.
+Existing DE, annotation recovery, preview, and save tests also passed.
+
+These focused checks are the verification basis for 1.1.2. No full suite,
+browser journey, or complete two-column CNA pipeline was run, and no new manual
+acceptance is claimed. Only version metadata and release/input documentation
+changed after the passing test run.
+
 ### 1.1.1 prepared-input dimension checks — 2026-11-25
 
 Creation and loading now compare gene entries with matrix rows and cell metadata

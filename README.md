@@ -2,7 +2,7 @@
 
 A Shiny application for clustering, differential-expression analysis, manual cell-type annotation, and copy-number alteration (CNA) analysis of prepared single-cell RNA-seq cancer datasets.
 
-Version **1.1.1**. See the [release notes](NEWS.md).
+Version **1.1.2**. See the [release notes](NEWS.md).
 
 For development plans, investigations, historical preparation templates, and
 diagnostic tools, see the
@@ -549,15 +549,23 @@ These preparation requirements are the user's responsibility:
   symbols used by the app's biological resources; combine duplicate mapped
   symbols by summing their expression rows before exporting.
 - `Cells.csv` has one row per matrix column, in exactly that column order, and
-  includes `cell_name`, `sample`, `cell_type`, `complexity`, `cell_subtype`,
-  `patient`, `subclone`, and `source`. Extra columns are permitted.
+  requires `cell_name` and `sample`. Additional columns are permitted.
 - `cell_name` is non-empty and unique across the entire dataset; prefix reused
   barcodes with their sample ID. Every cell's `sample` matches its directory.
-- `complexity` is the number of detected genes (nonzero matrix values) for that
-  cell, not its total count. Supply a finite, non-negative value for every cell.
-- Unknown annotations (`cell_type`, `cell_subtype`, `subclone`) may be blank.
-  `patient` holds the patient identifier, and `source` the anatomical sample
-  site; keep these consistent with sample metadata when known.
+- `cell_type` may be absent initially. Manual annotation initializes missing
+  labels in memory; saving writes `cell_type` and `cell_type_pre_cna` to the
+  cells file. CNA assigns `subclone`, which need not exist in the input.
+- `complexity` is optional. When supplied, it represents the number of detected
+  genes (nonzero matrix values), not total counts. QC computes detected-gene
+  counts directly from the matrix. The supplied column participates in cache
+  fingerprints, so changing or removing it can invalidate existing caches.
+- `cell_subtype`, `patient`, and `source` are optional cell-level metadata.
+  `patient` holds the patient identifier and `source` the anatomical sampling
+  site; keep these consistent with sample metadata when known. This does not
+  change the required headers in the separate `Samples.csv`.
+
+The optional standardization helper retains its fuller eight-column cells
+schema; those helper requirements do not apply to direct prepared-data imports.
 
 The lightweight **input structure check** validates the sample CSV, exact folder
 membership, configured filenames, readability, and non-empty files. For each

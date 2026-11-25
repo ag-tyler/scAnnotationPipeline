@@ -103,6 +103,46 @@ r03_disk_snapshot <- function(dataset_dir) {
   tools::md5sum(paths)
 }
 
+test_that("manual annotation loads and saves cells supplied with only identifiers", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("qs2")
+  suppressPackageStartupMessages(library(shiny))
+  dataset_dir <- withr::local_tempdir()
+  fixture <- make_r03_preview_fixture(dataset_dir)
+  state <- fixture$state
+  shiny::isolate({
+    clustered <- state$cells_filt[, .(cell_name, sample, umap1, umap2, clust)]
+    raw <- clustered[, .(cell_name, sample)]
+    data.table::fwrite(raw, state$paths_list$cell_file_paths[[1]])
+    cache_save_data(clustered, "cells_filt_clust_res_0.5_sample1.qs2", dataset_dir)
+    matches <- data.table::data.table(clust = 0L, gene = "G1", m = 1L)
+    matches[, "T cell" := "G1"]
+    data.table::fwrite(matches, file.path(
+      state$results_dir_path, "sample1", "2_de_plots", "all_marker_matches.csv"
+    ))
+    state$annotation_loaded_index <- NULL
+    state$cells_raw <- NULL
+    state$cells_filt <- NULL
+  })
+
+  expect_no_warning(shiny::testServer(fixture$server, {
+    session$setInputs(main_nav = "anno_tab", sample_idx = "1")
+    expect_equal(state$annotation_loaded_index, 1)
+    expect_identical(state$cells_filt$cell_name, raw$cell_name)
+    expect_identical(state$cells_filt$cell_type, rep(NA_character_, nrow(raw)))
+    expect_equal(state$all_matches, matches)
+    session$setInputs(cluster = "0", cell_type_input = "T cell", assign_btn = 1)
+    session$setInputs(save_btn = 1)
+    saved <- load_cells(state$paths_list$cell_file_paths[[1]])
+    expect_identical(saved$cell_name, raw$cell_name)
+    expect_identical(saved$sample, raw$sample)
+    expect_identical(saved$cell_type, c("T cell", NA_character_, NA_character_))
+    expect_identical(saved$cell_type_pre_cna, saved$cell_type)
+    expect_false(any(c("complexity", "patient", "cell_subtype", "source", "subclone") %in% names(saved)))
+    expect_identical(get_pipeline_step(state$pipeline_state, "annotation", "sample1")$status, "completed")
+  }))
+})
+
 test_that("R03 unavailable, empty and failed previews warn without mutating workflow or caches", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("qs2")

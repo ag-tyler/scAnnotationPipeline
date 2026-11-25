@@ -486,15 +486,17 @@ register_annotation_server <- function(input, output, session, state, context) {
                                                  rv$dataset_dir_path, rv$complete_markers,
                                                  dataset_config = rv$dataset_config,
                                                  selected_config = rv$live_selected_config)
-      rv$cells_filt <- results_list$cells_filt
-      rv$all_matches <- results_list$all_matches
-
+      # Add missing annotation columns before storing the table in reactiveValues.
+      # data.table cannot reliably reassign a grown table through rv$cells_filt.
+      cells_filt <- data.table::copy(results_list$cells_filt)
       if ("cell_type" %in% names(rv$cells_raw)) {
-        validate_annotation_cell_alignment(rv$cells_filt, rv$cells_raw)
-        rv$cells_filt[rv$cells_raw, on = 'cell_name', cell_type := i.cell_type]
-      } else if (!"cell_type" %in% names(rv$cells_filt)) {
-        rv$cells_filt[, cell_type := NA_character_]
+        validate_annotation_cell_alignment(cells_filt, rv$cells_raw)
+        cells_filt[rv$cells_raw, on = 'cell_name', cell_type := i.cell_type]
+      } else if (!"cell_type" %in% names(cells_filt)) {
+        cells_filt[, cell_type := NA_character_]
       }
+      rv$cells_filt <- cells_filt
+      rv$all_matches <- results_list$all_matches
       rv$annotation_loaded_index <- idx
     }, error = function(e) {
       rv$cells_filt <- NULL

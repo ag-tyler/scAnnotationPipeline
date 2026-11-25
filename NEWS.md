@@ -1,5 +1,24 @@
 # Release notes
 
+## 1.1.2 — 2026-11-25
+
+- Load cells files without an initial `cell_type` column without warnings,
+  while preserving annotation columns as text when present.
+- Fix manual annotation failing with `i (20) is outside the range of items [1,3]`
+  when the input contains only `cell_name` and `sample`. Initialize missing
+  annotations in a local table before storing it in Shiny's reactive state.
+- Clarify the app's required cells columns and optional metadata. QC calculates
+  detected-gene counts from the matrix; a supplied `complexity` column is used
+  in cache fingerprints, not cell filtering.
+
+Restart the app and reload the dataset to use these fixes. Existing clustering
+can be reused; annotation saves add `cell_type` and `cell_type_pre_cna`.
+
+Focused verification passed 197 assertions across 21 tests, with zero failures,
+errors, test warnings, or skips, including a two-column annotation load/assign/save
+regression. No full suite or browser journey was rerun. See the
+[testing record](docs/TESTING.md#recorded-verification-status).
+
 ## 1.1.1 — 2026-11-25
 
 - Reject prepared samples whose gene count differs from matrix rows or whose
