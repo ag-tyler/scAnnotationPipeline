@@ -2,7 +2,7 @@
 
 A Shiny application for clustering, differential-expression analysis, manual cell-type annotation, and copy-number alteration (CNA) analysis of prepared single-cell RNA-seq cancer datasets.
 
-Version **1.1.0**. See the [release notes](NEWS.md).
+Version **1.1.1**. See the [release notes](NEWS.md).
 
 This is the **development** branch. It retains development tools, historical
 records, current plans, and future proposals alongside the application. Use
@@ -561,15 +561,18 @@ These preparation requirements are the user's responsibility:
   `patient` holds the patient identifier, and `source` the anatomical sample
   site; keep these consistent with sample metadata when known.
 
-The lightweight **input structure check** reads only the sample CSV and checks
-headers, identifiers, exact folder membership, expected filenames, readability,
-and non-empty files. It does not read matrices, genes, or cells, compare their
-dimensions/order, verify counts/complexity, or establish scientific correctness.
-Correctly named non-empty files can therefore pass while containing invalid
-data. Existing analysis-time errors and scientific cache checks remain separate.
-Archived workspaces with damaged retained sample files remain available for
-read-only review when their sample CSV is valid. Existing archive audits still
-block editing and unsafe exports.
+The lightweight **input structure check** validates the sample CSV, exact folder
+membership, configured filenames, readability, and non-empty files. For each
+sample it also compares gene entries with matrix rows and cell metadata data
+rows (excluding the header) with matrix columns. It reads the Matrix Market
+dimension header and counts gene/cell records without loading matrix values;
+quoted newlines in cell metadata do not count as extra cells. Mismatches are
+reported with the sample name and both counts, blocking creation or loading.
+The check does not verify identifier validity/order, `Samples.csv` cell counts,
+complexity, expression state, or scientific correctness. Analysis-time errors
+and scientific cache checks remain separate. Existing archived-workspace
+exceptions for missing/unreadable retained files remain available for read-only
+review; archive audits still block editing and unsafe exports.
 
 Preparation scripts, raw data, the checklist in `docs/`, and the optional metadata
 extraction prompt in `resources/` are not part of the new required input. Users
