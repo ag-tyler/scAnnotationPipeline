@@ -116,10 +116,12 @@ they differ.
   successful creation.
 
 The app checks `Samples.csv`, sample/folder membership, required filenames,
-readability, and non-empty files at import and on every load. It does not read
-expression matrices, genes, or cells during this check, compare dimensions,
-verify cell counts, or certify scientific correctness. Passing structure checks
-does not replace the preparation review above. There is no required strict
+readability, and non-empty files at import and on every load. It also compares
+gene entries with matrix rows and cell metadata rows with matrix columns for
+each sample, using the matrix header and record counts. It does not inspect
+matrix values, verify identifiers/order or sample-reported cell counts, or
+certify scientific correctness. Passing these checks does not replace the
+preparation review above. There is no required strict
 validation report, script sentinel, prompt record, or checklist completion mark.
 
 ## 5. Optional preparation notes and later changes

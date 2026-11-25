@@ -1,5 +1,6 @@
 # Prepared-input structure checks shared by the import and load workflows.
-# Only the sample CSV is read; expression, cell, and gene contents are not read.
+# Read sample metadata, matrix dimensions, and gene/cell record counts. Matrix
+# values, identifiers, expression state, and scientific alignment are not audited.
 
 prepared_sample_columns <- function() {
   #' Required Prepared Sample CSV Headers
@@ -30,12 +31,46 @@ prepared_input_filenames <- function(template_path = NULL) {
 }
 
 
+.prepared_matrix_dimensions <- function(path) {
+  connection <- file(path, open = "rt")
+  on.exit(close(connection), add = TRUE)
+  banner <- strsplit(tolower(trimws(readLines(connection, n = 1L, warn = FALSE))), "[[:space:]]+")[[1]]
+  if (length(banner) != 5L || !identical(banner[1:2], c("%%matrixmarket", "matrix")) ||
+      !banner[[3]] %in% c("coordinate", "array")) {
+    stop("Expected a Matrix Market matrix header.", call. = FALSE)
+  }
+  repeat {
+    line <- readLines(connection, n = 1L, warn = FALSE)
+    if (!length(line)) stop("Matrix Market dimensions are missing.", call. = FALSE)
+    line <- trimws(line)
+    if (!nzchar(line) || startsWith(line, "%")) next
+    parts <- strsplit(line, "[[:space:]]+")[[1]]
+    dimensions <- suppressWarnings(as.numeric(parts[1:2]))
+    if (length(parts) < 2L || any(!is.finite(dimensions)) ||
+        any(dimensions < 0 | dimensions != floor(dimensions))) {
+      stop("Matrix Market row and column counts must be non-negative integers.", call. = FALSE)
+    }
+    return(stats::setNames(dimensions, c("rows", "columns")))
+  }
+}
+
+.prepared_record_count <- function(path, header = FALSE, sep = "\t") {
+  connection <- file(path, open = "rt")
+  on.exit(close(connection), add = TRUE)
+  # count.fields scans records without allocating full metadata tables. A
+  # quoted multiline field has NA continuation entries and one completed record.
+  fields <- utils::count.fields(connection, sep = sep, quote = '"',
+    comment.char = "", blank.lines.skip = TRUE)
+  max(0, sum(!is.na(fields)) - as.integer(header))
+}
+
 check_prepared_data <- function(processed_dir_path, std_names = NULL) {
   #' Check Prepared Input Structure
   #'
   #' @description Checks the sample CSV, exact sample-directory membership,
-  #'   and required non-empty readable files. It does not audit matrix values,
-  #'   dimensions, cell/gene contents, or scientific correctness. Never changes
+  #'   required non-empty readable files, and gene/cell counts against matrix
+  #'   rows/columns. It does not audit matrix values, expression state, IDs,
+  #'   positional alignment, or scientific correctness. Never changes
   #'   inputs, prints a report, or persists validation state.
   #' @param processed_dir_path Directory containing the sample CSV and folders.
   #' @param std_names A list with expmat, genes, cells, and samples filenames.
@@ -184,9 +219,36 @@ check_prepared_data <- function(processed_dir_path, std_names = NULL) {
       add_error("unreadable_directory", sample_dir, paste0("Sample '", sample, "': make this directory readable by the R process."), sample)
       next
     }
-    check_file(sample_dir, detected_names$genes, sample)
-    check_file(sample_dir, detected_names$cells, sample)
-    check_file(sample_dir, detected_names$expmat, sample)
+    genes_ok <- check_file(sample_dir, detected_names$genes, sample)
+    cells_ok <- check_file(sample_dir, detected_names$cells, sample)
+    matrix_ok <- check_file(sample_dir, detected_names$expmat, sample)
+    if (!matrix_ok || !(genes_ok || cells_ok)) next
+    matrix_path <- file.path(sample_dir, detected_names$expmat)
+    dimensions <- tryCatch(.prepared_matrix_dimensions(matrix_path), error = identity, warning = identity)
+    if (inherits(dimensions, "condition")) {
+      add_error("matrix_dimensions_unreadable", matrix_path,
+        paste0("Sample '", sample, "': could not read matrix dimensions: ", conditionMessage(dimensions)), sample)
+      next
+    }
+    for (kind in c("genes", "cells")) {
+      if ((kind == "genes" && !genes_ok) || (kind == "cells" && !cells_ok)) next
+      path <- file.path(sample_dir, detected_names[[kind]])
+      is_cells <- kind == "cells"
+      count <- tryCatch(.prepared_record_count(path, header = is_cells,
+        sep = if (is_cells) "," else "\t"), error = identity, warning = identity)
+      if (inherits(count, "condition")) {
+        add_error(paste0(kind, "_count_unreadable"), path,
+          paste0("Sample '", sample, "': could not count ", kind, " records: ", conditionMessage(count)), sample)
+        next
+      }
+      expected <- dimensions[[if (is_cells) "columns" else "rows"]]
+      if (count != expected) {
+        add_error(if (is_cells) "cell_count_mismatch" else "gene_count_mismatch", path,
+          sprintf("Sample '%s': %s (%s) do not match matrix %s (%s).", sample,
+            if (is_cells) "Cell metadata rows" else "Gene entries", count,
+            if (is_cells) "columns" else "rows", expected), sample)
+      }
+    }
   }
   if (nrow(errors) == 0L) {
     ordered_dirs <- file.path(processed_dir_path, sample_names)

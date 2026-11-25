@@ -1,5 +1,16 @@
 # Release notes
 
+## 1.1.1 — 2026-11-25
+
+- Reject prepared samples whose gene count differs from matrix rows or whose
+  cell metadata row count differs from matrix columns during creation/loading.
+  Read only matrix header dimensions and gene/cell record counts; expression
+  state, matrix values, identifier checks, and sample-reported counts remain
+  outside this validation.
+
+Focused verification passed 674 assertions across 53 tests, with zero failures,
+errors, warnings, or skips. See the [testing record](docs/TESTING.md#recorded-verification-status).
+
 ## 1.1.0 — 2026-11-25
 
 - Fix manual annotation saves when an existing `cell_type_pre_cna` CSV column

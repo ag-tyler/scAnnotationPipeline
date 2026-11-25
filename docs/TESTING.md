@@ -165,6 +165,41 @@ a matching image alone is not proof that its characters are correct.
 
 ## Recorded verification status
 
+### 1.1.1 prepared-input dimension checks — 2026-11-25
+
+Creation and loading now compare gene entries with matrix rows and cell metadata
+data rows with matrix columns for every sample. Matrix reads stop after the
+Matrix Market dimension header; metadata is counted without loading full cell
+tables. Mismatches report the sample, file, and both counts. Unreadable dimension
+headers/counts are reported rather than silently skipping the comparison.
+Expression-state/value checks, identifier checks, and comparisons against
+`Samples.csv.n_cells` were not added.
+
+Focused verification passed **674 assertions across 53 tests**, with zero
+failures, errors, warnings, or skips (64.17 seconds):
+
+```r
+testthat::test_dir("tests/testthat", filter =
+  "^(p01-prepared-data|p03-dataset-import|p04-preparation-ui|c01-dataset-transitions)$")
+```
+
+New coverage includes mismatches across samples and both dimensions in one
+sample, custom filenames, header-only cell CSVs, quoted multiline cell fields,
+coordinate/array matrix headers, and reporting unreadable dimension headers.
+Creation rejects mismatches before copying; copied-data dimension failures roll
+back staging; existing dataset loads are blocked with the aggregate report.
+Matching datasets, original-file hashes, and the existing annotation/archived
+file-review behavior remain covered. Fixtures with an unreadable matrix body
+but valid dimensions demonstrate that matrix values are not parsed. Separate
+counting smoke checks passed for CRLF files without final newlines.
+
+Logs/results are retained in ignored
+`artifacts/local-checks/prepared-dimensions-2026-11-25/`. No full suite or browser
+journeys were rerun. These focused checks are the verification basis for the
+1.1.1 patch release. Only version metadata and release documentation changed
+after testing. The completed 1.1.0 manual acceptance below describes the
+preceding release; no new manual acceptance is claimed for 1.1.1.
+
 ### 1.1.0 acceptance complete — 2026-11-25
 
 **Automated and manual verification are complete for this release candidate.**

@@ -1,5 +1,5 @@
-# Non-empty placeholders are intentional: structure checks must not read their
-# scientifically invalid contents, and must not require sample YAML or scripts.
+# The matrix body is intentionally invalid: dimension checks must stop after
+# the header, without inspecting values or requiring sample YAML/scripts.
 write_prepared_structure <- function(root, sample_ids = c("002", "001"),
                                      matrix_name = "Exp_data_UMIcounts.mtx",
                                      std_names = NULL) {
@@ -14,9 +14,11 @@ write_prepared_structure <- function(root, sample_ids = c("002", "001"),
   for (sample in unique(sample_ids)) {
     sample_dir <- file.path(root, sample)
     dir.create(sample_dir, showWarnings = FALSE)
-    for (filename in unlist(std_names[c("expmat", "genes", "cells")])) {
-      writeLines("not scientifically valid data", file.path(sample_dir, filename))
-    }
+    writeLines(c("%%MatrixMarket matrix coordinate real general", "% dimension fixture",
+      "3 2 1", "matrix values are deliberately not parsed"), file.path(sample_dir, std_names$expmat))
+    writeLines(c("GENE1", "GENE2", "GENE3"), file.path(sample_dir, std_names$genes))
+    data.table::fwrite(data.table::data.table(cell_name = c("c1", "c2")),
+      file.path(sample_dir, std_names$cells))
   }
   metadata
 }
@@ -180,6 +182,7 @@ test_that("P01 reports missing configured matrices and ignores alternative matri
   root <- withr::local_tempdir()
   write_prepared_structure(root, c("s1", "s2"))
   matrix_path <- file.path(root, "s1", "Exp_data_UMIcounts.mtx")
+  matrix_header <- readLines(matrix_path)
   unlink(matrix_path)
   expect_true("missing_file" %in% check_prepared_data(root)$errors$code)
   dir.create(matrix_path)
@@ -187,7 +190,7 @@ test_that("P01 reports missing configured matrices and ignores alternative matri
   unlink(matrix_path, recursive = TRUE)
   writeLines("placeholder", file.path(root, "s1", "Exp_data_TPM.mtx"))
   expect_identical(check_prepared_data(root)$errors$code, "missing_file")
-  writeLines("placeholder", matrix_path)
+  writeLines(matrix_header, matrix_path)
   checked <- check_prepared_data(root)
   expect_true(checked$valid, info = checked$message)
   expect_identical(checked$expression_type, NA_character_)
@@ -252,7 +255,7 @@ test_that("DC02 standalone structure checks read filename defaults from the loca
   expect_identical(checked$expression_type, NA_character_)
 })
 
-test_that("P01 reports unreadable files and directories without content reads", {
+test_that("P01 reports unreadable files and directories before reading their contents", {
   root <- withr::local_tempdir()
   write_prepared_structure(root, "s1")
   checker <- check_prepared_data
@@ -267,4 +270,73 @@ test_that("P01 reports unreadable files and directories without content reads", 
   expect_equal(checker(root)$errors$code, "unreadable_directory")
   blocked_path <- root
   expect_equal(checker(root)$errors$code, "unreadable_directory")
+})
+
+test_that("dimension checks aggregate gene and cell mismatches across samples without changing files", {
+  root <- withr::local_tempdir()
+  filenames <- list(expmat = "expression.bin", genes = "symbols.list",
+    cells = "cell metadata.csv", samples = "sample metadata.csv")
+  write_prepared_structure(root, c("genes_short", "cells_extra"), std_names = filenames)
+  writeLines(c("GENE1", "GENE2"), file.path(root, "genes_short", filenames$genes))
+  data.table::fwrite(data.table::data.table(cell_name = c("c1", "c2", "c3")),
+    file.path(root, "cells_extra", filenames$cells))
+  files <- list.files(root, recursive = TRUE, full.names = TRUE)
+  hashes <- tools::md5sum(files)
+  expect_no_warning(checked <- check_prepared_data(root, filenames))
+  expect_false(checked$valid)
+  expect_null(checked$paths_list)
+  expect_identical(checked$errors$code, c("gene_count_mismatch", "cell_count_mismatch"))
+  expect_identical(checked$errors$sample, c("genes_short", "cells_extra"))
+  expect_identical(checked$errors$path, c(file.path(root, "genes_short", filenames$genes),
+    file.path(root, "cells_extra", filenames$cells)))
+  expect_match(checked$message, "Gene entries (2) do not match matrix rows (3)", fixed = TRUE)
+  expect_match(checked$message, "Cell metadata rows (3) do not match matrix columns (2)", fixed = TRUE)
+  expect_identical(tools::md5sum(files), hashes)
+})
+
+test_that("dimension counts handle multiline CSV fields without auditing IDs, sample counts or matrix values", {
+  root <- withr::local_tempdir()
+  metadata <- write_prepared_structure(root, "s1")
+  metadata$n_cells <- "not checked"
+  data.table::fwrite(metadata, file.path(root, "Samples.csv"))
+  writeLines(rep("duplicate_gene", 3), file.path(root, "s1", "Genes.txt"))
+  data.table::fwrite(data.table::data.table(cell_name = c("duplicate", "duplicate"),
+    note = c('line one, "quoted"\nline two', "ordinary")), file.path(root, "s1", "Cells.csv"))
+  for (format in c("coordinate", "array")) {
+    writeLines(c(paste("%%MatrixMarket matrix", format, "real general"),
+      "% comment before dimensions", "", if (format == "coordinate") "3 2 1000000000" else "3 2",
+      "invalid matrix values are outside the dimension check"), file.path(root, "s1", "Exp_data_UMIcounts.mtx"))
+    expect_no_warning(checked <- check_prepared_data(root))
+    expect_true(checked$valid, info = checked$message)
+    expect_identical(checked$expression_type, NA_character_)
+    expect_identical(checked$samples$n_cells, "not checked")
+  }
+})
+
+test_that("dimension checks report both mismatches in one sample and a header-only cell CSV", {
+  root <- withr::local_tempdir()
+  write_prepared_structure(root, "s1")
+  writeLines("GENE1", file.path(root, "s1", "Genes.txt"))
+  writeLines("cell_name", file.path(root, "s1", "Cells.csv"))
+  checked <- check_prepared_data(root)
+  expect_identical(checked$errors$code, c("gene_count_mismatch", "cell_count_mismatch"))
+  expect_match(checked$message, "Gene entries (1)", fixed = TRUE)
+  expect_match(checked$message, "Cell metadata rows (0)", fixed = TRUE)
+})
+
+test_that("unreadable matrix dimension headers block validation with a sample-specific report", {
+  root <- withr::local_tempdir()
+  write_prepared_structure(root, "s1")
+  path <- file.path(root, "s1", "Exp_data_UMIcounts.mtx")
+  for (header in list("not a Matrix Market file",
+    c("%%MatrixMarket matrix coordinate real general", "% no dimensions"),
+    c("%%MatrixMarket matrix coordinate real general", "NaN 2 1"))) {
+    writeLines(header, path)
+    expect_no_warning(checked <- check_prepared_data(root))
+    expect_false(checked$valid)
+    expect_identical(checked$errors$code, "matrix_dimensions_unreadable")
+    expect_identical(checked$errors$sample, "s1")
+    expect_identical(checked$errors$path, path)
+    expect_null(checked$paths_list)
+  }
 })

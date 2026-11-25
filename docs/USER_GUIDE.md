@@ -308,8 +308,9 @@ no standardization/checklist tab, Markdown viewer, metadata-prompt screen, or
 checklist-copy action. Existing dataset scripts and checklist notes are retained.
 
 After loading, use the Start Menu's prepared-input readiness and analysis
-progress overview. Structural checks do not audit expression values, dimensions,
-or gene/cell alignment; those remain preparation responsibilities. Review
+progress overview. Structural checks compare gene counts to matrix rows and cell
+metadata rows to matrix columns for each sample. Expression values, identifiers,
+positional alignment, and sample-reported cell counts remain preparation responsibilities. Review
 snapshots also work without sample YAML, preparation scripts, or checklist files.
 
 ### `dataset_config.yaml`
@@ -1151,8 +1152,9 @@ The pipeline assumes:
 - **Sample directory names under `processed_data/` are canonical sample identifiers**
   and exactly match `sample` values in authoritative `Samples.csv`.
 - **Prepared cells and genes align positionally with matrix columns and rows.**
-  Users verify scientific alignment, counts, and metadata. The import/load check
-  reads only sample metadata and filesystem structure, not matrix/gene/cell contents.
+  Import/load checks compare gene and cell record counts with Matrix Market
+  header dimensions without loading matrix values. Users verify ordering,
+  identifier validity, scientific alignment, and sample-reported metadata.
 - **Underlying inputs are not replaced during analysis.** Import replacement
   inputs into a new workspace. There is no input-replacement monitoring or
   validation-result cache.

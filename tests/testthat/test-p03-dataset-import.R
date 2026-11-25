@@ -118,6 +118,49 @@ test_that("P03 reports real byte progress while staging remains undiscoverable",
     unname(tools::md5sum(file.path(imported$path, "processed_data", "extra_payload.bin"))))
 })
 
+test_that("dimension mismatches prevent creation before copying starts", {
+  fixture <- make_p03_inputs(withr::local_tempdir())
+  path <- file.path(fixture$source, "002", "Genes.txt")
+  writeLines(readLines(path)[-1L], path)
+  cells_path <- file.path(fixture$source, "001", "Cells.csv")
+  cells <- data.table::fread(cells_path)
+  data.table::fwrite(cells[-1L], cells_path)
+  files <- list.files(fixture$source, recursive = TRUE, full.names = TRUE)
+  hashes <- tools::md5sum(files)
+  copied <- FALSE
+  error <- tryCatch(p03_import(fixture, copy_file = function(...) {
+    copied <<- TRUE
+    stop("Copying must not start")
+  }), error = identity)
+  expect_s3_class(error, "error")
+  expect_match(conditionMessage(error), "Gene entries (11) do not match matrix rows (12)", fixed = TRUE)
+  expect_match(conditionMessage(error), "Cell metadata rows (7) do not match matrix columns (8)", fixed = TRUE)
+  expect_false(copied)
+  expect_length(list.files(fixture$parent, all.files = TRUE, no.. = TRUE), 0L)
+  expect_identical(tools::md5sum(files), hashes)
+})
+
+test_that("post-copy dimension mismatches roll back staging without publishing a workspace", {
+  fixture <- make_p03_inputs(withr::local_tempdir())
+  files <- list.files(fixture$source, recursive = TRUE, full.names = TRUE)
+  hashes <- tools::md5sum(files)
+  changed_copy <- FALSE
+  expect_error(p03_import(fixture, copy_file = function(source, destination, copied, total, progress) {
+    written <- copy_prepared_input_file(source, destination, copied, total, progress)
+    if (basename(source) == "Exp_data_UMIcounts.mtx") {
+      bytes <- readBin(destination, "raw", n = file.info(destination)$size)
+      altered <- sub("\n12 8 ", "\n13 9 ", rawToChar(bytes), fixed = TRUE)
+      stopifnot(nchar(altered, type = "bytes") == length(bytes))
+      writeBin(charToRaw(altered), destination)
+      changed_copy <<- TRUE
+    }
+    written
+  }), "do not match matrix", fixed = TRUE)
+  expect_true(changed_copy)
+  expect_length(list.files(fixture$parent, all.files = TRUE, no.. = TRUE), 0L)
+  expect_identical(tools::md5sum(files), hashes)
+})
+
 test_that("P03 failed copies roll back only owned staging and never publish a partial workspace", {
   fixture <- make_p03_inputs(withr::local_tempdir())
   sentinel <- file.path(fixture$parent, "unrelated.txt")
@@ -195,6 +238,24 @@ make_p03_server_fixture <- function(root) {
   }
   env
 }
+
+test_that("loading an existing dataset blocks gene and cell dimension mismatches", {
+  env <- make_p03_server_fixture(withr::local_tempdir())
+  imported <- p03_import(env$fixture)
+  genes <- file.path(imported$path, "processed_data", "002", "Genes.txt")
+  writeLines(readLines(genes)[-1L], genes)
+  cells_path <- file.path(imported$path, "processed_data", "001", "Cells.csv")
+  data.table::fwrite(data.table::fread(cells_path)[-1L], cells_path)
+  hashes <- tools::md5sum(c(genes, cells_path))
+  shiny::testServer(env$server, {
+    session$setInputs(dataset_choice = "Imported", btn_load_dataset = 1)
+    expect_null(env$state$dataset_dir_path)
+    expect_null(env$state$sample_metadata)
+    expect_match(tail(env$modals, 1), "Gene entries (11) do not match matrix rows (12)", fixed = TRUE)
+    expect_match(tail(env$modals, 1), "Cell metadata rows (7) do not match matrix columns (8)", fixed = TRUE)
+  })
+  expect_identical(tools::md5sum(c(genes, cells_path)), hashes)
+})
 
 test_that("P03 creation opens external workspaces immediately and retains session reload access", {
   env <- make_p03_server_fixture(withr::local_tempdir())
