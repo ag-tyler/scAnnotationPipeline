@@ -70,6 +70,7 @@ test_that("single_de_analysis runs from cached clustering results and writes DE 
   
   dataset_config <- list(
     params = list(
+      seed = 8173,
       max_marker_genes = 2,
       de = list(
         num_genes = 4,
@@ -79,8 +80,21 @@ test_that("single_de_analysis runs from cached clustering results and writes DE 
     )
   )
   
+  plot_seeds <- numeric()
+  plot_minima <- numeric()
+  plot_captions <- character()
+  analysis <- single_de_analysis
+  analysis_env <- new.env(parent = environment(analysis))
+  environment(analysis) <- analysis_env
+  analysis_env$sig_scores_cluster_boxplot <- function(..., seed, min_marker_found = NULL) {
+    plot_seeds <<- c(plot_seeds, seed)
+    plot_minima <<- c(plot_minima, min_marker_found)
+    plot <- sig_scores_cluster_boxplot(..., seed = seed, min_marker_found = min_marker_found)
+    plot_captions <<- c(plot_captions, plot$labels$caption)
+    plot
+  }
   expect_message(
-    single_de_analysis(
+    analysis(
       sample_idx = 1,
       paths_list = paths_list,
       dataset_config = dataset_config,
@@ -91,6 +105,9 @@ test_that("single_de_analysis runs from cached clustering results and writes DE 
     ),
     "Finished sample1"
   )
+  expect_identical(plot_seeds, rep(dataset_config$params$seed, 2))
+  expect_identical(plot_minima, rep(dataset_config$params$de$min_marker_found, 2))
+  expect_true(all(grepl("fewer than 1 marker gene", plot_captions, fixed = TRUE)))
   
   de_dir <- file.path(
     results_dir,
@@ -406,4 +423,56 @@ test_that("load_filter_cells_expmat rejects incomplete dataset parameters early"
     ),
     "Dataset configuration requires finite numeric params:.*min_genes.*log2_expr_threshold"
   )
+})
+
+test_that("DC01 selected-resolution clustering honors all configured dimensionality settings", {
+  config <- list(params = list(pca_nv = 3, seed = 8173,
+    umap = list(spread = 1.7, min_dist = 0.35)))
+  cells <- data.table::data.table(cell_name = paste0("cell", 1:4))
+  expression <- matrix(1:20, ncol = 4)
+  observed <- list()
+  workflow <- pca_umap_louvain
+  env <- new.env(parent = environment(workflow))
+  environment(workflow) <- env
+  env$run_expmat_pca <- function(expmat, nv = 50, seed = 3988) {
+    observed$pca <<- list(nv = nv, seed = seed)
+    list(v = matrix(1:12, nrow = 4))
+  }
+  env$run_expmat_umap <- function(exp_pca, n_exp_col, spread, min_dist, seed) {
+    observed$umap <<- list(n_exp_col = n_exp_col, spread = spread,
+      min_dist = min_dist, seed = seed)
+    matrix(1:8, nrow = 4)
+  }
+  env$louvain_clustering <- function(exp_pca, exp_umap, cells, resolution, seed) {
+    observed$clustering <<- list(resolution = resolution, seed = seed)
+    cells
+  }
+  result <- workflow(expression, cells, config,
+    list(resolutions = list(sample1 = 0.75)), "sample1")
+  expect_identical(result, cells)
+  expect_identical(observed$pca, list(nv = 3, seed = 8173))
+  expect_identical(observed$umap, list(n_exp_col = 4L, spread = 1.7,
+    min_dist = 0.35, seed = 8173))
+  expect_identical(observed$clustering, list(resolution = 0.75, seed = 8173))
+})
+
+test_that("DC01 PCA seed correction preserves default caches and rejects ignored custom seeds", {
+  dataset <- withr::local_tempdir()
+  fixture <- write_mini_sample(file.path(dataset, "processed_data"))
+  paths <- list(sample_dir_paths = fixture$sample_dir, cell_file_paths = fixture$cells_path,
+    expmat_file_paths = fixture$expmat_path, genes_file_paths = fixture$genes_path)
+  config <- yaml::read_yaml(testthat::test_path("..", "..", "templates", "dataset_config_template.yaml"))
+  for (seed in c(3988, 8173)) {
+    config$params$seed <- seed
+    current <- clustering_cache_dependencies(paths, 1, config, 0.5)
+    old_values <- attr(current, "cache_values")
+    old_values$implementation <- "pca-umap-louvain-v1"
+    legacy <- cache_dependency_spec(
+      files = c(expression = fixture$expmat_path, genes = fixture$genes_path), values = old_values)
+    filename <- paste0("seed_", seed, ".qs2")
+    cache_save_data(fixture$cells, filename, dataset, dependencies = legacy)
+    expect_identical(cache_check_valid(filename, dataset, dependencies = current), seed == 3988)
+    cache_save_data(fixture$cells, filename, dataset, dependencies = current)
+    expect_true(cache_check_valid(filename, dataset, dependencies = current))
+  }
 })

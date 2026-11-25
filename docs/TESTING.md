@@ -65,6 +65,27 @@ The suite covers import, clustering, DE, annotation, CNA, caches, relocation,
 state/log recovery, exports, snapshots, storage, and the supported external
 preparation/checkpoint tools. Ticket prefixes identify permanent regressions.
 
+Configuration regressions also cover custom filenames without matrix-state
+checks during creation/loading, template settings and saved-workspace authority,
+optional source metadata, and legacy technology fields. Browser checks exercise
+the collapsed filename/source inputs and their keyboard/narrow-screen behavior. Plot
+checks cover minimum-marker shading/captions and preservation of existing images;
+standalone cache-reader tests check restored classes/values and unchanged files.
+
+On `development`, run the separate development-tool contracts as well:
+
+```r
+testthat::test_file("tests/development/test-profile-interactions.R")
+testthat::test_file("tests/development/test-e00-performance-harness.R")
+```
+
+The E00 contract uses synthetic cache workers and a pinned historical Git
+baseline. It requires a checkout with that history; the ordinary application
+suite also supports ZIP downloads. See the
+[development-script reference](https://github.com/ag-tyler/scAnnotationPipeline/blob/development/docs/development/SCRIPTS.md) for tool usage and effects.
+Automated verification does not close the dataset plan's manual acceptance
+checks; record those separately after human review.
+
 ## Browser checks
 
 Install `shinytest2` and its `chromote` dependency, and provide Chrome, Chromium,
@@ -143,6 +164,160 @@ browser tests assert the intended em dash as text before comparing screenshots;
 a matching image alone is not proof that its characters are correct.
 
 ## Recorded verification status
+
+### 1.1.0 acceptance complete — 2026-11-25
+
+**Automated and manual verification are complete for this release candidate.**
+The user reported: "I finished the manual testing. All seems to work."
+This closes the dataset-configuration plan's DC06 manual acceptance on
+2026-11-25, including the final annotation-save fix and removal of the duplicate
+plot reminder. Manual acceptance is user-reported; the agent did not repeat it.
+
+| Verification phase | Result |
+| --- | --- |
+| Full app run plus reviewed browser-baseline rerun | 4,860 verified app assertions; no unresolved failures/errors/warnings/skips |
+| Separate development-tool contracts | 62 assertions passed; zero failures/errors/warnings/skips |
+| Later annotation column-type fix | 226 focused assertions passed; read-only reproduction verified all 1,500 Test labels |
+| Later duplicate-reminder removal | 226 focused assertions passed; UI syntax checked; original reviewed baseline restored |
+| Final manual acceptance | Completed by the user; no failures reported |
+
+Counts are recorded per phase and must not be added as unique coverage. The
+initial full run had one intentional screenshot mismatch, resolved by review
+and the successful browser-file rerun. The later type fix and UI simplification
+were verified with focused checks, as detailed below. The user explicitly stated
+that "another full test suite is not necessary" for those two changes. This
+release uses that accepted verification sequence; no additional full run or
+browser journey was performed after the two follow-ups. The optional
+greater-than-4-GiB stress test was not enabled.
+
+Version metadata and release documentation were then prepared as **1.1.0**.
+The app-focused main candidate is prepared separately from development-only
+assets. This acceptance record does not imply that `main` was updated, tagged,
+or published; see the release preparation record on `development`.
+
+### Plot explanation shown once — 2026-11-25
+
+Removed the separate marker-count reminder below the Manual Annotation score
+image at the user's request. The explanation in generated plot captions remains.
+Restored the original reviewed `04-manual-annotation.png` baseline without the
+extra UI paragraph; its archived copy was verified against the committed Git
+blob before replacement. No scientific dataset or saved plot was changed.
+
+Focused checks passed **226 assertions across 21 tests** (47 score-plot/DE and
+179 annotation/transition assertions), with zero failures, errors, warnings, or
+skips. The annotation UI also passed a syntax check. Only these files were run:
+
+```r
+testthat::test_dir("tests/testthat", filter = "^(02_utils_annotation_de|c01-dataset-transitions)$")
+```
+
+Logs and results are in ignored
+`artifacts/local-checks/plot-caption-only-2026-11-25/`. The full suite and browser
+journeys were not rerun for this presentation change; earlier browser evidence
+below describes the preceding UI.
+
+### Manual annotation blank-column fix — 2026-11-25
+
+This follow-up fixes saving text annotations into an existing all-blank
+`cell_type_pre_cna` column, which CSV inference previously loaded as logical.
+`load_cells()` now declares the optional column as character when present;
+manual save also converts an existing in-memory column before the update join.
+Absent columns remain optional, and unrelated metadata keeps its original types.
+
+**Focused verification only, as requested by the user:**
+
+| Test file | Passed assertions | Failures / errors / warnings / skips |
+| --- | --- | --- |
+| `test-01_utils_io.R` | 43 | 0 / 0 / 0 / 0 |
+| `test-c01-dataset-transitions.R` | 183 | 0 / 0 / 0 / 0 |
+| Total | 226 | 0 / 0 / 0 / 0 |
+
+The loader cases cover absent, blank, populated, numeric-looking, and
+logical-looking labels without changing source files. Server regressions invoke
+the real save handler for blank/absent/populated columns and a table already
+loaded with a logical column. They verify CSV/cache agreement, joins by cell ID
+with reordered analyzed cells, preservation of excluded cells and other metadata,
+and repeated saves without warnings.
+
+Commands from the repository root, with the Windows UTF-8 settings above:
+
+```r
+testthat::test_dir("tests/testthat", filter = "^(01_utils_io|c01-dataset-transitions)$")
+testthat::test_dir("tests/testthat", filter = "^c01-dataset-transitions$")
+```
+
+The first run passed the loader file but exposed a setup assertion in the new
+already-loaded-logical scenario: assigning scalar `NA` had retained the existing
+character type. The fixture was corrected to use inferred CSV loading to recreate
+the old in-memory state, and only the affected server test file was rerun. The
+table above combines that successful rerun with the passing loader file.
+
+A separate read-only reproduction using `Test`'s CSV and resolution-0.5 cache
+updated all 1,500 pre-CNA labels correctly in memory, with zero warnings and
+unchanged source hashes. No real dataset was saved or repaired automatically.
+Restart the app, reopen the dataset, and save annotations again to populate a
+previously affected CSV column.
+
+Local logs/results are retained in ignored
+`artifacts/local-checks/annotation-save-types-2026-11-25/` and
+`artifacts/local-checks/annotation-save-types-2026-11-25-retry/`.
+The full app suite, browser journeys, and development-tool contracts were not
+rerun for this fix. Their earlier results below describe the preceding source.
+
+### Development configuration and annotation changes — 2026-11-25
+
+Verified the `development` working tree based on commit `6d5e626`, including
+uncommitted DC01–DC05/DC08 changes and the creation-dialog filename inputs, on
+Windows 11 with R 4.5.3 and headless Edge 158.0.4370.33. Dependency, host/worker
+UTF-8, and actual browser startup checks passed. Tests used disposable synthetic
+workspaces rather than scientific datasets.
+
+| Run | Passed assertions | Failures | Errors / warnings / skips |
+| --- | --- | --- | --- |
+| Full app suite through `tests/testthat.R` | 4,859 | 1 | 0 / 0 / 0 |
+| Separate development-tool contracts | 62 | 0 | 0 / 0 / 0 |
+| Browser-file rerun after reviewed baseline correction | 700 | 0 | 0 / 0 / 0 |
+
+The sole initial failure was the expected addition of the marker-count
+explanation below the Cluster Score Boxplot. Visual and pixel review confirmed
+that `04-manual-annotation.png` changed only in that explanation area; the other
+five screenshots were byte-for-byte identical. Only that baseline was replaced.
+The entire `test-app-ui-baseline.R` file then passed against fresh screenshots
+with automatic updates disabled and the comparison threshold unchanged at 5.
+All six fresh screenshots matched their baselines byte-for-byte.
+
+Replacing the original browser-file results with the successful rerun gives
+**4,860 verified app assertions across 421 tests**, plus **62 development-tool
+assertions across 8 tests**: **4,922 assertions**, with no unresolved failures,
+errors, warnings, or skips. This combines the full run and the affected-file
+rerun; it does not claim a second clean invocation of the entire app suite or
+double-count repeated browser assertions. No runtime or test code changed
+between runs; source hashes differ only for the reviewed screenshot baseline,
+excluding ignored generated `Rplots.pdf` files.
+
+The full app run took 701.67 seconds, development contracts 19.28 seconds, and
+the browser rerun 354.10 seconds. Commands, after the process-local Windows
+UTF-8 setup described above, were:
+
+```r
+source("tests/testthat.R", encoding = "UTF-8")
+testthat::test_dir("tests/development")
+testthat::test_dir("tests/testthat", filter = "^app-ui-baseline$")
+```
+
+The filename follow-up includes 76 browser-layout assertions, 26 assertions for
+edited names through validation retry/reload with unchanged template/source
+bytes, 9 assertions for invalid overrides, and 7 for prefilled disclosure layout.
+These are included in the app totals, not additional counts.
+
+Logs, source hashes, environment details, screenshots, and raw/combined result
+summaries are retained in ignored
+`artifacts/local-checks/full-suite-2026-11-25-resumed/` and
+`artifacts/local-checks/full-suite-2026-11-25-baseline-rerun/`. The earlier
+`full-suite-2026-11-25/` run was interrupted at the user's request and is not a
+completed verification. The opt-in greater-than-4-GiB stress test was disabled.
+Manual dataset acceptance was pending at this stage and was subsequently closed
+by the user on 2026-11-25; see the 1.1.0 acceptance record above.
 
 ### 1.0.1 release gate
 

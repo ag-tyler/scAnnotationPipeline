@@ -226,9 +226,7 @@ initialize_standardization <- function(settings) {
     use.names = TRUE
   )
   sample_names <- samples_info_dt$sample
-  expression_filename <- paste0("Exp_data_", settings$matrix_state, ".mtx")
   std_names <- dataset_config$std_names
-  std_names$expmat <- expression_filename
 
   working_dir_path <- paste0(processed_dir_path, "_staging")
   .reset_standardization_working_dir(working_dir_path, processed_dir_path)
@@ -603,7 +601,6 @@ publish_standardization <- function(context, validation) {
   }
 
   .publish_staged_standardization(context)
-  context$dataset_config$std_names$expmat <- context$std_names$expmat
   yaml::write_yaml(context$dataset_config, context$dataset_config_path)
   if (
     isTRUE(context$settings$reset_selected_config) ||

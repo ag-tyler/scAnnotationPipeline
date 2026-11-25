@@ -30,6 +30,32 @@ test_that("load_genes / load_expmat / load_cells round-trip a written sample", {
   expect_type(cells$cell_name, "character")
 })
 
+test_that("load_cells preserves optional pre-CNA labels as text without adding absent columns", {
+  path <- file.path(withr::local_tempdir(), "Cells.csv")
+  scenarios <- list(absent = NULL, blank = rep(NA_character_, 3),
+    populated = c("T_cell", "Epithelial", NA_character_),
+    numeric_labels = c("001", "002", NA_character_),
+    logical_labels = c("TRUE", "FALSE", NA_character_))
+  for (scenario in names(scenarios)) {
+    original <- data.table::data.table(cell_name = c("001", "002", "003"),
+      sample = "sample1", cell_type = NA_character_, complexity = c(12L, 25L, 4L))
+    labels <- scenarios[[scenario]]
+    if (!is.null(labels)) original[, cell_type_pre_cna := labels]
+    data.table::fwrite(original, path)
+    before <- tools::md5sum(path)
+    expect_no_warning(loaded <- load_cells(path))
+    expect_identical(loaded$cell_name, original$cell_name)
+    expect_identical(loaded$complexity, original$complexity)
+    if (is.null(labels)) {
+      expect_false("cell_type_pre_cna" %in% names(loaded))
+    } else {
+      expect_type(loaded$cell_type_pre_cna, "character")
+      expect_identical(loaded$cell_type_pre_cna, labels)
+    }
+    expect_identical(tools::md5sum(path), before)
+  }
+})
+
 test_that("load_samples reads sample ids as character even if numeric-looking", {
   dir <- withr::local_tempdir()
   samples_dt <- build_samples(c("001", "002"))

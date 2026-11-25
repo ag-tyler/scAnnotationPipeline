@@ -310,12 +310,38 @@ test_that("validate_standardization reports all missing files and can fail stric
   )
 })
 
-test_that("expression type is explicit in the standardized matrix filename", {
+test_that("legacy preparation filenames can still supply an expression type", {
   expect_equal(infer_standardized_expression_type("Exp_data_UMIcounts.mtx"), "counts")
   expect_equal(infer_standardized_expression_type("Exp_data_counts.mtx"), "counts")
   expect_equal(infer_standardized_expression_type("Exp_data_TPM.mtx"), "TPM")
   expect_equal(infer_standardized_expression_type("Exp_data_CPM.mtx"), "CPM")
   expect_true(is.na(infer_standardized_expression_type("expression.mtx")))
+})
+
+test_that("DC02 preparation validates explicit states independently of matrix filenames", {
+  for (state in c("UMIcounts", "TPM", "CPM")) {
+    dir <- withr::local_tempdir()
+    filenames <- list(expmat = "expression.mtx", genes = "symbols.txt", cells = "metadata.csv")
+    fixture <- write_mini_sample(dir, "sample1", n_genes = 10, n_cells = 8, std_names = filenames)
+    if (state != "UMIcounts") Matrix::writeMM(fixture$mat / 3, fixture$expmat_path)
+    validation <- NULL
+    expect_output(validation <- validate_standardization(dir, "sample1", filenames,
+      strict = TRUE, matrix_state = state), "POST-VALIDATION PASSED")
+    expect_true(validation$valid)
+    expect_identical(validation$expression_type, if (state == "UMIcounts") "counts" else state)
+  }
+
+  # An explicit counts declaration must catch fractions even in a TPM-named file.
+  dir <- withr::local_tempdir()
+  filenames <- list(expmat = "misleading_TPM.mtx", genes = "Genes.txt", cells = "Cells.csv")
+  fixture <- write_mini_sample(dir, "sample1", n_genes = 10, n_cells = 8, std_names = filenames)
+  Matrix::writeMM(fixture$mat / 3, fixture$expmat_path)
+  expect_warning(count_result <- validate_standardization(dir, "sample1", filenames,
+    matrix_state = "UMIcounts"), "Post-validation failed")
+  expect_match(count_result$errors, "count matrix contains non-integer values")
+  expect_warning(invalid <- validate_standardization(dir, "sample1", filenames,
+    matrix_state = "invalid"), "Post-validation failed")
+  expect_match(invalid$errors, "matrix_state must be one of")
 })
 
 test_that("validate_standardization detects matrix/table dimension mismatches", {

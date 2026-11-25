@@ -117,7 +117,8 @@ test_that("P05 real CSV-only imports produce verified snapshots before and after
   parent <- file.path(workspace$root, "imported workspaces")
   dir.create(parent)
   imported <- import_prepared_dataset(source, parent, "Dataset", config,
-    testthat::test_path("..", "..", "templates", "dataset_config_template.yaml"))
+    testthat::test_path("..", "..", "templates", "dataset_config_template.yaml"),
+    source_doi = " 10.1234/import-source ", source_url = " https://example.org/imported-dataset ")
   state <- load_pipeline_state(imported$path)
   expect_identical(get_pipeline_step(state, "standardization")$details$validation_scope, "structure_only")
   expect_true(pipeline_step_readiness(state, "clustering", "Sample_A")$ready)
@@ -166,6 +167,9 @@ test_that("P05 real CSV-only imports produce verified snapshots before and after
     extracted <- tempfile("readback-", tmpdir = workspace$root)
     zip::unzip(result$outputs[[2]], exdir = extracted)
     for (payload in c(result$outputs[[1]], extracted)) {
+      readme <- paste(readLines(file.path(payload, "README.md")), collapse = "\n")
+      expect_match(readme, "Publication DOI: 10.1234/import-source", fixed = TRUE)
+      expect_match(readme, "Dataset/repository URL: https://example.org/imported-dataset", fixed = TRUE)
       paths <- list.files(payload, recursive = TRUE)
       expect_false(any(grepl("samples_config.yaml|standardize.R|STANDARDIZATION_CHECKLIST.md", paths, fixed = FALSE)))
       expect_true(all(c("annotation_summary.csv", "filtering_summary.csv") %in% paths))

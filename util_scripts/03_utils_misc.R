@@ -388,7 +388,8 @@ validate_standardization <- function(
   processed_dir_path,
   sample_names,
   std_names,
-  strict = FALSE
+  strict = FALSE,
+  matrix_state = NULL
 ) {
   #' Validate Standardization Output
   #'
@@ -404,6 +405,9 @@ validate_standardization <- function(
   #' optionally `samples`).
   #' @param strict Logical. If `TRUE`, invalid output raises an error after the
   #' complete report is printed. If `FALSE`, it raises a warning.
+  #' @param matrix_state Explicit preparation state: UMIcounts, TPM, or CPM.
+  #'   Takes precedence over filenames. NULL retains filename inference for
+  #'   legacy preparation scripts; custom names need an explicit state.
   #'
   #' @return Invisibly returns a structured list with `valid`, `errors`,
   #' `expression_type`, and per-sample dimensions.
@@ -435,14 +439,19 @@ validate_standardization <- function(
     )
   }
 
-  expression_type <- infer_standardized_expression_type(std_names$expmat)
+  expression_type <- if (is.null(matrix_state)) {
+    infer_standardized_expression_type(std_names$expmat)
+  } else if (is.character(matrix_state) && length(matrix_state) == 1L &&
+             !is.na(matrix_state) && matrix_state %in% c("UMIcounts", "TPM", "CPM")) {
+    if (matrix_state == "UMIcounts") "counts" else matrix_state
+  } else NA_character_
   if (is.na(expression_type)) {
     errors <- add_error(
       errors,
-      message = paste0(
-        "expression filename '", std_names$expmat,
-        "' does not declare a supported counts, TPM, or CPM scale"
-      )
+      message = if (is.null(matrix_state)) paste0(
+        "declare matrix_state as UMIcounts, TPM, or CPM for preparation validation",
+        " (legacy filename '", std_names$expmat, "' does not declare a supported scale)"
+      ) else "matrix_state must be one of: UMIcounts, TPM, CPM."
     )
   }
 

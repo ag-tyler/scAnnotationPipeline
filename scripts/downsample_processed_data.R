@@ -13,14 +13,21 @@ settings <- list(
   min_genes = 500L,                # Matches app default; 0 keeps all input cells.
   reset_annotations = TRUE,
   annotation_columns = c("cell_type", "cell_subtype", "subclone", "cell_type_pre_cna"),
-  seed = 3988L
+  seed = 3988L,
+  # Copy std_names from the source workspace config (or the import template).
+  std_names = list(expmat = "Exp_data_UMIcounts.mtx", genes = "Genes.txt",
+    cells = "Cells.csv", samples = "Samples.csv"),
+  matrix_state = NULL              # Optional preparation check: UMIcounts, TPM, CPM.
 )
 
 downsample_processed_data <- function(
   input_dir, output_dir, n_cells = 3000L, samples = NULL,
   stratify_by = "cell_type", min_genes = 500L, reset_annotations = TRUE,
   annotation_columns = c("cell_type", "cell_subtype", "subclone", "cell_type_pre_cna"),
-  seed = 3988L
+  seed = 3988L,
+  std_names = list(expmat = "Exp_data_UMIcounts.mtx", genes = "Genes.txt",
+    cells = "Cells.csv", samples = "Samples.csv"),
+  matrix_state = NULL
 ) {
   # Largest-remainder allocation preserves proportions to integer rounding.
   # No rare-type oversampling: populations can receive zero cells at small caps.
@@ -30,6 +37,25 @@ downsample_processed_data <- function(
     }
   }
   fail <- function(...) stop(..., call. = FALSE)
+  filename_keys <- c("expmat", "genes", "cells", "samples")
+  portable_filename <- function(value) {
+    is.character(value) && length(value) == 1L && !is.na(value) &&
+      nzchar(value) && value == trimws(value) && !(value %in% c(".", "..")) &&
+      !grepl('[<>:"/\\\\|?*[:cntrl:]]', value) && !grepl("[. ]$", value) &&
+      !grepl("^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])($|\\.)", value, ignore.case = TRUE)
+  }
+  if (!is.list(std_names) || !all(vapply(filename_keys,
+      function(key) portable_filename(std_names[[key]]), logical(1))) ||
+      anyDuplicated(tolower(unlist(std_names[filename_keys], use.names = FALSE)))) {
+    fail("std_names must specify distinct portable expmat, genes, cells, and samples filenames.")
+  }
+  if (tolower(std_names$samples) == "downsampling_report.csv") {
+    fail("The samples filename must differ from downsampling_report.csv.")
+  }
+  if (!is.null(matrix_state) && !(is.character(matrix_state) && length(matrix_state) == 1L &&
+      !is.na(matrix_state) && matrix_state %in% c("UMIcounts", "TPM", "CPM"))) {
+    fail("matrix_state must be NULL, UMIcounts, TPM, or CPM.")
+  }
   whole_number <- function(value, minimum) {
     is.numeric(value) && length(value) == 1L && !is.na(value) &&
       is.finite(value) && value >= minimum && value <= .Machine$integer.max &&
@@ -79,7 +105,7 @@ downsample_processed_data <- function(
     if (anyDuplicated(names(result))) fail("Duplicate CSV column names: ", path)
     result
   }
-  sample_table <- read_csv(file.path(input_dir, "Samples.csv"))
+  sample_table <- read_csv(file.path(input_dir, std_names$samples))
   if (!all(c("sample", "n_cells") %in% names(sample_table)) || !nrow(sample_table)) {
     fail("Samples.csv must contain sample, n_cells and at least one sample row.")
   }
@@ -100,18 +126,13 @@ downsample_processed_data <- function(
     sample_table <- sample_table[which(sample_ids %in% samples)]
     sample_ids <- sample_table[["sample"]]
   }
-  matrix_names <- c("Exp_data_UMIcounts.mtx", "Exp_data_TPM.mtx", "Exp_data_CPM.mtx")
-  matrix_files <- vapply(sample_ids, function(sample) {
+  for (sample in sample_ids) {
     folder <- file.path(input_dir, sample)
-    found <- intersect(matrix_names, list.files(folder))
-    if (length(found) != 1L) fail(sample, ": expected exactly one supported expression matrix.")
-    for (name in c(found, "Cells.csv", "Genes.txt")) {
+    for (name in unlist(std_names[c("expmat", "cells", "genes")], use.names = FALSE)) {
       path <- file.path(folder, name)
       if (!file.exists(path) || dir.exists(path)) fail("Missing input file: ", path)
     }
-    found
-  }, character(1))
-  if (length(unique(matrix_files)) != 1L) fail("All selected samples must use the same expression scale.")
+  }
 
   # Leave the caller's random-number generator unchanged when used via source().
   had_seed <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
@@ -139,15 +160,15 @@ downsample_processed_data <- function(
     sample <- sample_ids[[sample_index]]
     message("[", sample_index, "/", length(sample_ids), "] Reading ", sample)
     source_dir <- file.path(input_dir, sample)
-    cells <- read_csv(file.path(source_dir, "Cells.csv"))
+    cells <- read_csv(file.path(source_dir, std_names$cells))
     required <- c("cell_name", "sample", "cell_type", "complexity", "cell_subtype", "patient", "subclone", "source")
     missing <- setdiff(c(required, stratify_by), names(cells))
     if (length(missing)) fail(sample, ": missing Cells.csv columns: ", paste(missing, collapse = ", "))
     if (anyNA(cells[["cell_name"]]) || any(!nzchar(cells[["cell_name"]])) ||
         anyDuplicated(cells[["cell_name"]]) || anyNA(cells[["sample"]]) ||
         any(cells[["sample"]] != sample)) fail(sample, ": invalid cell identifiers or sample membership.")
-    genes <- readLines(file.path(source_dir, "Genes.txt"), warn = FALSE, encoding = "UTF-8")
-    expression <- Matrix::readMM(file.path(source_dir, matrix_files[[sample_index]]))
+    genes <- readLines(file.path(source_dir, std_names$genes), warn = FALSE, encoding = "UTF-8")
+    expression <- Matrix::readMM(file.path(source_dir, std_names$expmat))
     if (nrow(expression) != length(genes) || ncol(expression) != nrow(cells)) {
       fail(sample, ": matrix dimensions do not match Genes.txt and Cells.csv.")
     }
@@ -158,8 +179,8 @@ downsample_processed_data <- function(
     if (!"x" %in% methods::slotNames(expression)) fail(sample, ": expression matrix must contain numeric values.")
     values <- expression@x
     if (anyNA(values) || any(!is.finite(values)) || any(values < 0) ||
-        (matrix_files[[sample_index]] == "Exp_data_UMIcounts.mtx" && any(values != floor(values)))) {
-      fail(sample, ": expression values must be finite, non-negative and integer for UMI counts.")
+        (identical(matrix_state, "UMIcounts") && any(values != floor(values)))) {
+      fail(sample, ": expression values must be finite, non-negative and integer when matrix_state is UMIcounts.")
     }
     complexity <- diff(expression@p)
     eligible <- which(complexity >= min_genes)
@@ -199,11 +220,11 @@ downsample_processed_data <- function(
     }
     destination <- file.path(staging, sample)
     if (!dir.create(destination)) fail("Cannot create sample output: ", sample)
-    Matrix::writeMM(expression[, selected, drop = FALSE], file.path(destination, matrix_files[[sample_index]]))
-    if (!file.copy(file.path(source_dir, "Genes.txt"), file.path(destination, "Genes.txt"))) {
-      fail("Cannot copy Genes.txt for ", sample)
+    Matrix::writeMM(expression[, selected, drop = FALSE], file.path(destination, std_names$expmat))
+    if (!file.copy(file.path(source_dir, std_names$genes), file.path(destination, std_names$genes))) {
+      fail("Cannot copy ", std_names$genes, " for ", sample)
     }
-    data.table::fwrite(selected_cells, file.path(destination, "Cells.csv"), na = "")
+    data.table::fwrite(selected_cells, file.path(destination, std_names$cells), na = "")
     data.table::set(sample_table, i = sample_index, j = "n_cells", value = as.character(target))
     report[[sample_index]] <- data.frame(sample = sample, input_cells = nrow(cells),
       eligible_cells = length(eligible), output_cells = target, strata = length(strata),
@@ -215,7 +236,7 @@ downsample_processed_data <- function(
     invisible(gc())
   }
   report <- do.call(rbind, report)
-  data.table::fwrite(sample_table, file.path(staging, "Samples.csv"), na = "")
+  data.table::fwrite(sample_table, file.path(staging, std_names$samples), na = "")
   data.table::fwrite(report, file.path(staging, "downsampling_report.csv"), na = "")
   if (file.exists(output_dir) || !file.rename(staging, output_dir)) {
     fail("Cannot publish output; destination must not already exist: ", output_dir)

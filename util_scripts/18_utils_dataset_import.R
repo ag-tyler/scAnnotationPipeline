@@ -36,20 +36,29 @@ copy_prepared_input_file <- function(source, destination, copied, total, progres
 import_prepared_dataset <- function(source_dir, parent_dir, dataset_name,
                                     config, template_path,
                                     progress = function(copied, total, path) NULL,
-                                    copy_file = copy_prepared_input_file) {
+                                    copy_file = copy_prepared_input_file,
+                                    source_doi = NULL, source_url = NULL,
+                                    std_names = NULL) {
   #' Create an Independent Workspace From Prepared Inputs
   #'
   #' @description Checks source structure, copies bytes into a hidden staging
   #'   workspace, initializes configuration and ready-to-analyze state, checks
   #'   the copied structure, and publishes by sibling-directory rename. Source
   #'   inputs and pre-existing workspaces are never overwritten.
-  #' @param source_dir Prepared-data directory containing Samples.csv.
+  #' @param source_dir Prepared-data directory containing the configured sample CSV.
   #' @param parent_dir Existing workspace parent directory.
   #' @param dataset_name New workspace directory name.
   #' @param config General application configuration.
-  #' @param template_path Analysis configuration template (not a preparation script).
+  #' @param template_path Analysis configuration template defining the input
+  #'   filenames and defaults for this new workspace (not a preparation script).
   #' @param progress Callback receiving copied bytes, total bytes, source path.
   #' @param copy_file Binary copying function; injectable for I/O failure tests.
+  #' @param source_doi Optional paper DOI. NULL preserves the template value;
+  #'   supplied text is trimmed, and an empty string clears it.
+  #' @param source_url Optional dataset database URL, with the same rules.
+  #' @param std_names Optional expmat, genes, cells, and samples filenames for
+  #'   this workspace. NULL uses template defaults. Overrides are checked before
+  #'   copying and saved only in the new workspace, never in the template.
   #' @return Published workspace path, metadata, filenames and copy byte count.
 
   dataset_name <- sanitize_dataset_name(dataset_name)
@@ -75,12 +84,20 @@ import_prepared_dataset <- function(source_dir, parent_dir, dataset_name,
   if (.import_path_contains(source, destination) || .import_path_contains(destination, source)) {
     stop("Source and destination must not overlap; select a parent outside the prepared input.", call. = FALSE)
   }
-  checked <- check_prepared_data(source)
-  if (!checked$valid) stop(checked$message, call. = FALSE)
   if (!file.exists(template_path)) {
     stop("The analysis dataset_config_template.yaml is missing.", call. = FALSE)
   }
   ds_config <- yaml::read_yaml(template_path)
+  if (!is.list(ds_config)) {
+    stop("The analysis configuration template must be a YAML mapping.", call. = FALSE)
+  }
+  # Snapshot the effective configuration once. Source checks, copied-data checks,
+  # and saved YAML use the same names, including any creation-dialog overrides.
+  # An absent std_names section must fail configuration checks, not autodetect.
+  if (!is.null(std_names)) ds_config$std_names <- std_names
+  std_names <- if (is.null(ds_config$std_names)) list() else ds_config$std_names
+  checked <- check_prepared_data(source, std_names = std_names)
+  if (!checked$valid) stop(checked$message, call. = FALSE)
 
   # Reject links instead of preserving a dependency on the user's source tree.
   entries <- as.character(fs::dir_ls(source, recurse = TRUE, all = TRUE, type = "any"))
@@ -136,7 +153,7 @@ import_prepared_dataset <- function(source_dir, parent_dir, dataset_name,
     }
     copied <- copied + written
   }
-  copied_check <- check_prepared_data(processed)
+  copied_check <- check_prepared_data(processed, std_names = std_names)
   if (!copied_check$valid) stop(copied_check$message, call. = FALSE)
   if (!identical(copied_check$samples, checked$samples) ||
       !identical(copied_check$std_names, checked$std_names)) {
@@ -144,9 +161,13 @@ import_prepared_dataset <- function(source_dir, parent_dir, dataset_name,
   }
 
   ds_config$project_info$dataset_id <- dataset_name
-  technology <- unique(stats::na.omit(checked$samples$technology))
-  ds_config$project_info$technology <- if (length(technology) == 1L) technology[[1]] else ""
-  ds_config$std_names <- checked$std_names
+  origin <- list(source_doi = source_doi, source_url = source_url)
+  for (field in names(origin)) {
+    if (!is.null(origin[[field]])) ds_config$project_info[[field]] <- trimws(origin[[field]])
+  }
+  # Technology belongs to individual samples. Do not carry an obsolete
+  # dataset-level field from an older template into this new workspace.
+  ds_config$project_info$technology <- NULL
   ds_config$raw_files <- NULL
   yaml::write_yaml(ds_config, file.path(staging, paths[["dataset"]]))
   sample_names <- checked$samples$sample
@@ -155,7 +176,7 @@ import_prepared_dataset <- function(source_dir, parent_dir, dataset_name,
   state <- transition_pipeline_step(state, "standardization", "in_progress")
   state <- transition_pipeline_step(state, "standardization", "completed", details = list(
     provenance = "prepared_data_import", validation_scope = "structure_only",
-    sample_count = length(sample_names), expression_type = checked$expression_type
+    sample_count = length(sample_names)
   ))
   save_pipeline_state_atomic(state, staging, state_filename = paths[["state"]])
   save_dataset_storage_state_atomic(new_dataset_storage_state(dataset_name), staging)

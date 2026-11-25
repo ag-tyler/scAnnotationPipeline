@@ -21,12 +21,12 @@ write_prepared_structure <- function(root, sample_ids = c("002", "001"),
   metadata
 }
 
-test_that("P01 checks canonical formats and preserves CSV order and text metadata", {
-  for (scale in c("UMIcounts", "TPM", "CPM")) {
+test_that("P01 checks configured names without interpreting state and preserves CSV metadata", {
+  for (matrix_name in c("expression.mtx", "Exp_data_UMIcounts.mtx", "Exp_data_TPM.mtx", "Exp_data_CPM.mtx")) {
     root <- withr::local_tempdir(pattern = "prepared data ")
-    matrix_name <- paste0("Exp_data_", scale, ".mtx")
-    write_prepared_structure(root, matrix_name = matrix_name)
-    checked <- check_prepared_data(root)
+    filenames <- list(expmat = matrix_name, genes = "Genes.txt", cells = "Cells.csv", samples = "Samples.csv")
+    write_prepared_structure(root, std_names = filenames)
+    checked <- check_prepared_data(root, std_names = filenames)
 
     expect_s3_class(checked, "prepared_data_check")
     expect_true(checked$valid, info = checked$message)
@@ -38,7 +38,7 @@ test_that("P01 checks canonical formats and preserves CSV order and text metadat
     expect_true(all(vapply(checked$samples, is.character, logical(1))))
     expect_true(all(is.na(checked$samples$age)))
     expect_equal(checked$std_names$expmat, matrix_name)
-    expect_equal(checked$expression_type, if (scale == "UMIcounts") "counts" else scale)
+    expect_identical(checked$expression_type, NA_character_)
     expect_equal(basename(checked$paths_list$sample_dir_paths), c("002", "001"))
     expect_equal(checked$paths_list$expmat_file_paths,
                  file.path(root, c("002", "001"), matrix_name))
@@ -176,21 +176,21 @@ test_that("P01 exact capitalization is enforced even on case-insensitive filesys
   expect_equal(check_prepared_data(root)$errors$code, "missing_file")
 })
 
-test_that("P01 reports missing, ambiguous, mixed, and non-file matrices", {
+test_that("P01 reports missing configured matrices and ignores alternative matrix names", {
   root <- withr::local_tempdir()
   write_prepared_structure(root, c("s1", "s2"))
   matrix_path <- file.path(root, "s1", "Exp_data_UMIcounts.mtx")
   unlink(matrix_path)
-  expect_true("missing_matrix" %in% check_prepared_data(root)$errors$code)
+  expect_true("missing_file" %in% check_prepared_data(root)$errors$code)
   dir.create(matrix_path)
   expect_true("not_a_file" %in% check_prepared_data(root)$errors$code)
   unlink(matrix_path, recursive = TRUE)
   writeLines("placeholder", file.path(root, "s1", "Exp_data_TPM.mtx"))
-  expect_true("mixed_matrix_formats" %in% check_prepared_data(root)$errors$code)
+  expect_identical(check_prepared_data(root)$errors$code, "missing_file")
   writeLines("placeholder", matrix_path)
   checked <- check_prepared_data(root)
-  expect_true("ambiguous_matrix" %in% checked$errors$code)
-  expect_match(checked$message, "s1", fixed = TRUE)
+  expect_true(checked$valid, info = checked$message)
+  expect_identical(checked$expression_type, NA_character_)
 })
 
 test_that("P01 configured legacy filenames retain exact paths without renaming", {
@@ -207,7 +207,8 @@ test_that("P01 configured legacy filenames retain exact paths without renaming",
     expect_equal(check_prepared_data(root, invalid)$errors$code, "invalid_filenames")
   }
   filenames$expmat <- "expression.mtx"
-  expect_true("unknown_expression_type" %in% check_prepared_data(root, filenames)$errors$code)
+  expect_true(file.rename(file.path(root, "s1", "legacy_counts.mtx"), file.path(root, "s1", filenames$expmat)))
+  expect_true(check_prepared_data(root, filenames)$valid)
 })
 
 test_that("P01 only reads the sample CSV and does not modify inputs or accept parser warnings", {
@@ -223,7 +224,7 @@ test_that("P01 only reads the sample CSV and does not modify inputs or accept pa
     read_prepared_samples(path)
   }
   for (name in c("readLines", "read.csv", "load_cells", "load_genes", "load_expmat",
-                 "readMM", "validate_standardization")) {
+                 "readMM", "validate_standardization", "infer_standardized_expression_type")) {
     checker_env[[name]] <- function(...) stop("Input contents must not be scanned")
   }
   expect_true(checker(root)$valid)
@@ -233,6 +234,22 @@ test_that("P01 only reads the sample CSV and does not modify inputs or accept pa
   checked <- checker(root)
   expect_equal(checked$errors$code, "unreadable_csv")
   expect_match(checked$message, "synthetic incomplete CSV read", fixed = TRUE)
+})
+
+test_that("DC02 standalone structure checks read filename defaults from the local template", {
+  app <- withr::local_tempdir()
+  dir.create(file.path(app, "templates"))
+  dir.create(file.path(app, "prepared"))
+  writeLines("paths: {}", file.path(app, "general_config.yaml"))
+  filenames <- list(expmat = "expression.mtx", genes = "symbols.txt",
+    cells = "metadata.csv", samples = "samples_metadata.csv")
+  yaml::write_yaml(list(std_names = filenames), file.path(app, "templates", "dataset_config_template.yaml"))
+  write_prepared_structure(file.path(app, "prepared"), "s1", std_names = filenames)
+  withr::local_dir(file.path(app, "templates"))
+  checked <- check_prepared_data(file.path(app, "prepared"))
+  expect_true(checked$valid, info = checked$message)
+  expect_identical(checked$std_names, filenames)
+  expect_identical(checked$expression_type, NA_character_)
 })
 
 test_that("P01 reports unreadable files and directories without content reads", {

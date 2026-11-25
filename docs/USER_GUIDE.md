@@ -16,6 +16,7 @@ For installation and a concise project overview, see the repository **[README](.
 - [Optional Preparation Helpers](#optional-preparation-helpers)
 - [Running the Analysis Pipeline](#running-the-analysis-pipeline)
 - [Pipeline Event Logs](#pipeline-event-logs)
+- [Loading a cache file for personal analysis](#loading-a-cache-file-for-personal-analysis)
 - [Pipeline State](#pipeline-state)
   - [Archiving a finished dataset](#archiving-a-finished-dataset)
   - [Creating a review snapshot](#creating-a-review-snapshot)
@@ -82,6 +83,7 @@ scAnnotationPipeline/
 ├── scripts/
 │   ├── run_app.R
 │   ├── check_test_setup.R               # Read-only test preflight
+│   ├── load_dataset_cache.R             # Personal qs2 reader
 │   ├── downsample_processed_data.R
 │   └── copy_dataset_checkpoint.R
 │
@@ -126,6 +128,9 @@ The repository root is also the application working root. `app.R` expects `gener
 
 Everything in `util_scripts/` is sourced automatically when the app starts.
 
+For the development-only profiling, benchmarking, and recovery entry points,
+see the [development script reference](https://github.com/ag-tyler/scAnnotationPipeline/blob/development/docs/development/SCRIPTS.md).
+
 ### Dataset layout
 
 The default workspace location is:
@@ -147,7 +152,7 @@ datasets/<dataset_id>/
 ├── processed_data/
 │   ├── Samples.csv
 │   └── <sample_name>/
-│       ├── Exp_data_<matrix_state>.mtx
+│       ├── Exp_data_UMIcounts.mtx       # Default; any configured matrix name
 │       ├── Genes.txt
 │       └── Cells.csv
 ├── results/
@@ -271,6 +276,22 @@ directory browser or enter paths directly. Paths refer to the machine running R,
 including when the app is hosted remotely. Review the resolved paths and select
 **Create Dataset**. Structural errors remain visible for correction and retry.
 
+The **Input filenames** section starts collapsed above the source information.
+Expand it to set the expression matrix, gene list, cell metadata, and sample
+metadata filenames. Each field displays its `std_names` default from the
+configuration template. Use distinct filenames without directory paths, and the
+same matrix/gene/cell filenames in every sample folder. Edits apply to this new
+dataset and are saved in its `dataset_config.yaml`; they do not change the shared
+template. Filename edits remain in the form after a failed import.
+
+The compact **Source information (optional)** section starts collapsed. Expand
+it to enter **Paper DOI** (DOI of the paper describing the dataset) and
+**Database URL** (URL of the dataset's database entry). Template values prefill
+these inputs when available. Either field or both may be blank; source text is
+trimmed and saved in `project_info.source_doi` and `project_info.source_url`.
+Entries remain in the form after an import error so you can correct and retry.
+Creation does not resolve or verify the DOI or URL.
+
 The app copies the prepared files, generates its configuration/state, and opens
 the workspace ready for clustering. Originals stay unchanged; existing
 workspaces are not overwritten. No app restart, raw-data folder, preparation
@@ -299,20 +320,20 @@ This file is copied from:
 templates/dataset_config_template.yaml
 ```
 
-The shared template leaves `project_info.dataset_id` and
-`project_info.technology` blank. New-dataset import sets the dataset ID from the
-new workspace name and derives technology from `Samples.csv`, leaving it blank
-when technologies are mixed or unknown.
+The shared template leaves `project_info.dataset_id` blank. New-dataset import
+sets the dataset ID from the new workspace name. Technology is recorded per
+sample in `Samples.csv`, including for datasets with mixed technologies; new
+dataset configurations do not contain a dataset-level technology field.
+Older configurations containing `project_info.technology` remain loadable
+without rewriting that field. The sample CSV remains authoritative.
 
 For an optional manual preparation workspace, set `project_info.dataset_id` to
-the preparation folder name and fill `project_info.technology` if known in your
-copied configuration before running the helper. The template does not require
-a `raw_files` section.
+the preparation folder name before running the helper. The template does not
+require a `raw_files` section.
 
 Important fields include:
 
 - `project_info.dataset_id`
-- `project_info.technology`
 - `std_names.*`
 - `marker_filter_params.*`
 - `params.min_genes`
@@ -326,13 +347,27 @@ Important fields include:
 
 Workspace selection and the dashboard show an optional reminder when neither
 `project_info.source_doi` nor `project_info.source_url` is recorded. Add either
-field to `dataset_config.yaml` and reload to clear it. Missing origin does not
-prevent import, analysis or review-snapshot creation.
+field during creation or edit `dataset_config.yaml` and reload to clear it.
+Missing origin does not prevent import, analysis or review-snapshot creation.
 
-`std_names.*` defines the standardized files expected by the downstream pipeline.
+The template defines the configuration keys and defaults for new workspaces.
+Change values under the existing keys rather than renaming keys. Import reads
+the effective `std_names.*` before its first input check and uses those exact filenames for
+the source, copied files, and saved workspace. It preserves the template's
+analysis and marker-filter parameters. To import files with different names,
+edit the prefilled **Input filenames** in the creation dialog. The new workspace
+stores these overrides without writing to the template. A matrix name such
+as `expression.mtx` is valid. Creation and loading do not infer or validate
+counts/TPM/CPM state and do not inspect matrix values. Extra matrices do not
+override or make the configured file ambiguous.
 
-Import detects the matrix scale from the supported filenames and initializes
-`std_names` accordingly. Existing workspaces keep their configured filenames.
+Existing workspaces use their own `dataset_config.yaml`; later template edits
+do not change their settings or filenames. After editing an existing dataset's
+configuration, reload it and rerun the affected analysis steps. Existing cache
+dependency checks still apply. The optional preparation helper also uses these
+configured filenames; its explicit `matrix_state` controls preparation checks
+independently of naming. For example, declaring `UMIcounts` still requires integer
+values even when the matrix is named `expression.mtx`.
 
 ### `Samples.csv`
 
@@ -429,7 +464,9 @@ uses non-default directories/filenames, follow those configured paths.
 
 1. Set `settings$dataset_name` to that preparation folder name, choose
    `UMIcounts`, `TPM`, or `CPM`, and use `app_folder_path = NULL` for automatic
-   app-root discovery or supply the intended root explicitly.
+   app-root discovery or supply the intended root explicitly. Set `std_names` in
+   the preparation workspace's `dataset_config.yaml`; the helper preserves those
+   names. Select those names under **Input filenames** when creating an analysis workspace.
 2. Keep `reset_selected_config = FALSE`. Complete the linear `BEGIN USER CODE`
    region: load your raw data, map sample/gene IDs, split samples, and construct
    `sample_input` with `expmat`, `genes`, `cells`, and optional keyed
@@ -622,6 +659,20 @@ plots are exported at an explicit 9 x 7 inches and 300 DPI; their existing
 
 The annotation interface loads cached clustered cells together with DE marker matches/signature scores so clusters can be assigned final cell types.
 
+In **Cluster Score Boxplot**, pink/red background shading marks cell types with
+fewer available marker genes than the minimum used to generate the plot. The
+minimum is `params.de.min_marker_found` (default **20**); a count equal to the
+minimum passes. Scores based on fewer markers may be noisier, so consider the
+warning when annotating. Numbers above the boxes show marker genes available
+for scoring in the filtered sample, rather than cluster-specific DE matches.
+Box fill colors identify marker sets independently of the warning shading.
+
+New score PNGs include an explanation with their generation threshold. The
+app displays the explanation inside the plot image, without a separate reminder
+below it. Older PNGs retain their existing contents. Loading or changing YAML does not regenerate
+saved images. Use **Rerun DE for Selected Sample** when you want to regenerate
+plots with the current parameters and numerical caption.
+
 Saved annotations update the corresponding `Cells.csv`. Annotation saving is
 independent of the later CNA decision: save the cell types first, then either
 save a complete reference/candidate CNA configuration or use **Omit CNA for
@@ -746,6 +797,35 @@ and R reader API.
 
 ---
 
+## Loading a cache file for personal analysis
+
+Source the standalone helper from the repository root, then load one existing
+cache file by relative or absolute path:
+
+```r
+source("scripts/load_dataset_cache.R")
+expression <- load_cache_file("datasets/MyStudy/cache/expmat_filt_Sample_A.qs2")
+cells <- load_cache_file("C:/analysis/MyStudy/cache/cells_filt_clust_res_0.5_Sample_A.qs2")
+class(expression)
+class(cells)
+```
+
+The helper uses `qs2::qs_read()` and restores the class and structure stored in
+the file, independently of its filename. Sparse matrices remain sparse, tables
+retain their classes, and clustering trees retain `hclust`. Object values and
+identifiers are preserved; callers assign the returned object themselves.
+Paths containing spaces are supported, and relative paths use the current
+working directory. The helper requires `qs2`; class packages such as `Matrix`
+and `data.table` should be installed when using their methods.
+
+Sourcing the script only defines `load_cache_file(path)`. It does not start
+Shiny or load data until called. Reading a file requires no manifest or dataset
+configuration and does not change files or recover backups. This convenience
+reader is separate from [pipeline cache validation](CACHE_VALIDITY.md); it does
+not determine whether the object matches the current analysis settings.
+
+---
+
 ## Pipeline State
 
 Each dataset has a versioned `pipeline_state.yaml` containing the latest
@@ -852,12 +932,12 @@ not earlier standardization. For legacy, failed/stale or changed generations
 without reliable statistics, `NA` and warnings mean **unavailable**, not zero.
 Missing aggregate history does not block a snapshot or trigger matrix loading.
 
-To supply dataset origin, optionally add these fields to `dataset_config.yaml`:
+Supply dataset origin through **Source information (optional)** during creation,
+or edit these fields in the saved `dataset_config.yaml` later:
 
 ```yaml
 project_info:
   dataset_id: "Your_Dataset"
-  technology: "10x"
   source_doi: "10.1234/example"
   source_url: "https://example.org/dataset"
 ```
@@ -972,6 +1052,9 @@ the separate profiler contract is documented in the
 | `test-regression_clustering.R` | Preprocessing → PCA → UMAP → Louvain integration/regression behavior |
 | `test-regression_cna_cache.R` | CNA compute/cache/load round trip and missing-cache behavior |
 | `test-standardize-general-template.R` | Optional general-template safety, alignment, duplicate-gene preservation, and staged publication |
+| `test-p01-prepared-data.R`, `test-p03-dataset-import.R` | Configured filenames, structural checks without matrix-state inference, template/settings preservation, optional source metadata, and legacy configuration compatibility |
+| `test-dc04-source-layout.R` | Collapsed filename/source inputs, template prefills, keyboard navigation, value retention, and desktop/narrow browser layouts |
+| `test-load-dataset-cache.R` | Standalone path-based qs2 loading, restored classes/values, unchanged files, and contextual errors |
 | `test-p04-preparation-ui.R` | No preparation UI or startup dependency; optional-file absence, required biological resources, import, loading, and README download |
 | `test-c01-*` through `test-c04-*` | Dataset transitions, interrupted-clustering recovery, CNA navigation, and post-reopen status |
 | `test-c07-*` through `test-c09-*` | CNA omission, cut/threshold controls, annotation feedback, and source reminders |
@@ -995,7 +1078,7 @@ Coverage is strongest in:
 
 - **I/O and validation**: required files, standardized input loading, metadata creation, dataset-name validation, configuration pre-validation, dimension mismatch and duplicate-cell checks.
 - **Preprocessing and clustering**: cell filtering, normalization, gene filtering, PCA, UMAP, Louvain clustering, clustering caches, and plot side effects.
-- **Differential expression and annotation**: DE ranking, configurable `num_genes`, configurable `max_match_genes`, exact marker matching, marker availability/minimum-marker logic, signature-score alignment, workflow outputs, annotation setup.
+- **Differential expression and annotation**: DE ranking, configurable `num_genes`, configurable `max_match_genes`, exact marker matching, marker availability/minimum-marker logic, signature-score alignment, threshold-aware plot captions, existing-image preservation, workflow outputs, annotation setup.
 - **Caching**: creation, persistence, retrieval, missing-cache behavior, clearing, and CNA cache round trips.
 - **CNA analysis**: deterministic CNA arithmetic, hierarchical/HDBSCAN/UMAP helpers, signal/correlation, malignant/non-malignant/gray-zone threshold behavior, multi-subclone collisions, batch branches, heatmap/clustering outputs, and non-mutating preview behavior.
 - **Regression protection**: deterministic golden baseline, clustering integration/regression tests, and CNA cache integration/regression tests.

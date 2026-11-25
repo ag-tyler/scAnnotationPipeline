@@ -21,7 +21,7 @@
 # processed_data/
 #   Samples.csv
 #   <sample>/
-#     Exp_data_<matrix_state>.mtx
+#     <std_names.expmat from dataset_config.yaml>
 #     Genes.txt
 #     Cells.csv
 #
@@ -58,7 +58,8 @@ settings <- list(
   # Folder name under the configured datasets directory.
   dataset_name = "<dataset_name>",
 
-  # Values returned by the user code: "UMIcounts", "TPM", or "CPM".
+  # Preparation validation only: "UMIcounts", "TPM", or "CPM".
+  # Filenames come from dataset_config.yaml independently of this state.
   matrix_state = "UMIcounts",
 
   # Preserve existing clustering/CNA choices during normal repeat runs.
@@ -264,7 +265,8 @@ if (isTRUE(RUN_STANDARDIZATION)) {
     processed_dir_path = standardization$working_dir_path,
     sample_names = standardization$sample_names,
     std_names = standardization$std_names,
-    strict = TRUE
+    strict = TRUE,
+    matrix_state = standardization$settings$matrix_state
   )
 
 

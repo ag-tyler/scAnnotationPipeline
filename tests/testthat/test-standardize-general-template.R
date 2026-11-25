@@ -215,10 +215,10 @@ test_that("standardization lifecycle validates staging before publishing", {
     list(
       project_info = list(dataset_id = dataset_name),
       std_names = list(
-        expmat = "Exp_data_UMIcounts.mtx",
-        genes = "Genes.txt",
-        cells = "Cells.csv",
-        samples = "Samples.csv"
+        expmat = "expression.mtx",
+        genes = "symbols.txt",
+        cells = "metadata.csv",
+        samples = "sample_metadata.csv"
       ),
       raw_files = list(type = "general")
     ),
@@ -239,6 +239,9 @@ test_that("standardization lifecycle validates staging before publishing", {
     reset_selected_config = FALSE
   )))
   expect_true(file.exists(file.path(context$processed_dir_path, "previous.txt")))
+  configured_names <- list(expmat = "expression.mtx", genes = "symbols.txt",
+    cells = "metadata.csv", samples = "sample_metadata.csv")
+  expect_identical(context$std_names, configured_names)
 
   for (sample_name in context$sample_names) {
     cell_names <- paste0(sample_name, "_cell", 1:2)
@@ -261,14 +264,18 @@ test_that("standardization lifecycle validates staging before publishing", {
     processed_dir_path = context$working_dir_path,
     sample_names = context$sample_names,
     std_names = context$std_names,
-    strict = TRUE
+    strict = TRUE,
+    matrix_state = context$settings$matrix_state
   ))
   expect_true(validation$valid)
   expect_true(file.exists(file.path(context$processed_dir_path, "previous.txt")))
 
   suppressMessages(publish_standardization(context, validation))
   expect_false(file.exists(file.path(context$processed_dir_path, "previous.txt")))
-  expect_true(file.exists(file.path(context$processed_dir_path, "Samples.csv")))
+  expect_true(file.exists(file.path(context$processed_dir_path, "sample_metadata.csv")))
+  expect_true(file.exists(file.path(context$processed_dir_path, "sample1", "expression.mtx")))
+  saved_config <- yaml::read_yaml(file.path(dataset_dir, "dataset_config.yaml"))
+  expect_identical(saved_config$std_names, configured_names)
   expect_true(file.exists(file.path(dataset_dir, "selected_config.yaml")))
   state <- yaml::read_yaml(file.path(dataset_dir, "pipeline_state.yaml"))
   expect_equal(state$dataset_steps$standardization$status, "completed")
