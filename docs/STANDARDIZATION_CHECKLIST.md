@@ -81,20 +81,32 @@ they differ.
   exactly matches matrix row order. Map IDs to the biological resources' gene
   symbols and sum duplicate mapped gene rows before exporting.
 - [ ] `Cells.csv` has one row per matrix column, in exactly that column order,
-  and these headers: `cell_name`, `sample`, `cell_type`, `complexity`,
-  `cell_subtype`, `patient`, `subclone`, `source`.
+  and requires only the exact headers `cell_name` and `sample`. Column order
+  is unrestricted; keep identifiers as text, preserving any leading zeros.
 - [ ] Cell names are non-empty and unique across the entire dataset. Prefix
   reused barcodes with their sample ID. Each cell's `sample` matches its folder.
-- [ ] `complexity` is the number of nonzero gene values for that cell, rather
-  than its total expression count. Keep it finite and non-negative.
-- [ ] Unknown annotation values may be blank. Keep `patient` and anatomical
-  `source` consistent with sample metadata when known. Extra cell columns may
-  be retained.
+- [ ] If retaining `complexity`, record the number of nonzero gene values for
+  that cell, rather than total expression counts. It is optional; the app
+  computes detected-gene counts directly from the matrix for filtering.
+- [ ] Optional `cell_type`, `cell_subtype`, `patient`, `subclone`, and `source`
+  columns may be absent. Keep any patient/site metadata consistent with
+  `Samples.csv`. Other extra cell columns may be retained.
 - [ ] Apply gene/cell filtering and reordering consistently to matrices and
   metadata; verify dimensions, order, and final sample cell counts yourself.
 - [ ] Export ordinary files/directories; resolve child symbolic links into
   copied files before import. Keep the original prepared directory unchanged
   for future reference.
+
+See the [minimal CSV example](../README.md#matrix-gene-and-cell-alignment) and
+[cells column reference](USER_GUIDE.md#cellscsv). Manual annotation initializes
+an absent `cell_type` in memory and saves `cell_type` and `cell_type_pre_cna`;
+CNA assigns `subclone`. These columns need not exist in the prepared input.
+The separate `Samples.csv` still requires its full set of headers.
+
+The optional standardization and downsampling helpers retain the eight-column
+schema `cell_name`, `sample`, `cell_type`, `complexity`, `cell_subtype`, `patient`,
+`subclone`, and `source`. Supply those columns when using those helpers; they
+are not additional requirements for importing prepared data directly into the app.
 
 ## 4. Import and begin analysis
 
@@ -119,9 +131,9 @@ The app checks `Samples.csv`, sample/folder membership, required filenames,
 readability, and non-empty files at import and on every load. It also compares
 gene entries with matrix rows and cell metadata rows with matrix columns for
 each sample, using the matrix header and record counts. It does not inspect
-matrix values, verify identifiers/order or sample-reported cell counts, or
-certify scientific correctness. Passing these checks does not replace the
-preparation review above. There is no required strict
+matrix values, validate cells-column headers, verify identifiers/order or
+sample-reported cell counts, or certify scientific correctness. Passing these
+checks does not replace the preparation review above. There is no required strict
 validation report, script sentinel, prompt record, or checklist completion mark.
 
 ## 5. Optional preparation notes and later changes

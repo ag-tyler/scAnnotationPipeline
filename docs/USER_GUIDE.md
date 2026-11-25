@@ -12,6 +12,7 @@ For installation and a concise project overview, see the repository **[README](.
 - [Setting Up a New Dataset](#setting-up-a-new-dataset)
   - [`dataset_config.yaml`](#dataset_configyaml)
   - [`Samples.csv`](#samplescsv)
+  - [`Cells.csv`](#cellscsv)
   - [`selected_config.yaml`](#selected_configyaml)
 - [Optional Preparation Helpers](#optional-preparation-helpers)
 - [Running the Analysis Pipeline](#running-the-analysis-pipeline)
@@ -402,6 +403,54 @@ only when the CSV has one unambiguous known cancer type across its samples.
 Blank values do not create an additional cancer type. A mixed or unrecognized
 type does not cause the app to guess a marker set.
 
+### `Cells.csv`
+
+Each sample's cells file requires only **`cell_name` and `sample`**, with these
+exact headers. The default filename is `Cells.csv`; a configured
+`std_names.cells` changes the filename, not the column requirements.
+
+| Column | Required in prepared input? | Purpose and behavior |
+| --- | --- | --- |
+| `cell_name` | Yes | Non-empty cell ID, unique across the entire dataset; prefix barcodes with their sample ID when necessary. Used to name matrix columns and join cell annotations/results. |
+| `sample` | Yes | Sample ID matching the sample directory and its `Samples.csv` row. Required by DE and annotation even though the sample also has its own directory. |
+| `cell_type` | No | Existing cell-type labels may be supplied or left blank. Manual annotation initializes this column when missing and persists it on save. |
+| `cell_type_pre_cna` | No | Manual labels retained before CNA updates. Created on annotation save and used to restore those labels for CNA work. |
+| `subclone` | No | Assigned by CNA; no initial subclone column or assignments are needed. |
+| `complexity` | No | Optional number of detected genes per cell. QC counts nonzero genes from the matrix rather than reading this column. If present, its values participate in filtering/clustering cache fingerprints. |
+| `cell_subtype` | No | Optional metadata retained with the cells; not consumed by the app's analysis pipeline. |
+| `patient` | No | Optional cell-level patient metadata; not consumed by the app's analysis pipeline. |
+| `source` | No | Optional cell-level anatomical sampling site; not consumed by the app's analysis pipeline. |
+
+For a sample directory named `sample_01`, a complete minimal cells file is:
+
+```csv
+cell_name,sample
+sample_01_AAAC,sample_01
+sample_01_AAAG,sample_01
+```
+
+Keep one row per expression-matrix column, in exactly that column order. The
+example accompanies a matrix with two cell columns. Column order is unrestricted;
+keep identifiers as text to preserve leading zeros. Additional columns are
+permitted. Optional labels can use empty fields for unknown values. The required
+headers in the separate dataset-level `Samples.csv` remain unchanged; omitting
+cell-level `patient` or `source` does not remove sample-metadata requirements.
+
+Saving annotations adds or updates `cell_type` and `cell_type_pre_cna` in the
+workspace's copied cells file. Final CNA assignment adds or updates `subclone`.
+Starting with two columns does not mean the saved result stays at two columns.
+Changing or removing an existing `complexity` column can invalidate recorded
+caches; see [Cache Validity](CACHE_VALIDITY.md#dependency-families).
+
+The input structure check compares cell row counts to matrix columns, but does
+not validate cells-column headers, identifier values/order, or complexity.
+Prepare the two required columns and matrix alignment before import.
+
+The optional standardization and downsampling helpers use a stricter
+eight-column schema: `cell_name`, `sample`, `cell_type`, `complexity`,
+`cell_subtype`, `patient`, `subclone`, and `source`. Their requirements apply to
+those external helpers, not to the app's direct import and analysis workflow.
+
 ### `selected_config.yaml`
 
 This file is initialized automatically and populated by the app.
@@ -476,7 +525,9 @@ uses non-default directories/filenames, follow those configured paths.
 3. Review the helper transformations: unmapped gene rows are removed, duplicate
    mapped symbols are summed, optional cell metadata is aligned by `cell_name`,
    sample/patient/source fields are set from YAML, and complexity is calculated
-   as nonzero genes per cell. Confirm these choices fit your dataset.
+   as nonzero genes per cell. The helper creates its fuller eight-column cells
+   table, although direct app imports require only `cell_name` and `sample`.
+   Confirm these choices fit your dataset.
 4. Change the saved script's `RUN_STANDARDIZATION <- FALSE` to
    `RUN_STANDARDIZATION <- TRUE`, then run the entire file from a clean R
    session. Setting the flag only in the console is insufficient because the
@@ -674,7 +725,9 @@ below it. Older PNGs retain their existing contents. Loading or changing YAML do
 saved images. Use **Rerun DE for Selected Sample** when you want to regenerate
 plots with the current parameters and numerical caption.
 
-Saved annotations update the corresponding `Cells.csv`. Annotation saving is
+Saved annotations update `cell_type` and `cell_type_pre_cna` in the corresponding
+`Cells.csv`, adding those columns if the input contained only `cell_name` and
+`sample`. Annotation saving is
 independent of the later CNA decision: save the cell types first, then either
 save a complete reference/candidate CNA configuration or use **Omit CNA for
 This Sample**. Omission is explicit and reversible by saving a complete CNA

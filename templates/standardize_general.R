@@ -28,6 +28,10 @@
 # Matrix columns correspond by position to Cells.csv rows. Matrix rows
 # correspond by position to Genes.txt entries. The canonical sample identifier
 # is `sample`.
+# This optional helper creates and strictly validates its eight-column cells
+# schema: cell_name, sample, cell_type, complexity, cell_subtype, patient,
+# subclone, source. Direct app imports need only cell_name and sample; see
+# docs/USER_GUIDE.md, Cells.csv, for the app's required and optional columns.
 #
 # VISIBLE WORKFLOW
 # ----------------
@@ -195,8 +199,8 @@ if (isTRUE(RUN_STANDARDIZATION)) {
   #
   # `prepare_standardized_sample()` validates values and dimensions, removes
   # blank genes, sums duplicate gene-symbol rows, aligns optional metadata, and
-  # creates required cell metadata. `register_standardized_sample()` checks
-  # cross-sample cell uniqueness and writes the prepared sample to staging.
+  # creates the helper's full cell metadata. `register_standardized_sample()`
+  # checks cross-sample cell uniqueness and writes the prepared sample to staging.
   # Use `?prepare_standardized_sample` or `?register_standardized_sample` for the
   # detailed contract and side effects.
   #

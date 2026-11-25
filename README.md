@@ -564,8 +564,23 @@ These preparation requirements are the user's responsibility:
   site; keep these consistent with sample metadata when known. This does not
   change the required headers in the separate `Samples.csv`.
 
-The optional standardization helper retains its fuller eight-column cells
-schema; those helper requirements do not apply to direct prepared-data imports.
+For example, the complete minimal `sample_01/Cells.csv` is:
+
+```csv
+cell_name,sample
+sample_01_AAAC,sample_01
+sample_01_AAAG,sample_01
+```
+
+Use these exact column names; column order is unrestricted. Keep identifiers as
+text, including leading zeros. The example requires a matrix with two cell
+columns in the same order. See the [cells column reference](docs/USER_GUIDE.md#cellscsv)
+for required, optional, and pipeline-generated fields.
+
+The optional standardization and downsampling helpers retain their fuller
+eight-column schema: `cell_name`, `sample`, `cell_type`, `complexity`,
+`cell_subtype`, `patient`, `subclone`, and `source`. Those helper requirements
+do not apply to direct prepared-data imports into the app.
 
 The lightweight **input structure check** validates the sample CSV, exact folder
 membership, configured filenames, readability, and non-empty files. For each
@@ -574,10 +589,11 @@ rows (excluding the header) with matrix columns. It reads the Matrix Market
 dimension header and counts gene/cell records without loading matrix values;
 quoted newlines in cell metadata do not count as extra cells. Mismatches are
 reported with the sample name and both counts, blocking creation or loading.
-The check does not verify identifier validity/order, `Samples.csv` cell counts,
-complexity, expression state, or scientific correctness. Analysis-time errors
-and scientific cache checks remain separate. Existing archived-workspace
-exceptions for missing/unreadable retained files remain available for read-only
+The check does not verify cells-column headers, identifier validity/order,
+`Samples.csv` cell counts, complexity, expression state, or scientific
+correctness. Analysis-time errors and scientific cache checks remain separate.
+Existing archived-workspace exceptions for missing/unreadable retained files
+remain available for read-only
 review; archive audits still block editing and unsafe exports.
 
 Preparation scripts, raw data, the checklist in `docs/`, and the optional metadata
@@ -615,6 +631,11 @@ downsample_processed_data(
   seed = 3988
 )
 ```
+
+This optional tool requires the eight cells columns listed above, even for
+uniform sampling with `stratify_by = NULL`. A file containing only `cell_name`
+and `sample` can be imported directly into the app, but cannot be passed to
+this helper without supplying its additional columns.
 
 Alternatively, edit the `settings` list at the top of the script and run
 `Rscript scripts/downsample_processed_data.R`, or source it and call
