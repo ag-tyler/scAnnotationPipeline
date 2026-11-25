@@ -30,6 +30,27 @@ test_that("load_genes / load_expmat / load_cells round-trip a written sample", {
   expect_type(cells$cell_name, "character")
 })
 
+test_that("load_cells accepts only identifiers without warnings or changing the file", {
+  path <- file.path(withr::local_tempdir(), "Cells.csv")
+  original <- data.table::data.table(
+    cell_name = c("003", "001", "002"), sample = "001"
+  )
+  data.table::fwrite(original, path)
+  before <- tools::md5sum(path)
+
+  expect_no_warning(loaded <- load_cells(path))
+  expect_named(loaded, c("cell_name", "sample"))
+  expect_identical(loaded$cell_name, original$cell_name)
+  expect_identical(loaded$sample, original$sample)
+  expect_identical(tools::md5sum(path), before)
+
+  original[, cell_type_pre_cna := c("001", NA_character_, "T cell")]
+  data.table::fwrite(original, path)
+  expect_no_warning(loaded <- load_cells(path))
+  expect_false("cell_type" %in% names(loaded))
+  expect_identical(loaded$cell_type_pre_cna, original$cell_type_pre_cna)
+})
+
 test_that("load_cells preserves optional pre-CNA labels as text without adding absent columns", {
   path <- file.path(withr::local_tempdir(), "Cells.csv")
   scenarios <- list(absent = NULL, blank = rep(NA_character_, 3),

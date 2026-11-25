@@ -73,13 +73,12 @@ load_cells <- function(cells_file_path) {
   #' 
   #' @return The cells data table.
   
-  character_columns <- c(cell_name = 'character', sample = 'character',
-                         cell_type = 'character')
-  # This optional column can be entirely blank. Preserve annotation labels as
-  # text instead of letting fread infer logical/numeric types from its values.
+  character_columns <- c(cell_name = 'character', sample = 'character')
+  # Optional annotation columns can be absent or entirely blank. Preserve
+  # labels as text when present without requesting missing columns from fread.
   columns <- names(data.table::fread(cells_file_path, nrows = 0L))
-  if ('cell_type_pre_cna' %in% columns) {
-    character_columns <- c(character_columns, cell_type_pre_cna = 'character')
+  for (column in intersect(c('cell_type', 'cell_type_pre_cna'), columns)) {
+    character_columns[column] <- 'character'
   }
   cells <- data.table::fread(cells_file_path, colClasses = character_columns,
                             na.strings = '')
