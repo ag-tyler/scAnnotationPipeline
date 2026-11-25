@@ -12,6 +12,15 @@ directory. A `.qs2` file is reusable only when its entry in
 
 File existence alone is not evidence that a cache is valid.
 
+## Personal cache reading
+
+For independent R analysis, source `scripts/load_dataset_cache.R` and call
+`load_cache_file(path)` with one relative or absolute path. This helper only
+deserializes qs2 content and returns its stored object without changing files.
+It does not check the manifest, establish current pipeline validity, or recover
+backups. The app continues using its existing validated cache-loading workflow.
+See the [personal reading example](USER_GUIDE.md#loading-a-cache-file-for-personal-analysis).
+
 ## Manifest records
 
 Each artifact record includes its type, sample, producing operation, creation
@@ -33,6 +42,12 @@ Clustering caches fingerprint:
 - the cell identifiers, sample identifiers, and complexity values used by
   filtering (not later annotation columns in `Cells.csv`);
 - filtering, PCA, UMAP, seed, and resolution parameters.
+
+The configured seed is passed to PCA as well as UMAP and Louvain clustering.
+Older workflows always used PCA seed `3988`. Their clustering caches remain
+compatible when the configured seed is `3988`; for other seeds, the corrected
+PCA behavior changes the implementation fingerprint. Those older clustering
+caches fail dependency validation when consumed and require rerunning clustering.
 
 CNA caches fingerprint progressively:
 

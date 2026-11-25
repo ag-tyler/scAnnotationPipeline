@@ -753,7 +753,7 @@ register_annotation_server <- function(input, output, session, state, context) {
 
     # --- NEW FIX: Force memory reallocation with copy() ---
     cells_to_save <- data.table::copy(rv$cells_filt)
-    cells_to_save[, cell_type_pre_cna := cell_type]
+    cells_to_save[, cell_type_pre_cna := as.character(cell_type)]
 
     old_annotations <- as.character(
       rv$cells_raw$cell_type[match(cells_to_save$cell_name, rv$cells_raw$cell_name)]
@@ -762,6 +762,11 @@ register_annotation_server <- function(input, output, session, state, context) {
     annotations_changed <- !identical(old_annotations, new_annotations)
 
     # 1. Save to raw Cells.csv (Using the safe, copied object)
+    # Also handle tables already loaded with an all-blank logical column. A
+    # whole-column conversion must precede the row join, which preserves type.
+    if ('cell_type_pre_cna' %in% names(rv$cells_raw)) {
+      rv$cells_raw[, cell_type_pre_cna := as.character(cell_type_pre_cna)]
+    }
     rv$cells_raw[cells_to_save, on = 'cell_name', cell_type := i.cell_type]
     rv$cells_raw[cells_to_save, on = 'cell_name', cell_type_pre_cna := i.cell_type_pre_cna]
     data.table::fwrite(rv$cells_raw, file = rv$paths_list$cell_file_paths[idx])

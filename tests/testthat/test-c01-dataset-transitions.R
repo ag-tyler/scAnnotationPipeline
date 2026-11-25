@@ -133,6 +133,79 @@ test_that("P05 repeated structure checks preserve existing progress and optional
   expect_identical(tools::md5sum(protected), before)
 })
 
+test_that("DC05 annotation displays existing plots without rewriting them or changing their threshold", {
+  fixture <- make_c01_fixture(withr::local_tempdir())
+  root <- fixture$context$paths$datasets_dir
+  dataset <- file.path(root, "B")
+  config_path <- file.path(dataset, "dataset_config.yaml")
+  config <- yaml::read_yaml(config_path)
+  config$params$de$min_marker_found <- 99
+  yaml::write_yaml(config, config_path)
+  plot_path <- file.path(dataset, "results", "shared", "2_de_plots", "0.png")
+  dir.create(dirname(plot_path), recursive = TRUE)
+  write_ui_fixture_plot(plot_path, "Legacy score plot", "Generation threshold unavailable")
+  before <- tools::md5sum(plot_path)
+  fixture$single_de_analysis <- function(...) stop("Legacy plot display must not rerun DE")
+  shiny::testServer(fixture$server, {
+    session$setInputs(dataset_choice = "B", btn_load_dataset = 1, main_nav = "anno_tab")
+    session$setInputs(sample_idx = "1", cluster = "0")
+    expect_true(length(output$cluster_boxplot) > 0L)
+    expect_equal(fixture$state$dataset_config$params$de$min_marker_found, 99)
+  })
+  expect_identical(tools::md5sum(plot_path), before)
+})
+
+test_that("manual annotation saves pre-CNA labels for blank, absent and already loaded logical columns", {
+  for (scenario in c("blank", "absent", "populated", "already_loaded_logical")) {
+    fixture <- make_c01_fixture(withr::local_tempdir())
+    state <- fixture$state
+    dataset <- file.path(fixture$context$paths$datasets_dir, "B")
+    path <- file.path(dataset, "processed_data", "shared", "Cells.csv")
+    original <- load_cells(path)
+    if (scenario != "absent") {
+      original[, cell_type_pre_cna := if (scenario == "populated") "Prior_label" else NA_character_]
+    }
+    data.table::fwrite(original, path)
+    expected_pre <- if (scenario == "populated") rep("Prior_label", nrow(original)) else rep(NA_character_, nrow(original))
+    shiny::testServer(fixture$server, {
+      session$setInputs(dataset_choice = "B", btn_load_dataset = 1, main_nav = "menu_tab")
+      session$setInputs(sample_idx = "1", main_nav = "anno_tab")
+      # Save only analyzed cells in reversed order; excluded cells must retain
+      # their existing values, and labels must join by cell ID rather than row.
+      selected <- rev(seq_len(nrow(state$cells_filt) - 2L))
+      filtered <- data.table::copy(state$cells_filt[selected])
+      labels <- rep(c("T_cell", "001", "TRUE"), length.out = nrow(filtered))
+      filtered[, cell_type := labels]
+      state$cells_filt <- filtered
+      state$annotation_dirty <- TRUE
+      state$final_plot <- NULL
+      if (scenario == "already_loaded_logical") {
+        state$cells_raw <- data.table::fread(path, na.strings = "")
+        expect_type(state$cells_raw$cell_type_pre_cna, "logical")
+      }
+      expect_no_warning(session$setInputs(save_btn = 1))
+      saved <- load_cells(path)
+      positions <- match(filtered$cell_name, saved$cell_name)
+      expected_pre[positions] <- labels
+      expected_types <- original$cell_type
+      expected_types[positions] <- labels
+      expect_type(saved$cell_type_pre_cna, "character")
+      expect_identical(saved$cell_type, expected_types)
+      expect_identical(saved$cell_type_pre_cna, expected_pre)
+      metadata <- setdiff(names(original), c("cell_type", "cell_type_pre_cna"))
+      expect_identical(saved[, metadata, with = FALSE], original[, metadata, with = FALSE])
+      cached <- qs2::qs_read(file.path(dataset, "cache", "cells_filt_clust_res_0.5_shared.qs2"))
+      expect_identical(cached$cell_name, filtered$cell_name)
+      expect_identical(cached$cell_type, labels)
+      expect_identical(cached$cell_type_pre_cna, labels)
+      expect_false(state$annotation_dirty)
+      expect_identical(get_pipeline_step(state$pipeline_state, "annotation", "shared")$status, "completed")
+      expect_no_warning(session$setInputs(save_btn = 2))
+      expect_identical(load_cells(path)$cell_type_pre_cna, expected_pre)
+    })
+  }
+})
+
 test_that("P02 CSV alone controls metadata, sample order, annotation, and reloads", {
   fixture <- make_c01_fixture(withr::local_tempdir())
   state <- fixture$state

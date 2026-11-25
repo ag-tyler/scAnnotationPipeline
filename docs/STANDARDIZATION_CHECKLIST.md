@@ -49,6 +49,9 @@ does not overwrite them. The optional legacy R template has separate
 
 ## 3. Export aligned expression, gene, and cell files
 
+This example uses the template defaults; use your configured `std_names` when
+they differ.
+
 ```text
 <prepared-directory>/
   Samples.csv
@@ -60,12 +63,20 @@ does not overwrite them. The optional legacy R template has separate
 
 - [ ] Each CSV sample has one exactly same-named immediate subdirectory. Remove
   unrelated directories from the directory you select for import.
-- [ ] Use one matrix filename/scale throughout the dataset:
-  `Exp_data_UMIcounts.mtx`, `Exp_data_TPM.mtx`, or `Exp_data_CPM.mtx`.
-  Do not leave multiple supported expression matrices in a sample directory.
+- [ ] Set **Input filenames** in the creation dialog to match your matrix, gene,
+  cell, and sample CSV filenames. The fields start with the template defaults;
+  edits are saved only in the new workspace. Use the same matrix filename in
+  every sample folder; names
+  such as `expression.mtx` do not need a counts/TPM/CPM designation. The app uses
+  the configured file and ignores additional matrices rather than guessing.
+- [ ] Check the expression state during preparation. When using the optional
+  standardization template, set `matrix_state` explicitly; integer validation
+  for `UMIcounts` applies independently of the configured filename. Creation
+  and loading do not inspect matrix values or check their state.
 - [ ] Write Matrix Market matrices with genes as rows and cells as columns.
   Values are finite and non-negative; counts are integers. Do not log-transform
-  values. The app performs downstream normalization/transformation.
+  values. Filtering normalizes and log-transforms the matrix, and this cannot
+  currently be disabled.
 - [ ] `Genes.txt` has no header, one non-empty unique gene symbol per line, and
   exactly matches matrix row order. Map IDs to the biological resources' gene
   symbols and sum duplicate mapped gene rows before exporting.
@@ -89,6 +100,11 @@ does not overwrite them. The optional legacy R template has separate
 
 - [ ] Start the app, select **Create New Dataset**, and provide a name, the
   prepared-data directory, and an existing destination parent directory.
+- [ ] Expand **Input filenames** if your filenames differ from the prefilled
+  template defaults. Enter all four as filenames without directory paths.
+- [ ] Optionally expand **Source information (optional)**. **Paper DOI** is the
+  DOI of the paper describing the dataset; **Database URL** is the URL of the
+  dataset's database entry. Either, both, or neither may be supplied.
 - [ ] Use the in-app **Browse** controls or type paths directly. Both Windows
   and Linux paths refer to the computer running R. A remotely hosted app needs
   server-accessible files; directory browsing does not upload local client data.
@@ -111,8 +127,8 @@ validation report, script sentinel, prompt record, or checklist completion mark.
 When helpful, retain source publication/accession links, raw-to-canonical sample
 maps, gene-mapping versions, filtering choices, scale evidence, and your scripts.
 These records improve reproducibility but are not import requirements. Record
-source DOI/URL in the generated `dataset_config.yaml` if you want it shown in a
-review snapshot.
+source DOI/URL during creation or later in the generated `dataset_config.yaml`
+if you want it shown in a review snapshot.
 
 Annotation saves update the workspace's copied `Cells.csv`. Prepare replacement
 inputs separately and import a new workspace rather than replacing data during

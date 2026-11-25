@@ -7,10 +7,14 @@ and final acceptance.
 
 ## Current instructions
 
+- [Development scripts](SCRIPTS.md) - short usage reference for profiling,
+  benchmarking, cache recovery, and personal cache reading on `development`.
 - [Developer Guide](DEVELOPER_GUIDE.md) — setup, architecture, result-preservation
   rules, verification, and maintenance of `main` and `development`.
 - [Testing](../TESTING.md) — test commands, browser/fixture policy, and the latest
   dated automated verification.
+- [1.1.0 release preparation](RELEASE_1_1_0_PREPARATION.md) — completed acceptance,
+  app-focused candidate, transfer scope, and remaining promotion steps.
 
 User-facing guides and runtime references remain in the parent directory:
 [User Guide](../USER_GUIDE.md),
@@ -36,6 +40,16 @@ current app performance baseline or evidence that deferred optimizations shipped
 Read the dated status in each plan before treating a task as outstanding or
 starting implementation. A plan is not the current runtime specification.
 
+- [Dataset configuration and annotation usability plan](DATASET_CONFIGURATION_AND_ANNOTATION_PLAN.md) -
+  work on `development` (DC01 through DC05 complete): configured filenames without matrix-state
+  checks during creation, template authority, optional source inputs, removal
+  of dataset-level technology, and score-plot warning explanations.
+  DC08's path-only personal cache reader and DC06 final integration are complete.
+  The user completed manual acceptance on 2026-11-25 and explicitly waived a
+  full-suite repeat after the two focused annotation follow-ups. The
+  [November 25 testing record](../TESTING.md#development-configuration-and-annotation-changes--2026-11-25)
+  records 4,860 verified app assertions and 62 development-tool assertions after
+  reviewing one intentional screenshot update and rerunning the browser file.
 - [Deferred computation performance plan](RESULT_PRESERVING_PERFORMANCE_PLAN.md) —
   proposed result-preserving optimizations and historical E00 evidence; work
   deferred 2026-11-13. The E00 tools and original experiment history are retained

@@ -1,14 +1,15 @@
+# Defaults for new dataset workspaces; existing datasets use their saved config.
+# Change values under these keys rather than renaming the keys.
 project_info:
   # Import uses the new workspace name; set manually for preparation.
   dataset_id: ""
-  # Import derives this from Samples.csv; set manually for preparation if known.
-  technology: ""
-  source_doi: "" # Optional publication DOI, e.g. 10.1234/example
-  source_url: "" # Optional dataset/repository URL; included in review snapshots
+  source_doi: "" # Optional DOI of the paper describing the dataset; editable during creation
+  source_url: "" # Optional URL of the dataset's database entry; editable during creation
 
-# Standardized file names
+# Input file names used from the first import check through workspace loading.
+# Use the same configured sample-file names in every sample folder.
 std_names:
-  expmat: "Exp_data_UMIcounts.mtx" # or Exp_data_TPM.mtx TPM depends on normalization factor
+  expmat: "Exp_data_UMIcounts.mtx"
   genes: "Genes.txt"
   cells: "Cells.csv"
   samples: "Samples.csv"

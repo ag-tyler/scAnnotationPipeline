@@ -1,5 +1,13 @@
 # Prepared-data import and workflow entry overhaul
 
+**Filename contract supersession (2026-11-25):** DC01 and DC02 in the
+[dataset configuration plan](DATASET_CONFIGURATION_AND_ANNOTATION_PLAN.md)
+replace the original fixed matrix filenames and filename-inferred state rules
+below. Current import/load checks use configured `std_names`, accept arbitrary
+matrix filenames, and do not infer or validate counts/TPM/CPM state. Optional
+preparation checks retain an independent state declaration. Dated implementation
+evidence and unrelated acceptance work remain historical records.
+
 **Date:** 2026-11-04  
 **Status:** In progress; P01-P06 and P06a implemented. P06b verified on WSL
 Ubuntu; P07 Windows automated gate verified for `acbb4ce` (2026-11-11).

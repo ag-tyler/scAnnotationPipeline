@@ -2,12 +2,13 @@ downsample_script <- new.env(parent = globalenv())
 sys.source(testthat::test_path("..", "..", "scripts", "downsample_processed_data.R"),
   envir = downsample_script)
 
-make_downsample_input <- function(root, matrix_name = "Exp_data_UMIcounts.mtx") {
+make_downsample_input <- function(root, matrix_name = "Exp_data_UMIcounts.mtx",
+    std_names = list(expmat = matrix_name, genes = "Genes.txt", cells = "Cells.csv", samples = "Samples.csv")) {
   dir.create(root)
   metadata <- build_samples(c("S1", "S2"))
   metadata[, n_cells := c(8L, 2L)]
   metadata[, patient := c("001", "002")]
-  data.table::fwrite(metadata, file.path(root, "Samples.csv"), na = "")
+  data.table::fwrite(metadata, file.path(root, std_names$samples), na = "")
   for (sample in metadata$sample) {
     n <- if (sample == "S1") 8L else 2L
     folder <- file.path(root, sample)
@@ -16,14 +17,14 @@ make_downsample_input <- function(root, matrix_name = "Exp_data_UMIcounts.mtx") 
     # fails min_genes=2, despite deliberately inaccurate stored complexity.
     expression <- Matrix::Matrix(rbind(seq_len(n), seq_len(n) * 10, rep(0, n)), sparse = TRUE)
     if (n == 8L) expression[2, 8] <- 0
-    Matrix::writeMM(expression, file.path(folder, matrix_name))
-    writeLines(c("G1", "G2", "G3"), file.path(folder, "Genes.txt"))
+    Matrix::writeMM(expression, file.path(folder, std_names$expmat))
+    writeLines(c("G1", "G2", "G3"), file.path(folder, std_names$genes))
     cells <- data.table::data.table(cell_name = paste0(sample, "_", seq_len(n)),
       sample = sample, cell_type = rep(c("A", "B"), length.out = n), complexity = 999L,
       cell_subtype = "old subtype", patient = "001", subclone = "old clone", source = "colon",
       cell_type_pre_cna = "old type", original_label = "external label", raw_barcode = sprintf("%03d", seq_len(n)),
       clust = 1L, umap1 = 0, umap2 = 1)
-    data.table::fwrite(cells, file.path(folder, "Cells.csv"))
+    data.table::fwrite(cells, file.path(folder, std_names$cells))
   }
   root
 }
@@ -69,10 +70,12 @@ test_that("downsampling preserves proportions, expression alignment and import s
 test_that("sample selection, uniform sampling, multiple strata and reset controls work", {
   root <- withr::local_tempdir()
   input <- make_downsample_input(file.path(root, "input"), "Exp_data_TPM.mtx")
+  filenames <- list(expmat = "Exp_data_TPM.mtx", genes = "Genes.txt", cells = "Cells.csv", samples = "Samples.csv")
   downsample_script$downsample_processed_data(input, file.path(root, "uniform"),
-    n_cells = 50, samples = "S2", stratify_by = NULL, min_genes = 0, reset_annotations = FALSE)
+    n_cells = 50, samples = "S2", stratify_by = NULL, min_genes = 0, reset_annotations = FALSE,
+    std_names = filenames)
   expect_equal(basename(list.dirs(file.path(root, "uniform"), recursive = FALSE)), "S2")
-  expect_true(check_prepared_data(file.path(root, "uniform"))$valid)
+  expect_true(check_prepared_data(file.path(root, "uniform"), std_names = filenames)$valid)
   cells <- data.table::fread(file.path(root, "uniform", "S2", "Cells.csv"))
   expect_equal(cells$cell_type, c("A", "B"))
   expect_true("umap1" %in% names(cells))
@@ -82,12 +85,49 @@ test_that("sample selection, uniform sampling, multiple strata and reset control
   data.table::fwrite(cells, file.path(input, "S1", "Cells.csv"), na = "")
   downsample_script$downsample_processed_data(input, file.path(root, "stratified"),
     n_cells = 4, samples = "S1", min_genes = 0,
+    std_names = filenames,
     stratify_by = c("cell_type", "cell_subtype"),
     annotation_columns = c("cell_type", "cell_subtype", "subclone", "cell_type_pre_cna", "original_label"))
   output <- data.table::fread(file.path(root, "stratified", "S1", "Cells.csv"), na.strings = "")
   positions <- match(output$cell_name, cells$cell_name)
   expect_equal(sum(is.na(cells$cell_type[positions])), 2L)
   expect_true(all(is.na(output$original_label)))
+})
+
+test_that("DC02 downsampling uses configured names and only explicit state checks", {
+  root <- withr::local_tempdir()
+  filenames <- list(expmat = "expression.mtx", genes = "symbols.txt",
+    cells = "metadata.csv", samples = "sample_metadata.csv")
+  input <- make_downsample_input(file.path(root, "input"), std_names = filenames)
+  for (sample in c("S1", "S2")) {
+    path <- file.path(input, sample, filenames$expmat)
+    Matrix::writeMM(Matrix::readMM(path) / 3, path)
+    writeLines("unused extra matrix", file.path(input, sample, "Exp_data_TPM.mtx"))
+  }
+  files <- list.files(input, recursive = TRUE, full.names = TRUE)
+  hashes <- tools::md5sum(files)
+  run <- downsample_script$downsample_processed_data
+  output <- file.path(root, "output")
+  run(input, output, n_cells = 4, min_genes = 0, std_names = filenames)
+  expect_true(check_prepared_data(output, std_names = filenames)$valid)
+  for (sample in c("S1", "S2")) {
+    cells <- data.table::fread(file.path(output, sample, filenames$cells))
+    original <- data.table::fread(file.path(input, sample, filenames$cells))
+    positions <- match(cells$cell_name, original$cell_name)
+    expected <- Matrix::readMM(file.path(input, sample, filenames$expmat))[, positions, drop = FALSE]
+    expect_equal(as.matrix(Matrix::readMM(file.path(output, sample, filenames$expmat))),
+      as.matrix(expected))
+  }
+  expect_error(run(input, file.path(root, "counts"), min_genes = 0,
+    std_names = filenames, matrix_state = "UMIcounts"), "integer when matrix_state")
+  expect_false(dir.exists(file.path(root, "counts")))
+  run(input, file.path(root, "tpm"), min_genes = 0, std_names = filenames, matrix_state = "TPM")
+  expect_true(check_prepared_data(file.path(root, "tpm"), std_names = filenames)$valid)
+  expect_error(run(input, file.path(root, "bad"), std_names = modifyList(filenames,
+    list(expmat = "../escape.mtx"))), "portable")
+  expect_error(run(input, file.path(root, "bad"), std_names = modifyList(filenames,
+    list(samples = "downsampling_report.csv"))), "differ")
+  expect_identical(tools::md5sum(files), hashes)
 })
 
 test_that("invalid input never overwrites sources or publishes partial output", {

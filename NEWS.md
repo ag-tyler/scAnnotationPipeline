@@ -1,5 +1,45 @@
 # Release notes
 
+## 1.1.0 — 2026-11-25
+
+- Fix manual annotation saves when an existing `cell_type_pre_cna` CSV column
+  is entirely blank. Keep pre-CNA labels as text during loading and before save
+  joins, preventing logical coercion and missing labels in the saved CSV.
+- Treat the dataset configuration template's filenames and analysis settings as
+  the defaults for new workspaces; keep saved workspace configurations
+  authoritative on reload, including configured PCA and plot-palette seeds.
+- Accept any configured Matrix Market filename. Dataset creation and loading
+  check input structure without inferring or validating counts/TPM/CPM state.
+  Optional preparation tools retain explicit expression-state checks. Input
+  matrices must never contain log-transformed data: filtering always performs
+  normalization and log transformation, which cannot currently be disabled.
+- Add collapsed **Input filenames** fields above the source inputs during
+  dataset creation. Prefill all four names from the template and save edits
+  only in the new dataset configuration, leaving the shared template unchanged.
+- Add collapsed optional Paper DOI and Database URL inputs during dataset
+  creation. Store these in the dataset configuration for source reminders and
+  review snapshots. Remove redundant dataset-level technology from new
+  configurations; preserve sample metadata and support older configurations.
+- Explain low-marker red shading in Cluster Score Boxplots and include the
+  generation threshold in newly generated plot captions. Show the explanation
+  inside the plot image without a duplicate reminder below it. Existing plot
+  files remain unchanged.
+- Add the standalone path-based `load_cache_file()` helper for personal analysis
+  and a short [development-script reference](docs/development/SCRIPTS.md).
+
+Existing workspaces retain their saved filenames and settings. Earlier
+clustering caches made with a non-default PCA seed require recomputation when
+dependency validation rejects them; default-seed caches remain compatible.
+For an affected blank `cell_type_pre_cna` column, restart the app, reopen the
+dataset, and save annotations again. Dataset files are not repaired automatically.
+
+Automated verification and user-reported manual acceptance are complete.
+The full run and browser-baseline rerun verified 4,860 app assertions and
+62 development-tool assertions. The two later annotation changes each passed
+their focused checks; the user accepted those results and explicitly waived
+another full run. See the [testing record](docs/TESTING.md#recorded-verification-status)
+for the separate phases and counts.
+
 ## 1.0.1 — 2026-11-20
 
 - Sort cell-type and cancer-type marker groups by descending `combined` score

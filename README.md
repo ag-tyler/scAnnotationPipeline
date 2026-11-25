@@ -2,7 +2,7 @@
 
 A Shiny application for clustering, differential-expression analysis, manual cell-type annotation, and copy-number alteration (CNA) analysis of prepared single-cell RNA-seq cancer datasets.
 
-Version **1.0.1**. See the [release notes](NEWS.md).
+Version **1.1.0**. See the [release notes](NEWS.md).
 
 This is the **development** branch. It retains development tools, historical
 records, current plans, and future proposals alongside the application. Use
@@ -367,8 +367,11 @@ manifest. They work before or after cache cleanup. No CNA values are computed
 by copying. Older datasets can have unavailable aggregate statistics.
 
 Optional `project_info.source_doi` and `source_url` fields in
-`dataset_config.yaml` are included in the README. No destination is saved or
-tracked, and scientific statuses do not change. A snapshot is not a raw-data
+`dataset_config.yaml` are included in the README. Record the paper DOI and
+dataset database URL under **Source information (optional)** during dataset
+creation, or edit an existing workspace's configuration and reload it.
+No destination is saved or tracked, and scientific statuses do not change.
+A snapshot is not a raw-data
 backup, an anonymized dataset or a resumable app workspace. See the
 [User Guide](docs/USER_GUIDE.md#creating-a-review-snapshot) for verification,
 space/path constraints and manual checks.
@@ -381,7 +384,8 @@ come exclusively from `Samples.csv`; preparation scripts and sample YAML are
 optional. Import checks structure and opens a copied workspace for analysis.
 
 Prepare data with your own scripts and tools. The input is a directory containing
-the authoritative `Samples.csv` and one immediate subdirectory per sample:
+the authoritative sample CSV and one immediate subdirectory per sample. The
+following filenames are the defaults in `templates/dataset_config_template.yaml`:
 
 ```text
 <prepared-directory>/
@@ -404,18 +408,32 @@ trailing period, path separators, control characters, or Windows-invalid
 characters (`< > : " | ? *`). Do not use `.`/`..` or Windows device names such as
 `CON`, `NUL`, `COM1`, or `LPT1`, including names such as `CON.txt`.
 
-Use exactly one of these matrix filenames in every sample folder, with the
-same filename/scale throughout the dataset:
+In **Create New Dataset**, expand **Input filenames** above **Source information
+(optional)** to change the matrix, gene list, cell metadata, and sample metadata
+filenames. The fields start with the template's `std_names` defaults. Your edits
+are used from the first structural check and saved in the new workspace's
+`dataset_config.yaml`; the shared template stays unchanged. Enter distinct
+filenames without directory paths. Use one configured matrix filename in every
+sample folder. Any configured Matrix Market filename
+is accepted, such as `expression.mtx`; it need not identify counts, TPM, or CPM.
+Creation and loading do not infer or check matrix state. Prepare scientifically
+appropriate values before importing:
 
-| Filename | Expression values |
+**Matrix files must never contain log-transformed data.** The filtering process
+always normalizes and log-transforms the expression matrix, and this behavior
+cannot currently be switched off. Supply counts, TPM, or CPM without any prior
+log transformation.
+
+| Prepared expression type | Expression values |
 | --- | --- |
-| `Exp_data_UMIcounts.mtx` | Untransformed, finite, non-negative integer counts |
-| `Exp_data_TPM.mtx` | Finite, non-negative TPM values, not log-transformed |
-| `Exp_data_CPM.mtx` | Finite, non-negative CPM values, not log-transformed |
+| Counts | Untransformed, finite, non-negative integers |
+| TPM | Finite, non-negative TPM values, not log-transformed |
+| CPM | Finite, non-negative CPM values, not log-transformed |
 
-Multiple supported matrices in one sample or mixed scales between samples are
-ambiguous and rejected by the structure checker. Existing workspaces can retain
-their configured `std_names` filenames; new inputs use the names above.
+The configured matrix file is required in every sample folder; import does not
+substitute a different matrix filename. Existing workspaces retain their saved
+`std_names` and analysis settings when template defaults change. Extra matrices
+in sample folders do not cause ambiguity: only the configured filename is used.
 Prepared input contents must be ordinary files and directories. Resolve child
 symbolic links into copied files/directories before importing, so the workspace
 does not depend on linked source data.
@@ -562,10 +580,13 @@ data partway through analysis.
 
 The reusable checker can be called from an R session after sourcing the app
 utilities: `check_prepared_data(path)` returns `valid`, an aggregate `message`,
-structured `errors` (`code`, `sample`, `path`, `message`), text `samples`, detected
-`std_names`/`expression_type`, and `paths_list` in CSV order only on success.
-For an existing workspace, pass its filename list as `std_names`. The checker
-does not write files, update workflow state, or cache a validation result.
+structured `errors` (`code`, `sample`, `path`, `message`), text `samples`, configured
+`std_names`, and `paths_list` in CSV order only on success. Without `std_names`,
+it reads filename defaults from the template found above the working directory.
+For an existing workspace, pass its saved filename list as `std_names`. The
+compatibility field `expression_type` is always `NA_character_`; new structural
+imports omit expression state from provenance. The checker does not inspect
+matrix values, write files, update workflow state, or cache a validation result.
 
 ### Preparing a smaller demonstration dataset
 
@@ -590,6 +611,15 @@ Alternatively, edit the `settings` list at the top of the script and run
 `Rscript scripts/downsample_processed_data.R`, or source it and call
 `do.call(downsample_processed_data, settings)`.
 
+Set the tool's `std_names` to the source workspace's saved names, or to the
+template names for a prepared input. It preserves those names in the output;
+select those filenames in the creation dialog before importing. The standalone
+tool defaults to the conventional filenames shown above. Its optional
+`matrix_state` argument defaults to `NULL`; only an explicit `"UMIcounts"`
+declaration enables integer validation. No expression state is inferred from
+filenames. Finite, non-negative values and matrix/table alignment are checked
+regardless of that optional declaration.
+
 The cell cap applies **per sample after filtering**. Smaller samples retain all
 eligible cells. The default filter matches the app's default minimum of 500
 expressed genes; set `min_genes = 0` to sample all input cells. Counts and genes
@@ -613,6 +643,23 @@ workflow state or results are copied. The input is unchanged, existing output
 folders are refused, and failed runs do not publish partial datasets. Import
 the output folder using the app's new-dataset workflow.
 
+## Loading a cache file for personal analysis
+
+From an R session, source the helper and pass a relative or absolute file path:
+
+```r
+source("scripts/load_dataset_cache.R")
+x <- load_cache_file("datasets/MyStudy/cache/expmat_filt_Sample_A.qs2")
+class(x)
+```
+
+Relative paths use your current working directory. The helper reads qs2 content
+and returns the stored R object directly: sparse matrices, data tables, and
+clustering trees retain their classes and values. Install the relevant class
+packages when using their methods. No dataset configuration or manifest is
+required, and no files are changed. This personal reader does not perform the
+app's [pipeline cache validation](docs/CACHE_VALIDITY.md).
+
 ## Creating a Dataset
 
 1. Prepare a directory following the [input specification](#preparing-input-data).
@@ -622,11 +669,13 @@ the output folder using the app's new-dataset workflow.
    browser supports going to a path, opening a subdirectory, moving up, and
    returning to Home or Datasets. **Use this directory** updates the chosen
    field without resetting the rest of the form.
-4. Review the resolved source and workspace paths, then select **Create Dataset**.
+4. Optionally expand **Source information (optional)** to enter the dataset
+   paper's DOI and its database entry URL. Both fields can be left blank.
+5. Review the resolved source and workspace paths, then select **Create Dataset**.
    The app checks structure, shows any problems together in the creation dialog,
    and copies the inputs with byte/elapsed-time progress. Correct errors and retry
    without filling the whole form again. **Cancel** creates no workspace.
-5. The app opens the completed workspace immediately. Use **Select Samples for
+6. The app opens the completed workspace immediately. Use **Select Samples for
    Clustering** to begin analysis; no app shutdown or standardization script is
    required.
 

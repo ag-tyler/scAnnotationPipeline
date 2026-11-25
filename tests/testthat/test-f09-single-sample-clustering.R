@@ -15,7 +15,7 @@ test_that("F09 clustering targets one source sample and every configured resolut
   config <- list(params = list(
     pca_nv = 2,
     resolutions = c(0.25, 0.5, 1),
-    seed = 3988,
+    seed = 8173,
     umap = list(spread = 1, min_dist = 0.1)
   ))
 
@@ -26,6 +26,7 @@ test_that("F09 clustering targets one source sample and every configured resolut
   dependency_indices <- integer()
   state_events <- list()
   progress_events <- list()
+  pca_seeds <- numeric()
 
   test_env$load_cells <- function(path) {
     sample_name <- basename(dirname(path))
@@ -45,7 +46,10 @@ test_that("F09 clustering targets one source sample and every configured resolut
       )
     )
   }
-  test_env$run_expmat_pca <- function(...) list(v = matrix(1:6, ncol = 2))
+  test_env$run_expmat_pca <- function(expmat, nv, seed = 3988) {
+    pca_seeds <<- c(pca_seeds, seed)
+    list(v = matrix(1:6, ncol = 2))
+  }
   test_env$run_expmat_umap <- function(...) matrix(1:6, ncol = 2)
   test_env$louvain_clustering <- function(exp_pca, exp_umap, cells, resolution, seed) {
     cells[, `:=`(umap1 = 1:3, umap2 = 3:1, clust = as.character(resolution))]
@@ -88,6 +92,7 @@ test_that("F09 clustering targets one source sample and every configured resolut
   )
 
   expect_identical(unique(vapply(state_events, `[[`, character(1), "sample")), "sample2")
+  expect_identical(pca_seeds, config$params$seed)
   expect_identical(vapply(state_events, `[[`, character(1), "status"), c("in_progress", "completed"))
   expect_identical(state_events[[2]]$details$resolutions, c(0.25, 0.5, 1))
   expect_identical(state_events[[2]]$details$snapshot_filtering$schema_version, 1L)
@@ -119,6 +124,7 @@ test_that("F09 clustering targets one source sample and every configured resolut
     sample_indices = c(1L, 3L)
   )
   expect_length(saved_files, 8L)
+  expect_identical(pca_seeds, rep(config$params$seed, 3))
   expect_true(all(!grepl("sample2", saved_files)))
   expect_identical(unique(dependency_indices), c(1L, 3L))
   expect_identical(unique(vapply(progress_events, `[[`, integer(1), "sample_index")), 1:2)

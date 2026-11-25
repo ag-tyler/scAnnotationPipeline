@@ -1,6 +1,6 @@
 # Prepared-data selection, import, and directory browsing UI.
 
-dataset_import_dialog <- function(parent_dir) {
+dataset_import_dialog <- function(parent_dir, project_info = list(), std_names = list()) {
   modalDialog(
     title = "Create Dataset From Prepared Data",
     div(style = "max-height: 70vh; overflow-y: auto; overflow-x: hidden;",
@@ -12,7 +12,29 @@ dataset_import_dialog <- function(parent_dir) {
       div(class = "mb-3",
         textInput("new_ds_location", "Workspace parent directory:", value = parent_dir, width = "100%"),
         actionButton("btn_browse_dataset_parent", "Browse destination parent", icon = icon("folder-open"))),
-      p(class = "small text-muted", "Select a directory containing Samples.csv and the sample folders. Files are copied; originals stay in place."),
+      tags$details(id = "new_ds_filenames", class = "mb-3",
+        tags$summary("Input filenames"),
+        div(class = "mt-2",
+          p(class = "small text-muted", "Match the filenames in your prepared data. These settings apply only to the new dataset; the template stays unchanged."),
+          textInput("new_ds_std_expmat", "Expression matrix filename",
+            value = .pipeline_value_or(std_names$expmat, ""), width = "100%"),
+          textInput("new_ds_std_genes", "Gene list filename",
+            value = .pipeline_value_or(std_names$genes, ""), width = "100%"),
+          textInput("new_ds_std_cells", "Cell metadata filename",
+            value = .pipeline_value_or(std_names$cells, ""), width = "100%"),
+          textInput("new_ds_std_samples", "Sample metadata filename",
+            value = .pipeline_value_or(std_names$samples, ""), width = "100%"),
+          p(class = "small text-muted", "Enter filenames without directory paths. Matrix, gene, and cell filenames must be the same in every sample folder."))),
+      tags$details(id = "new_ds_origin", class = "mb-3",
+        tags$summary("Source information (optional)"),
+        div(class = "mt-2",
+          textInput("new_ds_source_doi", "Paper DOI",
+            value = .pipeline_value_or(project_info$source_doi, ""), width = "100%"),
+          p(class = "small text-muted", "DOI of the paper describing the dataset."),
+          textInput("new_ds_source_url", "Database URL",
+            value = .pipeline_value_or(project_info$source_url, ""), width = "100%"),
+          p(class = "small text-muted", "URL of the dataset's database entry."))),
+      p(class = "small text-muted", "Select a directory containing the sample metadata CSV and sample folders. Files are copied; originals stay in place."),
       p(class = "small text-muted", "Paths refer to the computer running the app. The workspace is created under the selected parent using the dataset name."),
       downloadLink("download_input_specification", "Prepared-input specification (README.md)"),
       uiOutput("dataset_import_paths"),

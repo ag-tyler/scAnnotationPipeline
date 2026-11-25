@@ -8,6 +8,28 @@ prepared_sample_columns <- function() {
 }
 
 
+prepared_input_filenames <- function(template_path = NULL) {
+  #' Read Default Prepared Filenames From the Dataset Template
+  #' @param template_path Explicit template, or NULL to find the application
+  #'   root by searching upward from the working directory.
+  #' @return The template's std_names list. No input files are inspected.
+  if (is.null(template_path)) {
+    root <- getwd()
+    while (!file.exists(file.path(root, "general_config.yaml"))) {
+      parent <- dirname(root)
+      if (identical(parent, root)) {
+        stop("Cannot find the dataset configuration template. Supply std_names explicitly or run from the application directory.", call. = FALSE)
+      }
+      root <- parent
+    }
+    template_path <- file.path(root, "templates", "dataset_config_template.yaml")
+  }
+  template <- yaml::read_yaml(template_path)
+  if (!is.list(template)) stop("The dataset configuration template must be a YAML mapping.", call. = FALSE)
+  if (is.null(template$std_names)) list() else template$std_names
+}
+
+
 check_prepared_data <- function(processed_dir_path, std_names = NULL) {
   #' Check Prepared Input Structure
   #'
@@ -16,12 +38,13 @@ check_prepared_data <- function(processed_dir_path, std_names = NULL) {
   #'   dimensions, cell/gene contents, or scientific correctness. Never changes
   #'   inputs, prints a report, or persists validation state.
   #' @param processed_dir_path Directory containing the sample CSV and folders.
-  #' @param std_names NULL to detect canonical new-import filenames and one
-  #'   expression format, or a list with expmat, genes, cells, and samples
-  #'   filenames for an existing workspace. Names must be distinct basenames.
+  #' @param std_names A list with expmat, genes, cells, and samples filenames.
+  #'   NULL reads defaults from the dataset template; existing workspaces should
+  #'   supply their own saved list. Names must be distinct portable basenames.
   #' @return A prepared_data_check list: valid; errors (code, sample, path,
   #'   message); message (aggregate display text); samples (character metadata);
-  #'   std_names; expression_type; and paths_list in CSV order (only if valid).
+  #'   std_names; expression_type (always NA for compatibility, never inferred);
+  #'   and paths_list in CSV order (only if valid).
 
   errors <- data.frame(
     code = character(), sample = character(), path = character(),
@@ -30,9 +53,7 @@ check_prepared_data <- function(processed_dir_path, std_names = NULL) {
   samples <- NULL
   paths_list <- NULL
   expression_type <- NA_character_
-  detected_names <- list(
-    expmat = NULL, genes = "Genes.txt", cells = "Cells.csv", samples = "Samples.csv"
-  )
+  detected_names <- list()
   add_error <- function(code, path, message, sample = NA_character_) {
     errors[nrow(errors) + 1L, ] <<- list(code, sample, path, message)
   }
@@ -99,25 +120,19 @@ check_prepared_data <- function(processed_dir_path, std_names = NULL) {
     add_error("unreadable_directory", processed_dir_path, "Make the prepared-data directory readable by the R process.")
     return(result())
   }
-  auto_names <- is.null(std_names)
-  if (!auto_names) {
-    keys <- c("expmat", "genes", "cells", "samples")
-    if (!is.list(std_names) || !all(vapply(keys, function(key) {
-      value <- std_names[[key]]
-      scalar_text(value) && portable_name(value)
-    }, logical(1)))) {
-      add_error("invalid_filenames", processed_dir_path, "Configure expmat, genes, cells, and samples as portable filenames without directory components.")
-      return(result())
-    }
-    detected_names <- std_names[keys]
-    if (anyDuplicated(tolower(unlist(detected_names, use.names = FALSE)))) {
-      add_error("invalid_filenames", processed_dir_path, "Configure distinct matrix, gene, cell, and sample filenames.")
-      return(result())
-    }
-    expression_type <- infer_standardized_expression_type(detected_names$expmat)
-    if (is.na(expression_type)) {
-      add_error("unknown_expression_type", file.path(processed_dir_path, detected_names$expmat), "The configured matrix filename must declare counts, TPM, or CPM.")
-    }
+  if (is.null(std_names)) std_names <- prepared_input_filenames()
+  keys <- c("expmat", "genes", "cells", "samples")
+  if (!is.list(std_names) || !all(vapply(keys, function(key) {
+    value <- std_names[[key]]
+    scalar_text(value) && portable_name(value)
+  }, logical(1)))) {
+    add_error("invalid_filenames", processed_dir_path, "Configure expmat, genes, cells, and samples as portable filenames without directory components.")
+    return(result())
+  }
+  detected_names <- std_names[keys]
+  if (anyDuplicated(tolower(unlist(detected_names, use.names = FALSE)))) {
+    add_error("invalid_filenames", processed_dir_path, "Configure distinct matrix, gene, cell, and sample filenames.")
+    return(result())
   }
 
   samples_path <- file.path(processed_dir_path, detected_names$samples)
@@ -159,8 +174,6 @@ check_prepared_data <- function(processed_dir_path, std_names = NULL) {
   for (sample in setdiff(actual_names, expected_names)) {
     add_error("unexpected_sample_directory", file.path(processed_dir_path, sample), paste0("Directory '", sample, "' is absent from the sample CSV; add its sample row or remove this directory from the prepared input."), sample)
   }
-  canonical_matrices <- c("Exp_data_UMIcounts.mtx", "Exp_data_TPM.mtx", "Exp_data_CPM.mtx")
-  found_matrices <- character()
   for (sample in expected_names) {
     sample_dir <- file.path(processed_dir_path, sample)
     if (!(sample %in% actual_names)) {
@@ -173,29 +186,7 @@ check_prepared_data <- function(processed_dir_path, std_names = NULL) {
     }
     check_file(sample_dir, detected_names$genes, sample)
     check_file(sample_dir, detected_names$cells, sample)
-    if (auto_names) {
-      candidates <- intersect(canonical_matrices, basename(entries(sample_dir)))
-      if (!length(candidates)) {
-        add_error("missing_matrix", sample_dir, paste0("Sample '", sample, "': supply one matrix named ", paste(canonical_matrices, collapse = ", "), "."), sample)
-      } else {
-        found_matrices <- c(found_matrices, candidates)
-        if (length(candidates) > 1L) {
-          add_error("ambiguous_matrix", sample_dir, paste0("Sample '", sample, "': keep exactly one supported matrix; found ", paste(candidates, collapse = ", "), "."), sample)
-        }
-        for (filename in candidates) check_file(sample_dir, filename, sample)
-      }
-    } else {
-      check_file(sample_dir, detected_names$expmat, sample)
-    }
-  }
-  if (auto_names) {
-    matrix_names <- unique(found_matrices)
-    if (length(matrix_names) > 1L) {
-      add_error("mixed_matrix_formats", processed_dir_path, paste0("Use one matrix filename/scale throughout the dataset; found ", paste(matrix_names, collapse = ", "), "."))
-    } else if (length(matrix_names) == 1L) {
-      detected_names$expmat <- matrix_names[[1]]
-      expression_type <- infer_standardized_expression_type(detected_names$expmat)
-    }
+    check_file(sample_dir, detected_names$expmat, sample)
   }
   if (nrow(errors) == 0L) {
     ordered_dirs <- file.path(processed_dir_path, sample_names)

@@ -162,6 +162,34 @@ test_that("check_min_n_marker_genes flags cell types below the minimum gene coun
   expect_equal(res$gene_count[res$cell_types == "Artifact"], 0)
 })
 
+test_that("DC05 score captions and shading use the generation threshold at both boundaries", {
+  cells <- data.table::data.table(cell_name = paste0("cell", 1:4), clust = "0",
+    Below_minimum = c(0.1, 0.2, 0.3, 0.4), At_minimum = c(0.2, 0.3, 0.4, 0.5),
+    Above_minimum = c(0.3, 0.4, 0.5, 0.6))
+  for (minimum in c(20L, 7L)) {
+    sets <- list(Below_minimum = paste0("gene", seq_len(minimum - 1L)),
+      At_minimum = paste0("gene", seq_len(minimum)),
+      Above_minimum = paste0("gene", seq_len(minimum + 1L)))
+    counts <- check_min_n_marker_genes(sets, minimum)
+    expect_identical(counts$n_gene_pass, c(FALSE, TRUE, TRUE))
+    plot <- sig_scores_cluster_boxplot(cells, names(sets), counts, "0", "Sample", 0.5,
+      min_marker_found = minimum)
+    caption <- gsub("\n", " ", plot$labels$caption, fixed = TRUE)
+    expect_match(caption, paste0("fewer than ", minimum, " marker genes"), fixed = TRUE)
+    expect_match(caption, "may be noisier", fixed = TRUE)
+    expect_match(caption, "Numbers above the boxes show the available marker counts.", fixed = TRUE)
+    built <- ggplot2::ggplot_build(plot)
+    expect_equal(nrow(built$data[[1]]), 1L)
+    expect_equal(built$data[[1]]$xmin, 0.5)
+    expect_equal(built$data[[1]]$xmax, 1.5)
+    labels <- built$data[[3]]
+    expect_equal(as.integer(labels$label[order(labels$x)]), c(minimum - 1L, minimum, minimum + 1L))
+  }
+  legacy <- sig_scores_cluster_boxplot(cells, names(sets), counts, "0", "Legacy", 0.5)
+  expect_match(legacy$labels$caption, "minimum used to generate", fixed = TRUE)
+  expect_false(grepl("fewer than 20", legacy$labels$caption, fixed = TRUE))
+})
+
 test_that("score_and_fill_cells adds signature scores aligned by cell_name", {
   skip_if_not_installed("matkot")
   

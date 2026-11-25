@@ -15,6 +15,7 @@ register_dataset_server <- function(input, output, session, state, context) {
   session_workspace_paths <- reactiveVal(list())
   directory_browser <- reactiveVal(NULL)
   import_error <- reactiveVal(NULL)
+  import_filename_defaults <- reactiveVal(list())
   workspace_path <- function(name) {
     registered <- session_workspace_paths()
     if (name %in% names(registered)) registered[[name]] else file.path(dataset_base_dir, name)
@@ -569,7 +570,16 @@ register_dataset_server <- function(input, output, session, state, context) {
     directory_browser(NULL)
     import_error(NULL)
     arm_app_confirmation(rv, "create_dataset")
-    showModal(dataset_import_dialog(dataset_base_dir))
+    template_defaults <- tryCatch(
+      yaml::read_yaml(file.path(templates_dir, "dataset_config_template.yaml")),
+      error = function(e) list()
+    )
+    if (!is.list(template_defaults)) template_defaults <- list()
+    filename_defaults <- template_defaults$std_names
+    if (!is.list(filename_defaults)) filename_defaults <- list()
+    import_filename_defaults(filename_defaults)
+    showModal(dataset_import_dialog(dataset_base_dir,
+      project_info = template_defaults$project_info, std_names = filename_defaults))
   })
 
   observeEvent(input$btn_cancel_create_ds, {
@@ -603,6 +613,11 @@ register_dataset_server <- function(input, output, session, state, context) {
           trimws(.pipeline_value_or(input$new_ds_source, "")),
           trimws(.pipeline_value_or(input$new_ds_location, "")), name,
           config, file.path(templates_dir, "dataset_config_template.yaml"),
+          source_doi = input$new_ds_source_doi,
+          source_url = input$new_ds_source_url,
+          std_names = stats::setNames(lapply(c("expmat", "genes", "cells", "samples"), function(key) {
+            .pipeline_value_or(input[[paste0("new_ds_std_", key)]], import_filename_defaults()[[key]])
+          }), c("expmat", "genes", "cells", "samples")),
           progress = function(copied, total, path) {
             elapsed <- as.numeric(difftime(Sys.time(), started, units = "secs"))
             shiny::setProgress(value = if (total > 0) copied / total else 0,

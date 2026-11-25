@@ -77,6 +77,41 @@ test_that("P04 the complete UI exposes prepared import without guide or prompt e
   expect_false(grepl("Standardization:", overview, fixed = TRUE))
 })
 
+test_that("creation filenames are collapsed above source information with configured defaults", {
+  fixture <- make_p04_context_fixture(withr::local_tempdir())
+  filenames <- list(expmat = "expression.mtx", genes = "symbols.txt",
+    cells = "cell metadata.csv", samples = "sample metadata.csv")
+  dialog <- fixture$env$dataset_import_dialog(tempdir(), std_names = filenames)
+  query <- htmltools::tagQuery(dialog)$find("#new_ds_filenames")
+  disclosure <- query$selectedTags()[[1]]
+  expect_identical(disclosure$name, "details")
+  expect_null(disclosure$attribs$open)
+  for (key in names(filenames)) {
+    field <- query$find(paste0("#new_ds_std_", key))$selectedTags()[[1]]
+    expect_identical(field$attribs$value, filenames[[key]])
+  }
+  html <- as.character(dialog)
+  expect_lt(regexpr('id="new_ds_filenames"', html, fixed = TRUE)[[1]],
+    regexpr('id="new_ds_origin"', html, fixed = TRUE)[[1]])
+})
+
+test_that("DC04 source disclosure is collapsed and describes both optional inputs", {
+  fixture <- make_p04_context_fixture(withr::local_tempdir())
+  origin <- list(source_doi = "10.1234/template", source_url = "https://example.org/database")
+  dialog <- fixture$env$dataset_import_dialog(tempdir(), project_info = origin)
+  query <- htmltools::tagQuery(dialog)$find("#new_ds_origin")
+  disclosure <- query$selectedTags()[[1]]
+  expect_identical(disclosure$name, "details")
+  expect_null(disclosure$attribs$open)
+  expect_identical(query$find("#new_ds_source_doi")$selectedTags()[[1]]$attribs$value, origin$source_doi)
+  expect_identical(query$find("#new_ds_source_url")$selectedTags()[[1]]$attribs$value, origin$source_url)
+  html <- as.character(dialog)
+  for (text in c("Source information (optional)", "Paper DOI", "Database URL",
+    "DOI of the paper describing the dataset.", "URL of the dataset's database entry.")) {
+    expect_match(html, text, fixed = TRUE)
+  }
+})
+
 test_that("P04 import, spec download, and loading work without preparation materials", {
   root <- withr::local_tempdir()
   fixture <- make_p04_context_fixture(root)

@@ -595,3 +595,30 @@ zero failures, errors, warnings, or skips. Together with the main app gate,
 verification totals **4,550 passing assertions**. Shared app code and ordinary
 tests match between the maintained branches; documentation examples and
 repository links/anchors also passed validation.
+
+## 1.1.0 acceptance and candidate preparation (2026-11-25)
+
+The dataset configuration/annotation plan, including DC06, is complete. The user
+reported manual testing finished and all working, and explicitly waived another
+full suite after the annotation column-type fix and removal of the duplicate
+plot reminder. The accepted sequence is the full app run plus reviewed browser
+rerun (4,860 verified app assertions), 62 development-tool assertions, and the
+separate focused follow-ups recorded in [Testing](../TESTING.md#recorded-verification-status).
+Those counts describe different phases and are not a new combined full run.
+
+Version 1.1.0 is prepared on the development working tree based on `6d5e626`.
+An app-focused candidate based on local main `9fa0bce` includes the shared app
+changes, ordinary regressions, user docs, and the new personal cache reader.
+Profiling/recovery CLIs, E00 tooling, development tests, and development records
+remain excluded. Main-specific documentation differences are preserved.
+
+The local patch/archive and manifest are under ignored
+`artifacts/local-checks/release-1.1.0/`. Static packaging checks verify patch
+application, normalized source parity, R syntax, version metadata, local links,
+and exclusion of local data/development-only files. No application tests were
+run during packaging. See [release preparation](RELEASE_1_1_0_PREPARATION.md).
+
+This is preparation only: main remains `9fa0bce`, development remains `6d5e626`
+with the uncommitted changes, and no branch was switched, commit created, tag
+changed, or release published. The remote main tip must be rechecked when the
+reviewed candidate is promoted. Scientific data and resources are unchanged.

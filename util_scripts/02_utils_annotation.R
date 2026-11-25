@@ -104,6 +104,7 @@ run_expmat_pca <- function(expmat, nv = 50, seed = 3988) {
   #' 
   #' @param expmat Sparse expression matrix
   #' @param nv number of right singular vectors to estimate (default: 50)
+  #' @param seed Seed for reproducibility (default: 3988).
   #' 
   #' @return The computed pca
   
@@ -505,6 +506,23 @@ format_signature_score_plot_labels <- function(sample_name, cluster_name, resolu
 }
 
 
+signature_score_marker_note <- function(min_marker_found = NULL) {
+  #' Explain Low Marker Counts Without Guessing a Saved Plot's Threshold
+  #' @param min_marker_found Generation threshold, or NULL when unknown.
+  #' @return Text suitable for the annotation UI or a saved plot caption.
+  warning <- if (is.null(min_marker_found)) {
+    paste("Red shading indicates fewer marker genes available for this cell type",
+      "in the sample than the minimum used to generate this plot.")
+  } else {
+    paste0("Red shading indicates fewer than ", min_marker_found, " marker ",
+      if (min_marker_found == 1) "gene" else "genes",
+      " available for this cell type in the sample.")
+  }
+  paste(warning, "Scores based on fewer markers may be noisier; consider this when annotating.",
+    "Numbers above the boxes show the available marker counts.")
+}
+
+
 save_signature_score_plot <- function(plot, filename, width = 9, height = 7,
                                       units = "in", dpi = 300) {
   #' Save a signature-score plot with a device-independent output contract
@@ -526,7 +544,8 @@ save_signature_score_plot <- function(plot, filename, width = 9, height = 7,
 
 
 sig_scores_cluster_boxplot <- function(cells, marker_cell_types, marker_genes_found, cluster_name, 
-                                       sample_name, resolution, seed = 3988) {
+                                       sample_name, resolution, seed = 3988,
+                                       min_marker_found = NULL) {
   #' Plot the signature scores for each cell type for a cluster
   #' 
   #' @param cells Cells data table with scores for each cell type stored in cols
@@ -537,6 +556,8 @@ sig_scores_cluster_boxplot <- function(cells, marker_cell_types, marker_genes_fo
   #' @param sample_name This samples name
   #' @param resolution Used louvain cluster resolution
   #' @param seed Seed to set random colors
+  #' @param min_marker_found Threshold used to compute marker_genes_found flags.
+  #'   NULL uses a generic caption for callers without generation metadata.
   #' 
   #' @return ggplot2 object of the scores boxplot
   
@@ -620,6 +641,9 @@ sig_scores_cluster_boxplot <- function(cells, marker_cell_types, marker_genes_fo
       plot.background = ggplot2::element_rect(fill = "white", color = NA),
       plot.title = ggplot2::element_text(lineheight = 1.1, margin = ggplot2::margin(b = 4)),
       plot.subtitle = ggplot2::element_text(margin = ggplot2::margin(b = 8)),
+      plot.caption = ggplot2::element_text(hjust = 0, size = 10, lineheight = 1.1,
+        margin = ggplot2::margin(t = 10)),
+      plot.caption.position = "plot",
       legend.position = 'none',
       panel.grid.major.y = ggplot2::element_line(color = "grey85", linetype = "dashed")
     ) +
@@ -627,6 +651,7 @@ sig_scores_cluster_boxplot <- function(cells, marker_cell_types, marker_genes_fo
     ggplot2::labs(
       title = plot_labels$title,
       subtitle = plot_labels$subtitle,
+      caption = paste(strwrap(signature_score_marker_note(min_marker_found), width = 95), collapse = "\n"),
       x = 'Marker Set',
       y = 'Score'
     ) +

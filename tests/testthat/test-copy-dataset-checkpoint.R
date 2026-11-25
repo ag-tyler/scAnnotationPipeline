@@ -2,7 +2,8 @@ checkpoint_script <- new.env(parent = globalenv())
 sys.source(testthat::test_path("..", "..", "scripts", "copy_dataset_checkpoint.R"), envir = checkpoint_script)
 checkpoint_app_dir <- normalizePath(testthat::test_path("..", ".."), winslash = "/")
 
-make_checkpoint_workspace <- function(root, finished = FALSE) {
+make_checkpoint_workspace <- function(root, finished = FALSE,
+    std_names = list(expmat = "Exp_data_UMIcounts.mtx", genes = "Genes.txt", cells = "Cells.csv", samples = "Samples.csv")) {
   dir.create(root)
   id <- basename(root)
   sample_ids <- c("CRC_N2", "CRC_T2", "CRC_LM2")
@@ -11,9 +12,9 @@ make_checkpoint_workspace <- function(root, finished = FALSE) {
   metadata <- build_samples(sample_ids)
   metadata$n_cells <- rep("4", 3)
   metadata$patient <- rep("002", 3)
-  data.table::fwrite(metadata, file.path(processed, "Samples.csv"))
+  data.table::fwrite(metadata, file.path(processed, std_names$samples))
   config <- list(project_info = list(dataset_id = id),
-    std_names = list(expmat = "Exp_data_UMIcounts.mtx", genes = "Genes.txt", cells = "Cells.csv", samples = "Samples.csv"),
+    std_names = std_names,
     params = list(resolutions = 0.1, min_genes = 1, target_sum = 100000,
       log2_expr_threshold = 4, pca_nv = 2, seed = 3988, umap = list(spread = 5, min_dist = 0.1)))
   yaml::write_yaml(config, file.path(root, "dataset_config.yaml"), precision = 17)
@@ -28,14 +29,14 @@ make_checkpoint_workspace <- function(root, finished = FALSE) {
     expression <- Matrix::Matrix(matrix(seq_len(12), nrow = 3), sparse = TRUE)
     dimnames(expression) <- list(paste0("G", 1:3), paste0(sample, "_", 1:4))
     Matrix::writeMM(expression, file.path(folder, config$std_names$expmat))
-    writeLines(rownames(expression), file.path(folder, "Genes.txt"))
+    writeLines(rownames(expression), file.path(folder, std_names$genes))
     cells <- build_cells(colnames(expression))
     data.table::set(cells, j = "sample", value = rep(sample, nrow(cells)))
     cells[, `:=`(cell_type = rep(c("T_cell", "Epithelial"), 2),
       complexity = 3L, umap1 = as.numeric(1:4), umap2 = as.numeric(4:1), clust = c("0", "1", "0", "1"))]
-    data.table::fwrite(cells, file.path(folder, "Cells.csv"))
+    data.table::fwrite(cells, file.path(folder, std_names$cells))
     paths <- list(expmat_file_paths = file.path(folder, config$std_names$expmat),
-      genes_file_paths = file.path(folder, "Genes.txt"), cell_file_paths = file.path(folder, "Cells.csv"))
+      genes_file_paths = file.path(folder, std_names$genes), cell_file_paths = file.path(folder, std_names$cells))
     deps <- filter_cache_dependencies(paths, 1, config)
     for (repeat_save in 1:2) cache_save_data(expression, paste0("expmat_filt_", sample, ".qs2"), root,
       dependencies = deps, nthreads = 1)
@@ -91,6 +92,27 @@ checkpoint_hashes <- function(root) {
   paths <- sort(list.files(root, all.files = TRUE, no.. = TRUE, recursive = TRUE, full.names = TRUE))
   stats::setNames(unname(tools::md5sum(paths)), substring(paths, nchar(root) + 2L))
 }
+
+test_that("DC02 checkpoints preserve custom filenames and usable independent caches", {
+  root <- withr::local_tempdir()
+  filenames <- list(expmat = "expression.mtx", genes = "symbols.txt",
+    cells = "metadata.csv", samples = "sample_metadata.csv")
+  source <- make_checkpoint_workspace(file.path(root, "Working"), std_names = filenames)
+  before <- checkpoint_hashes(source)
+  output <- file.path(root, "Custom_Copy")
+  checkpoint_script$copy_dataset_checkpoint(source, output, checkpoint_app_dir)
+  config <- yaml::read_yaml(file.path(output, "dataset_config.yaml"))
+  expect_identical(config$std_names, filenames)
+  checked <- check_prepared_data(file.path(output, "processed_data"), std_names = config$std_names)
+  expect_true(checked$valid, info = checked$message)
+  expect_identical(checked$samples$sample, c("CRC_N2", "CRC_T2", "CRC_LM2"))
+  expect_identical(checkpoint_hashes(source), before)
+  expect_true(file.rename(source, file.path(root, "Moved_Original")))
+  for (filename in names(load_cache_manifest(output)$artifacts)) {
+    expect_true(cache_check_available(filename, output))
+    expect_true(cache_check_valid(filename, output))
+  }
+})
 
 test_that("checkpoint copies preserve caches, recovery metadata, notes and scientific state", {
   root <- withr::local_tempdir()

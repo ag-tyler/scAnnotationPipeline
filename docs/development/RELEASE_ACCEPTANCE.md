@@ -1,6 +1,18 @@
 # Release Acceptance
 
-**Current verification (2026-11-04):** C01–C09 are implemented. C10 adds a guard
+**Current release acceptance (1.1.0, 2026-11-25): complete.** The user reported
+manual testing finished and all working, closing DC06. Automated verification
+comprises the completed full app/development run and reviewed browser-baseline
+rerun, followed by focused checks for the annotation column-type fix and removal
+of the duplicate plot reminder. The user explicitly waived another full-suite
+repeat for those two follow-ups. See the [testing record](../TESTING.md#recorded-verification-status)
+for phase-specific counts and limitations, and [release preparation](RELEASE_1_1_0_PREPARATION.md)
+for the main candidate. This closes the current feature plan; it does not rewrite
+the historical dataset-specific findings below or claim that main is published.
+
+## Historical acceptance records
+
+**Verification (2026-11-04):** C01–C09 are implemented. C10 adds a guard
 against hidden CNA preflight recreating archived cache directories, archived
 required/optional-damage browser journeys and measured synthetic reload/restart
 timings. The complete final suite passed **3,871 assertions**, with **zero

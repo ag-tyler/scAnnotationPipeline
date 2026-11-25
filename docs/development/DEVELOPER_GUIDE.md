@@ -131,6 +131,9 @@ approved comma-separated filenames when using `UPDATE_UI_BASELINES=true`, review
 the image diff, and rerun comparisons with updates disabled. Preserve comparison
 thresholds unless an independently reviewed change requires otherwise.
 
+The [development script reference](SCRIPTS.md) describes each entry point,
+its arguments, output, and workspace effects.
+
 Development tools have separate contracts on `development`:
 
 ```r

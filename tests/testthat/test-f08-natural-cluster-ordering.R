@@ -34,7 +34,8 @@ test_that("F08 score plots preserve long sample identifiers and compact metadata
     marker_genes_found,
     cluster_name = "10",
     sample_name = long_sample_name,
-    resolution = 1.25
+    resolution = 1.25,
+    min_marker_found = 10
   )
 
   expect_gt(nchar(long_sample_name), 100)
@@ -44,6 +45,11 @@ test_that("F08 score plots preserve long sample identifiers and compact metadata
     long_plot$labels$subtitle,
     "Cluster 10 scores | Resolution: 1.25 | Cells: 3"
   )
+  expect_match(long_plot$labels$caption, "fewer than 10 marker genes", fixed = TRUE)
+  artifact_dir <- Sys.getenv("DC05_ARTIFACT_DIR", unset = tempdir())
+  image_path <- tempfile("dc05-long-title-caption-", tmpdir = artifact_dir, fileext = ".png")
+  expect_no_warning(save_signature_score_plot(long_plot, image_path, dpi = 150))
+  expect_gt(file.size(image_path), 0)
 
   short_labels <- format_signature_score_plot_labels("Sample_1", "2", 0.5, 18)
   expect_false(grepl("\n", short_labels$title, fixed = TRUE))

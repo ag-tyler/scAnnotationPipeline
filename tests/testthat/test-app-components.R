@@ -202,7 +202,7 @@ test_that("new dataset creation imports prepared files and uses the shared loade
     "templates",
     "standardize_general.R"
   )))
-  expect_match(server_text, 'dataset_import_dialog(dataset_base_dir)', fixed = TRUE)
+  expect_match(server_text, 'dataset_import_dialog(dataset_base_dir,', fixed = TRUE)
   expect_match(server_text, 'import_prepared_dataset(', fixed = TRUE)
   expect_false(grepl('"standardize_general.R"', server_text, fixed = TRUE))
   expect_false(grepl('paste0("standardize_"', server_text, fixed = TRUE))

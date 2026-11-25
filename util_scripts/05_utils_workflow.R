@@ -73,7 +73,12 @@ clustering_cache_dependencies <- function(paths_list, sample_idx, config, resolu
       cells_input = cell_input,
       clustering_parameters = parameters,
       resolution = as.numeric(resolution),
-      implementation = "pca-umap-louvain-v1"
+      # Earlier workflows always used PCA seed 3988, even when the config
+      # specified another seed. Retain compatible default-seed caches while
+      # invalidating results produced with the ignored non-default PCA seed.
+      implementation = if (isTRUE(config$params$seed == 3988)) {
+        "pca-umap-louvain-v1"
+      } else "pca-umap-louvain-v2"
     )
   )
 }
@@ -288,7 +293,8 @@ pca_umap_louvain <- function(expmat_filt, cells_filt, dataset_config, selected_c
   
   message('PCA + UMAP')
   # Clustering
-  exp_pca <- run_expmat_pca(expmat_filt, dataset_config$params$pca_nv)
+  exp_pca <- run_expmat_pca(expmat_filt, dataset_config$params$pca_nv,
+                           seed = dataset_config$params$seed)
   exp_umap <- run_expmat_umap(exp_pca, ncol(expmat_filt), dataset_config$params$umap$spread, 
                               dataset_config$params$umap$min_dist, dataset_config$params$seed)
   message('Louvain clustering with res: ', selected_config$resolutions[[sample_name]])
@@ -476,7 +482,8 @@ cluster_all_samples <- function(
 
       report("pca_umap", "Computing PCA and UMAP", 0.25)
       # Clustering
-      exp_pca <- run_expmat_pca(expmat_filt, config$params$pca_nv)
+      exp_pca <- run_expmat_pca(expmat_filt, config$params$pca_nv,
+                               seed = config$params$seed)
       exp_umap <- run_expmat_umap(exp_pca, ncol(expmat_filt), config$params$umap$spread,
                                   config$params$umap$min_dist, config$params$seed)
 
@@ -733,7 +740,9 @@ single_de_analysis <- function(sample_idx, paths_list, dataset_config, selected_
   for (curr_cluster in de_parameters$clusters) {
     score_plot <- sig_scores_cluster_boxplot(cells_scores, marker_cell_types, marker_genes_found, 
                                              curr_cluster, sample_name, 
-                                             selected_config$resolutions[[sample_name]])
+                                             selected_config$resolutions[[sample_name]],
+                                             seed = .pipeline_value_or(dataset_config$params$seed, 3988),
+                                             min_marker_found = de_parameters$min_marker_found)
     
     score_plot_path <- file.path(de_plots_dir_path, paste0(curr_cluster, '.png'))
     save_signature_score_plot(score_plot, score_plot_path)
